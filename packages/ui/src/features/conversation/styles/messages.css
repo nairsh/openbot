@@ -1423,3 +1423,50 @@ button.chat-action-target:active,
   content: "·";
   margin-inline-end: var(--openbot-space-1);
 }
+
+/*
+ * A chat bubble enters as in a phone's messages: a sent bubble rises from the composer, and a reply
+ * grows from its corner. The bubble moves, not the row, so the avatar and the time stay still.
+ */
+.message-entry-animated:is(.message-entry-user, .message-entry-agent) {
+  animation: none;
+}
+
+.message-entry-animated.message-entry-user .message-shell > .ui-bubble {
+  transform-origin: right bottom;
+  animation: message-sent-in var(--openbot-duration-bubble-enter) var(--openbot-ease-bubble) both;
+}
+
+.message-entry-animated.message-entry-agent .message-shell > .ui-bubble {
+  transform-origin: left bottom;
+  animation: message-received-in var(--openbot-duration-bubble-enter) var(--openbot-ease-bubble) both;
+}
+
+@keyframes message-sent-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--openbot-space-8)) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes message-received-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--openbot-space-2)) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-entry-animated.message-entry-user .message-shell > .ui-bubble,
+  .message-entry-animated.message-entry-agent .message-shell > .ui-bubble {
+    animation: none;
+  }
+}

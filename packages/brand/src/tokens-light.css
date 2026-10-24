@@ -66,6 +66,11 @@
   --openbot-text-readable: rgba(20, 20, 20, 0.6);
   --openbot-settings-text-muted: rgba(20, 20, 20, 0.6);
 
+  --openbot-shadow-composer: 0 2px 12px rgba(20, 20, 20, 0.06);
+
+  /* The sent bubble keeps its blue; the grey of a reply is light. */
+  --openbot-bubble-received: #e9e9eb;
+
   /* The on-light family is the high-contrast inverted element: the default button, a checked
      switch, the user's bubble, the light tooltip. On a light canvas it turns dark. */
   --openbot-surface-light: #1c1c1e;

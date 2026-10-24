@@ -53,6 +53,10 @@ export const messages = {
   // The two link targets. The saved value stays in English; only the label is translated.
   "settings.externalLinks.defaultBrowser": "Navigateur par défaut",
   "settings.externalLinks.openbot": "OpenBot",
+  "settings.chatWidth.title": "Largeur du chat",
+  "settings.chatWidth.description": "La largeur des messages et de la zone de saisie.",
+  "settings.chatWidth.full": "Pleine",
+  "settings.chatWidth.medium": "Moyenne",
   "settings.sendShortcut.title": "Raccourci d’envoi",
   "settings.sendShortcut.description":
     "Choisissez les touches qui envoient un message sur cet appareil et dans ce navigateur.",

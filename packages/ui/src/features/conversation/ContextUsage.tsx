@@ -125,7 +125,8 @@ export function ContextUsageMeter(props: {
           if (next && compaction().phase === "refused") setCompaction({ phase: "idle" });
           setOpen(next);
         }}
-        placement="top-end"
+        // The meter stands to the left of the message box, so its card opens toward the box.
+        placement="top-start"
         gutter={8}
       >
         <Popover.Trigger

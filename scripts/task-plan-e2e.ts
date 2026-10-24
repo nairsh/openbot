@@ -98,10 +98,8 @@ try {
   const planPanel = page.locator(`[id="${await plan.getAttribute("aria-controls")}"]`);
   assert.equal(await planPanel.getByRole("img", { name: t("chat.taskList.state.done") }).count(), 4);
 
-  const waiting = header(page, t("chat.awaiting.title"));
-  await waiting.waitFor();
-  assert.match((await waiting.textContent()) ?? "", /1 of 2 replies in/u);
-  const waitingBlock = page.locator("section").filter({ has: waiting });
+  const waitingBlock = page.getByRole("region", { name: t("chat.awaiting.title") });
+  await waitingBlock.waitFor();
   const research = waitingBlock.getByRole("listitem").filter({ hasText: "Research" });
   assert.match((await research.textContent()) ?? "", new RegExp(t("chat.awaiting.state.replied")));
   assert.match((await research.textContent()) ?? "", /All four sources check out/u);
@@ -139,7 +137,7 @@ try {
   await page.screenshot({ path: resolve(OUT, "conversation-plan-live.png") });
   report.planInProgress = { expanded: true, done: 1, total: 3 };
 
-  // All four states of a waiting row, and the closed header that names the agent that works.
+  // All four states of a waiting row, with no header above them.
   await openStory(page, "conversation-awaiting-replies--waiting");
   const rows = page.getByRole("listitem");
   assert.equal(await rows.count(), 3);
@@ -150,12 +148,8 @@ try {
   ] as const) {
     assert.match((await rows.filter({ hasText: name }).textContent()) ?? "", new RegExp(t(state)));
   }
-  const opened = header(page, t("chat.awaiting.title"));
-  // A closed header shows the agent that works in place of the title, so its name changes.
-  const block = page.locator(`[aria-controls="${await opened.getAttribute("aria-controls")}"]`);
-  await block.click();
-  assert.equal(await block.getAttribute("aria-expanded"), "false");
-  await page.getByText(t("chat.awaiting.working", { name: "Sales Outbound" })).waitFor();
+  // The block has no header: the rows name the agents that work.
+  assert.equal(await page.getByRole("button", { name: t("chat.awaiting.title") }).count(), 0);
   await openStory(page, "conversation-awaiting-replies--one-failed");
   assert.match(
     (await page.getByRole("listitem").first().textContent()) ?? "",

@@ -1730,3 +1730,22 @@
 .reference-chip.message-reference-chip > .sr-only {
   user-select: none;
 }
+
+/* The person's own messages have the sent colour and the agent's replies the received colour, as
+ * in a phone's messages. A message of another person keeps the tint of its author. */
+.message-entry-user .ui-bubble-variant-secondary:not(.message-bubble-member) {
+  color: var(--openbot-bubble-sent-text);
+}
+
+.message-entry-user .ui-bubble-variant-secondary:not(.message-bubble-member) > .ui-bubble-content {
+  background: var(--openbot-bubble-sent);
+}
+
+.message-entry-user .ui-bubble-variant-secondary:not(.message-bubble-member) .message-reply-context {
+  border-left-color: var(--openbot-bubble-sent-border);
+  color: var(--openbot-bubble-sent-text-muted);
+}
+
+.message-entry-agent .message-shell > .ui-bubble-variant-muted > .ui-bubble-content {
+  background: var(--openbot-bubble-received);
+}

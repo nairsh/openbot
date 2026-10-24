@@ -199,5 +199,7 @@ export function pendingSendMessage(send: PendingSend): AgentMessage {
     createdAt: send.createdAt,
     replyToMessageId: send.draft.replyToMessageId,
     attachments: send.draft.attachments,
+    // A message the person sends slides in at once, before the host has it.
+    animate: true,
   };
 }

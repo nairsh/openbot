@@ -10,6 +10,11 @@
   --conversation-column-width: 1440px;
 }
 
+/* The medium chat width of Settings: a narrow column in the center, as in a phone's messages. */
+.conversation-panel[data-chat-width="medium"] {
+  --conversation-column-width: 760px;
+}
+
 /*
  * On a very wide screen the chat stops at a column and centers in the pane, so a reply and the
  * user's message stay near each other. A laptop window is narrower than the column and shows the

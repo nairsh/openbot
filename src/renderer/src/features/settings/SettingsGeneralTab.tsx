@@ -23,12 +23,19 @@ import { SendShortcutSelect } from "@openbot/ui/features/settings/SendShortcutSe
 import { useText } from "@openbot/ui/text";
 import { Show } from "solid-js";
 import { useAppearanceChoice } from "../../appearance-choice";
+import { type ChatWidth, setChatWidth, useChatWidth } from "../../chat-width-preference";
 import { useI18n } from "../../i18n-context";
 import { useInterfaceSizeChoice } from "../../interface-size";
 import { useLogoColorChoice } from "../../logo-color";
 
 const interfaceSizeOptions = [...APP_INTERFACE_SIZES];
 const linkTargetOptions: GeneralSettingsValue["externalLinkTarget"][] = ["Default browser", "OpenBot"];
+const chatWidthOptions: ChatWidth[] = ["full", "medium"];
+
+const CHAT_WIDTH_KEYS = {
+  full: "settings.chatWidth.full",
+  medium: "settings.chatWidth.medium",
+} as const satisfies Record<ChatWidth, AppTextKey>;
 
 /**
  * The saved value is the English name, because it is what `app-settings.ts` persists and what the
@@ -58,6 +65,8 @@ export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
   const appearance = useAppearanceChoice();
   const logoColor = useLogoColorChoice();
   const interfaceSize = useInterfaceSizeChoice();
+  const chatWidth = useChatWidth();
+  const chatWidthLabel = (value: ChatWidth | undefined) => (value === undefined ? "" : i18n.t(CHAT_WIDTH_KEYS[value]));
   const { format } = useText();
   const interfaceSizeLabel = (value: AppInterfaceSize | undefined) =>
     value === undefined ? "" : format.percent(value / 100);
@@ -134,6 +143,29 @@ export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
 
       <SettingsSection title={i18n.t("settings.conversations.title")}>
         <ItemGroup class="settings-modal-card">
+          <Item data-settings-row="settings.chatWidth.title" class="settings-modal-row">
+            <ItemContent>
+              <ItemTitle>{i18n.t("settings.chatWidth.title")}</ItemTitle>
+              <ItemDescription>{i18n.t("settings.chatWidth.description")}</ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <Select<ChatWidth>
+                class="settings-modal-select"
+                options={chatWidthOptions}
+                value={chatWidth()}
+                onChange={(value) => value && setChatWidth(value)}
+                placement="bottom-end"
+                itemComponent={(selectProps) => (
+                  <SelectItem item={selectProps.item}>{chatWidthLabel(selectProps.item.rawValue)}</SelectItem>
+                )}
+              >
+                <SelectTrigger size="sm" aria-label={i18n.t("settings.chatWidth.title")}>
+                  <SelectValue<ChatWidth>>{(state) => chatWidthLabel(state.selectedOption())}</SelectValue>
+                </SelectTrigger>
+                <SelectContent mount={props.selectMount} />
+              </Select>
+            </ItemActions>
+          </Item>
           <Item data-settings-row="settings.sendShortcut.title" class="settings-modal-row">
             <ItemContent>
               <ItemTitle>{i18n.t("settings.sendShortcut.title")}</ItemTitle>

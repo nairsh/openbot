@@ -51,6 +51,10 @@ export const messages = defineMessages("settings", {
   "settings.externalLinks.defaultBrowser": "Default browser",
   "settings.externalLinks.openbot": "OpenBot",
   // The message send shortcut. The saved mode stays in English; only the labels are translated.
+  "settings.chatWidth.title": "Chat width",
+  "settings.chatWidth.description": "How wide messages and the message box are.",
+  "settings.chatWidth.full": "Full",
+  "settings.chatWidth.medium": "Medium",
   "settings.sendShortcut.title": "Send shortcut",
   "settings.sendShortcut.description": "Choose the keys that send a message on this device and browser.",
   "settings.sendShortcut.enter": "Enter to send",

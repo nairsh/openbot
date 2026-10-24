@@ -1,6 +1,7 @@
 import type { AgentModelId, AgentReasoningEffort } from "@openbot/contracts/ipc";
 import type { AgentProfile } from "@openbot/ui/data";
 import { type AgentActivityLabel, nextAgentActivityLabel } from "@openbot/ui/features/conversation/AgentActivity";
+import { reasoningHeadline } from "@openbot/ui/features/conversation/AgentSteps";
 import {
   agentActivityExitDelay,
   agentActivityExitDuration,
@@ -87,7 +88,7 @@ export function createActivityStore(deps: ActivityStoreDeps) {
       if (message?.turnId !== activeTurnId || message.itemType !== "commentary") continue;
       const items = message.items ?? [message.body];
       for (let itemIndex = items.length - 1; itemIndex >= 0; itemIndex -= 1) {
-        const detail = items[itemIndex]?.trim();
+        const detail = reasoningHeadline(items[itemIndex] ?? "");
         if (detail) return detail;
       }
     }

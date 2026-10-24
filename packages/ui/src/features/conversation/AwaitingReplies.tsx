@@ -1,11 +1,11 @@
 import { Button, IconButton, X } from "@openbot/ui";
-import { createSignal, createUniqueId, For, Show, untrack } from "solid-js";
+import { createUniqueId, For, Show } from "solid-js";
 import type { AgentProfile } from "../../data";
 import { useText } from "../../text";
 import { AgentAvatar } from "../agents/AgentAvatar";
 import type { SidebarAgentWait } from "../sidebar/sidebar-agent-states";
 import { SIDEBAR_WAIT_ACTION, SIDEBAR_WAIT_TITLE, sidebarUsageResetTime } from "../sidebar/sidebar-filtering";
-import { createTaskListPlayState, TaskListHeader, TaskMark, type TaskMarkState } from "./TaskList";
+import { createTaskListPlayState, TaskMark, type TaskMarkState } from "./TaskList";
 
 export type AwaitingReplyState = "asked" | "working" | "replied" | "failed";
 
@@ -28,10 +28,8 @@ export interface AwaitingReplyItem {
 
 export interface AwaitingReplyListProps {
   items: readonly AwaitingReplyItem[];
-  /** The header text. The default is "Waiting for replies". */
+  /** The name of the block for assistive technology. The default is "Waiting for replies". */
   title?: string | undefined;
-  /** The list starts collapsed when this is false. */
-  defaultOpen?: boolean;
   /** Hides the block. It has a close button only when this is set and no agent still works. */
   onDismiss?: () => void;
   /** Opens the chat of an agent that waits for the user, where the user can answer it. */
@@ -55,7 +53,7 @@ const STATE_LABEL = {
 
 /**
  * The block above the composer while an agent waits for other agents: one row for each agent it
- * asked, with the state of the answer. It has the same card and motion as the task list, and it
+ * asked, with the state of the answer. It has no header: the rows name the agents that work. It
  * renders nothing when nothing waits.
  */
 export function AwaitingReplies(props: AwaitingReplyListProps) {
@@ -68,21 +66,7 @@ export function AwaitingReplies(props: AwaitingReplyListProps) {
 
 function AwaitingReplyList(props: AwaitingReplyListProps) {
   const { t, format } = useText();
-  const panelId = createUniqueId();
   const playState = createTaskListPlayState();
-  const [open, setOpen] = createSignal(untrack(() => props.defaultOpen ?? true));
-  const total = () => props.items.length;
-  const done = () => props.items.filter((item) => item.state === "replied").length;
-  // A wait comes before work, because the work cannot go on until the wait ends.
-  const active = () => {
-    const waiting = props.items.find((entry) => entry.wait);
-    if (waiting?.wait) {
-      const key = waiting.wait.kind === "waiting" ? "chat.awaiting.needsYou" : "chat.awaiting.limited";
-      return { id: waiting.id, label: t(key, { name: waiting.name }) };
-    }
-    const item = props.items.find((entry) => entry.state === "working");
-    return item && { id: item.id, label: t("chat.awaiting.working", { name: item.name }) };
-  };
   const markState = (item: AwaitingReplyItem): TaskMarkState => (item.wait ? "pending" : MARK_STATE[item.state]);
   const stateLabel = (item: AwaitingReplyItem): string => {
     const wait = item.wait;
@@ -109,36 +93,24 @@ function AwaitingReplyList(props: AwaitingReplyListProps) {
     <section
       style={{ "--task-list-play-state": playState() }}
       class={["task-list", "awaiting-replies", props.class]}
-      data-open={open() ? "" : undefined}
+      aria-label={props.title ?? t("chat.awaiting.title")}
+      data-open=""
     >
-      <div class="awaiting-replies-bar">
-        <TaskListHeader
-          open={open()}
-          onToggle={() => setOpen((value) => !value)}
-          panelId={panelId}
-          done={done()}
-          total={total()}
-          title={props.title ?? t("chat.awaiting.title")}
-          active={active()}
-          summary={t("chat.awaiting.summary", { done: done(), total: total() })}
-          count={t("chat.awaiting.count", { done: done(), total: total() })}
-        />
-        <Show when={settled() && props.onDismiss}>
-          {(dismiss) => (
-            <IconButton
-              class="awaiting-replies-dismiss"
-              label={t("chat.awaiting.dismiss")}
-              variant="ghost"
-              size="icon-xs"
-              data-cuelume-tap="close"
-              onClick={() => dismiss()()}
-            >
-              <X aria-hidden="true" />
-            </IconButton>
-          )}
-        </Show>
-      </div>
-      <div id={panelId} class="task-list-panel" inert={open() ? undefined : true}>
+      <Show when={settled() && props.onDismiss}>
+        {(dismiss) => (
+          <IconButton
+            class="awaiting-replies-dismiss"
+            label={t("chat.awaiting.dismiss")}
+            variant="ghost"
+            size="icon-xs"
+            data-cuelume-tap="close"
+            onClick={() => dismiss()()}
+          >
+            <X aria-hidden="true" />
+          </IconButton>
+        )}
+      </Show>
+      <div class="task-list-panel">
         <ol class="task-list-items">
           <For each={props.items} keyed={(item) => item.id}>
             {(item, index) => {

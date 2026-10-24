@@ -1,6 +1,7 @@
 import { MessageSelectionActions } from "@openbot/ui/features/conversation/SelectionActions";
 import { useText } from "@openbot/ui/text";
 import { createEffect, Show } from "solid-js";
+import { useChatWidth } from "../../chat-width-preference";
 import { currentDevicePlatform } from "../../send-shortcut-preference";
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
@@ -38,6 +39,7 @@ export function ConversationView(props: ConversationProps) {
     submitting,
   } = scope;
   const { t } = useText();
+  const chatWidth = useChatWidth();
   createEffect(
     () => props.globalOverlayOpen,
     (open) => {
@@ -49,6 +51,7 @@ export function ConversationView(props: ConversationProps) {
       <main
         ref={setConversationPanelElement}
         aria-label={t("conversation.view.label")}
+        data-chat-width={chatWidth()}
         onKeyDown={handleChatSearchShortcut}
         class={[
           "conversation-panel",

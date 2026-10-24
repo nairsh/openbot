@@ -465,6 +465,13 @@ export function createConversationViewScope(props: ConversationProps) {
       .filter((send) => !(send.messageId && drawnHostIds().has(send.messageId)))
       .map(pendingSendMessage),
   );
+  // The pending row already slid in, so the host's copy of the message takes its place with no second entrance.
+  createEffect(
+    () => currentPendingSends().flatMap((send) => (send.messageId ? [send.messageId] : [])),
+    (ids) => {
+      for (const id of ids) markMessageSeen(id);
+    },
+  );
   /** The pending send a timeline row draws, by the row's message id. */
   const pendingSendFor = (messageId: string | undefined) =>
     messageId?.startsWith(PENDING_SEND_ID_PREFIX)

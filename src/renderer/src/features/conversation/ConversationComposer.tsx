@@ -29,7 +29,8 @@ import {
 } from "@openbot/ui";
 import { fileBadge } from "@openbot/ui/features/conversation/AttachmentCards";
 import { attachmentReferenceTone } from "@openbot/ui/features/conversation/AttachmentReference";
-import { AwaitingReplies } from "@openbot/ui/features/conversation/AwaitingReplies";
+import { AwaitingReplies, type AwaitingReplyItem } from "@openbot/ui/features/conversation/AwaitingReplies";
+import { agentActivityExitDuration } from "@openbot/ui/features/conversation/activity-timing";
 import { ComposerEditor } from "@openbot/ui/features/conversation/ComposerEditor";
 import { ComposerErrorBanner } from "@openbot/ui/features/conversation/ComposerErrorBanner";
 import {
@@ -45,7 +46,7 @@ import { ReplyQuote } from "@openbot/ui/features/conversation/ReplyQuote";
 import { SpeakingBar } from "@openbot/ui/features/conversation/SpeakingBar";
 import { VoiceRecordingMorph, voiceButtonLabel } from "@openbot/ui/features/conversation/VoiceRecordingMorph";
 import { useText } from "@openbot/ui/text";
-import { createEffect, createMemo, createSignal, createStore, For, Loading, lazy, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, createStore, For, Loading, lazy, onCleanup, Show } from "solid-js";
 import { reportErrorBanner, reportNotification } from "../../error-reports";
 import { deviceSendShortcut, sendShortcutAriaKey, sendShortcutHintKey } from "../../send-shortcut-preference";
 import { speechReading } from "../speech/speech-playback";
@@ -140,6 +141,21 @@ export function ConversationComposer() {
   // The mention picker grows out of the same edge as the queue, so only one of them holds it.
   const queueVisible = () => queuePanelVisible() && !pickerOpen();
   const awaitingVisible = () => awaitingReplies().length > 0 && !pickerOpen();
+  // The rows stay while the slot closes, so the block slides away with it instead of vanishing.
+  const [shownAwaiting, setShownAwaiting] = createSignal<readonly AwaitingReplyItem[]>([]);
+  let awaitingExitTimer: number | undefined;
+  createEffect(
+    () => (awaitingVisible() ? awaitingReplies() : []),
+    (rows) => {
+      window.clearTimeout(awaitingExitTimer);
+      if (rows.length > 0) {
+        setShownAwaiting(rows);
+        return;
+      }
+      awaitingExitTimer = window.setTimeout(() => setShownAwaiting([]), agentActivityExitDuration());
+    },
+  );
+  onCleanup(() => window.clearTimeout(awaitingExitTimer));
   const waitItems = createMemo(() => openWaitItems(props.waits ?? [], props.queue));
   const waitsVisible = () => waitItems().length > 0 && Boolean(props.onCancelWait) && !pickerOpen();
   const slotOpen = () => queueVisible() || awaitingVisible() || waitsVisible();
@@ -369,9 +385,9 @@ export function ConversationComposer() {
           inert={slotOpen() ? undefined : true}
         >
           <div class="agent-queue-slot-inner">
-            <Show when={awaitingVisible()}>
+            <Show when={shownAwaiting().length > 0}>
               <AwaitingReplies
-                items={awaitingReplies()}
+                items={shownAwaiting()}
                 title={channel ? t("chat.awaiting.subtasks") : undefined}
                 onDismiss={dismissAwaitingReplies}
                 onOpenAgent={props.onSelectAgent}
@@ -574,286 +590,295 @@ export function ConversationComposer() {
             />
           )}
         </Show>
-        <div
-          class="composer"
-          data-compact={
-            currentDraft().text.includes("\n") || unreferencedDraftAttachments().length > 0 ? undefined : ""
-          }
-          data-has-attachments={unreferencedDraftAttachments().length > 0 ? "" : undefined}
-          onPointerDown={(event) => {
-            if (!(event.target instanceof Element)) return;
-            // The "+" menu is in a portal, but its events come here too. Focus taken from it closes the menu
-            // before the item gets the pointerup.
-            if (event.target.closest("button, .composer-editor-surface, .ui-action-menu")) return;
-            event.preventDefault();
-            setComposerFocusRequest((current) => current + 1);
-          }}
-        >
-          <Show when={unreferencedDraftAttachments().length > 0}>
-            <div class="composer-attachments">
-              <For each={unreferencedDraftAttachments()}>
-                {(attachment) => {
-                  // An image with no preview (the web client) shows as a file, with its name.
-                  const chip = () => (attachment.kind === "image" && attachment.previewUrl ? "image" : "file");
-                  return (
-                    <div class="composer-attachment ui-removable-image" data-kind={chip()}>
-                      <span
-                        class="composer-attachment-preview"
-                        data-file-tone={chip() === "file" ? attachmentReferenceTone(attachment.name) : undefined}
-                      >
-                        <Show when={chip() === "image"} fallback={fileBadge(attachment)}>
-                          <img src={attachment.previewUrl ?? ""} alt="" />
-                        </Show>
-                      </span>
-                      <Show when={chip() === "file"}>
-                        <span class="composer-attachment-copy">
-                          <strong title={attachment.name}>{attachment.name}</strong>
-                          <small>{format.fileSize(attachment.size)}</small>
+        <div class="composer-row">
+          {/* The context meter stands outside the box, so the text has the whole width. */}
+          <Show when={context()?.usage}>
+            {(usage) => (
+              <ContextUsageMeter
+                newChat={
+                  props.agent && props.onClearAgentContext
+                    ? { agent: props.agent, start: props.onClearAgentContext }
+                    : undefined
+                }
+                compact={props.onCompactAgentContext}
+                usage={{
+                  ...usage(),
+                  compacting: context()?.compaction?.status === "running",
+                  ...(context()?.compaction?.status === "completed" &&
+                  context()?.compaction?.beforeTokens !== undefined &&
+                  context()?.compaction?.afterTokens !== undefined
+                    ? {
+                        lastCompaction: {
+                          beforeTokens: context()?.compaction?.beforeTokens ?? 0,
+                          afterTokens: context()?.compaction?.afterTokens ?? 0,
+                        },
+                      }
+                    : {}),
+                }}
+              />
+            )}
+          </Show>
+          <div
+            class="composer"
+            data-compact={
+              currentDraft().text.includes("\n") || unreferencedDraftAttachments().length > 0 ? undefined : ""
+            }
+            data-has-attachments={unreferencedDraftAttachments().length > 0 ? "" : undefined}
+            onPointerDown={(event) => {
+              if (!(event.target instanceof Element)) return;
+              // The "+" menu is in a portal, but its events come here too. Focus taken from it closes the menu
+              // before the item gets the pointerup.
+              if (event.target.closest("button, .composer-editor-surface, .ui-action-menu")) return;
+              event.preventDefault();
+              setComposerFocusRequest((current) => current + 1);
+            }}
+          >
+            <Show when={unreferencedDraftAttachments().length > 0}>
+              <div class="composer-attachments">
+                <For each={unreferencedDraftAttachments()}>
+                  {(attachment) => {
+                    // An image with no preview (the web client) shows as a file, with its name.
+                    const chip = () => (attachment.kind === "image" && attachment.previewUrl ? "image" : "file");
+                    return (
+                      <div class="composer-attachment ui-removable-image" data-kind={chip()}>
+                        <span
+                          class="composer-attachment-preview"
+                          data-file-tone={chip() === "file" ? attachmentReferenceTone(attachment.name) : undefined}
+                        >
+                          <Show when={chip() === "image"} fallback={fileBadge(attachment)}>
+                            <img src={attachment.previewUrl ?? ""} alt="" />
+                          </Show>
                         </span>
-                      </Show>
-                      <ImageRemoveButton
-                        label={t("composer.attachment.remove", { name: attachment.name })}
-                        disabled={voicePhase() === "transcribing" || savePending()}
-                        onClick={() => removeAttachment(attachment.id)}
-                      />
-                    </div>
+                        <Show when={chip() === "file"}>
+                          <span class="composer-attachment-copy">
+                            <strong title={attachment.name}>{attachment.name}</strong>
+                            <small>{format.fileSize(attachment.size)}</small>
+                          </span>
+                        </Show>
+                        <ImageRemoveButton
+                          label={t("composer.attachment.remove", { name: attachment.name })}
+                          disabled={voicePhase() === "transcribing" || savePending()}
+                          onClick={() => removeAttachment(attachment.id)}
+                        />
+                      </div>
+                    );
+                  }}
+                </For>
+              </div>
+            </Show>
+            <div class="composer-input-label">
+              <ComposerEditor
+                agentId={props.agent?.id}
+                agents={props.mentionAgents ?? props.agents}
+                skills={installedSkills()}
+                skillsLoadFailed={installedSkillsLoadFailed()}
+                mcpServers={mcpServers()}
+                attachments={currentDraft().attachments}
+                value={currentDraft().text}
+                disabled={submitting() || voicePhase() === "transcribing" || editorLocked() || savePending()}
+                placeholder={
+                  !agentReady()
+                    ? props.agentsConnecting
+                      ? t("common.connecting")
+                      : props.runtime
+                        ? props.server?.state === "online"
+                          ? t("composer.placeholder.hostSetup")
+                          : props.server?.hostedSleep === "sleeping"
+                            ? t("composer.placeholder.hostSleeping")
+                            : props.server?.hostedSleep === "waking"
+                              ? t("composer.placeholder.hostWaking")
+                              : t("composer.placeholder.connectHost")
+                        : t("composer.placeholder.cliSetup")
+                    : replyTarget()
+                      ? t("composer.placeholder.reply")
+                      : messageLabel()
+                }
+                ariaLabel={channel ? t("channel.composer.label") : messageLabel()}
+                focusRequest={composerFocusRequest()}
+                skillPickerRequest={skillPickerRequest()}
+                quoteRequest={quoteRequest()}
+                onOpenQuote={openQuote}
+                onValueChange={(text) => {
+                  updateCurrentDraft({ text });
+                  updateTeamTyping(text);
+                }}
+                onSubmit={submitComposer}
+                sendShortcut={deviceSendShortcut(props.platform)}
+                onPickerOpenChange={setPickerOpen}
+                dictation={{ text: voiceLiveText(), final: voicePhase() === "transcribing" }}
+                onPasteFiles={(files) => {
+                  if (props.runtime?.importFiles) void props.runtime.importFiles(files);
+                }}
+                onOpenAttachment={(attachment) =>
+                  canPreviewAttachment(attachment)
+                    ? void previewAttachment(attachment)
+                    : attachmentAction(attachment, "open")
+                }
+              />
+            </div>
+            <div class="composer-toolbar">
+              <Input
+                ref={setAttachmentPickerElement}
+                type="file"
+                accept={attachmentAccept()}
+                multiple
+                hidden
+                tabindex={-1}
+                data-openbot-attachment-picker={props.runtime ? undefined : "true"}
+                onChange={(event) => {
+                  if (props.runtime?.importFiles)
+                    void props.runtime.importFiles(Array.from(event.currentTarget.files ?? []));
+                }}
+              />
+              <DropdownMenu.Root
+                open={showComposerActions()}
+                onOpenChange={(open) => {
+                  setShowComposerActions(open);
+                  const chosen = skillPickerChosen;
+                  skillPickerChosen = false;
+                  if (open || !chosen) return;
+                  // The menu gives the focus back to its trigger two frames after it closes; open the picker after that.
+                  requestAnimationFrame(() =>
+                    requestAnimationFrame(() =>
+                      requestAnimationFrame(() => setSkillPickerRequest((current) => current + 1)),
+                    ),
                   );
                 }}
-              </For>
-            </div>
-          </Show>
-          <div class="composer-input-label">
-            <ComposerEditor
-              agentId={props.agent?.id}
-              agents={props.mentionAgents ?? props.agents}
-              skills={installedSkills()}
-              skillsLoadFailed={installedSkillsLoadFailed()}
-              mcpServers={mcpServers()}
-              attachments={currentDraft().attachments}
-              value={currentDraft().text}
-              disabled={submitting() || voicePhase() === "transcribing" || editorLocked() || savePending()}
-              placeholder={
-                !agentReady()
-                  ? props.agentsConnecting
-                    ? t("common.connecting")
-                    : props.runtime
-                      ? props.server?.state === "online"
-                        ? t("composer.placeholder.hostSetup")
-                        : props.server?.hostedSleep === "sleeping"
-                          ? t("composer.placeholder.hostSleeping")
-                          : props.server?.hostedSleep === "waking"
-                            ? t("composer.placeholder.hostWaking")
-                            : t("composer.placeholder.connectHost")
-                      : t("composer.placeholder.cliSetup")
-                  : replyTarget()
-                    ? t("composer.placeholder.reply")
-                    : messageLabel()
-              }
-              ariaLabel={channel ? t("channel.composer.label") : messageLabel()}
-              focusRequest={composerFocusRequest()}
-              skillPickerRequest={skillPickerRequest()}
-              quoteRequest={quoteRequest()}
-              onOpenQuote={openQuote}
-              onValueChange={(text) => {
-                updateCurrentDraft({ text });
-                updateTeamTyping(text);
-              }}
-              onSubmit={submitComposer}
-              sendShortcut={deviceSendShortcut(props.platform)}
-              onPickerOpenChange={setPickerOpen}
-              dictation={{ text: voiceLiveText(), final: voicePhase() === "transcribing" }}
-              onPasteFiles={(files) => {
-                if (props.runtime?.importFiles) void props.runtime.importFiles(files);
-              }}
-              onOpenAttachment={(attachment) =>
-                canPreviewAttachment(attachment)
-                  ? void previewAttachment(attachment)
-                  : attachmentAction(attachment, "open")
-              }
-            />
-          </div>
-          <div class="composer-toolbar">
-            <Input
-              ref={setAttachmentPickerElement}
-              type="file"
-              accept={attachmentAccept()}
-              multiple
-              hidden
-              tabindex={-1}
-              data-openbot-attachment-picker={props.runtime ? undefined : "true"}
-              onChange={(event) => {
-                if (props.runtime?.importFiles)
-                  void props.runtime.importFiles(Array.from(event.currentTarget.files ?? []));
-              }}
-            />
-            <DropdownMenu.Root
-              open={showComposerActions()}
-              onOpenChange={(open) => {
-                setShowComposerActions(open);
-                const chosen = skillPickerChosen;
-                skillPickerChosen = false;
-                if (open || !chosen) return;
-                // The menu gives the focus back to its trigger two frames after it closes; open the picker after that.
-                requestAnimationFrame(() =>
-                  requestAnimationFrame(() =>
-                    requestAnimationFrame(() => setSkillPickerRequest((current) => current + 1)),
-                  ),
-                );
-              }}
-              placement="top-start"
-              gutter={8}
-              modal={false}
-            >
-              <DropdownMenu.Trigger
-                class="composer-button"
-                aria-label={t("composer.add.label")}
-                disabled={
-                  attachmentBusy() || submitting() || voicePhase() === "transcribing" || !agentReady() || savePending()
-                }
+                placement="top-start"
+                gutter={8}
+                modal={false}
               >
-                <Plus aria-hidden="true" />
-              </DropdownMenu.Trigger>
-              <DropdownMenu.Portal>
-                <DropdownMenu.Content aria-label={t("composer.add.label")}>
-                  <DropdownMenu.Item
-                    disabled={attachmentBusy()}
-                    onPointerDown={(event) => {
-                      if (event.button === 0) openAttachmentPicker();
-                    }}
-                    onKeyDown={(event) => openAttachmentPickerFromKey(event)}
-                  >
-                    <Image aria-hidden="true" />
-                    <span>{t("composer.add.image")}</span>
-                  </DropdownMenu.Item>
-                  {/* A skill belongs to one agent, and a channel message goes to the agents it routes to. */}
-                  <Show when={!channel}>
-                    <DropdownMenu.Item
-                      onPointerDown={(event) => {
-                        if (event.button === 0) skillPickerChosen = true;
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") skillPickerChosen = true;
-                      }}
-                    >
-                      <Puzzle aria-hidden="true" />
-                      <span>{t("composer.add.skill")}</span>
-                    </DropdownMenu.Item>
-                  </Show>
-                  <DropdownMenu.Item
-                    disabled={attachmentBusy()}
-                    onPointerDown={(event) => {
-                      if (event.button === 0) openAttachmentPicker();
-                    }}
-                    onKeyDown={(event) => openAttachmentPickerFromKey(event)}
-                  >
-                    <File aria-hidden="true" />
-                    <span>{t("composer.add.context")}</span>
-                  </DropdownMenu.Item>
-                  <Show when={!channel && sideQuestionAvailable()}>
-                    <DropdownMenu.Separator />
-                    <DropdownMenu.Item
-                      onSelectAfterClose={() => {
-                        // The draft goes to the side question, so that the chat gets nothing of it. A draft
-                        // with attachments stays: the side question cannot send files.
-                        const draft = currentDraft();
-                        const text = draft.attachments.length === 0 ? draft.text : "";
-                        if (text) updateCurrentDraft({ text: "" });
-                        // The menu gives the focus back first. A side panel tab that gets it selects its
-                        // pane, so open the side question after that.
-                        requestAnimationFrame(() => openSideQuestion(text));
-                      }}
-                    >
-                      <MessageCircleQuestionMark aria-hidden="true" />
-                      <span>{t("conversation.sidePanel.pane.question")}</span>
-                    </DropdownMenu.Item>
-                  </Show>
-                  {/* Only where a side question is: after its separator. */}
-                  <Show when={voiceConversationAvailable()}>
-                    <DropdownMenu.Item
-                      onSelectAfterClose={() => {
-                        // As for the side question: open the pane after the menu gives the focus back.
-                        requestAnimationFrame(() => openSidePanelPane("voice"));
-                      }}
-                    >
-                      <AudioLines aria-hidden="true" />
-                      <span>{t("conversation.sidePanel.pane.voice")}</span>
-                    </DropdownMenu.Item>
-                  </Show>
-                </DropdownMenu.Content>
-              </DropdownMenu.Portal>
-            </DropdownMenu.Root>
-            <div class="composer-primary-actions">
-              <Show when={context()?.usage}>
-                {(usage) => (
-                  <ContextUsageMeter
-                    newChat={
-                      props.agent && props.onClearAgentContext
-                        ? { agent: props.agent, start: props.onClearAgentContext }
-                        : undefined
-                    }
-                    compact={props.onCompactAgentContext}
-                    usage={{
-                      ...usage(),
-                      compacting: context()?.compaction?.status === "running",
-                      ...(context()?.compaction?.status === "completed" &&
-                      context()?.compaction?.beforeTokens !== undefined &&
-                      context()?.compaction?.afterTokens !== undefined
-                        ? {
-                            lastCompaction: {
-                              beforeTokens: context()?.compaction?.beforeTokens ?? 0,
-                              afterTokens: context()?.compaction?.afterTokens ?? 0,
-                            },
-                          }
-                        : {}),
-                    }}
-                  />
-                )}
-              </Show>
-              <Show when={attachmentBusy() && props.runtime?.cancelImportFiles} keyed>
-                {(cancelImportFiles) => (
-                  <Button variant="ghost" type="button" onClick={() => void cancelImportFiles()}>
-                    {t("composer.upload.cancel")}
-                  </Button>
-                )}
-              </Show>
-              <Show when={voiceAvailable() && voicePhase() === "preparing"}>
-                <span class="voice-model-progress" role="status">
-                  {t("composer.voice.progress", { progress: voiceModelProgress() ?? 0 })}
-                </span>
-              </Show>
-              <Show when={voiceAvailable()} fallback={<SendControl />}>
-                <VoiceRecordingMorph
-                  recording={voicePhase() === "recording"}
-                  levels={voiceLevels()}
-                  elapsedSeconds={voiceElapsedSeconds()}
-                  onCancel={cancelVoiceRecording}
-                  onFinish={stopVoiceRecording}
-                  send={<SendControl />}
+                <DropdownMenu.Trigger
+                  class="composer-button"
+                  aria-label={t("composer.add.label")}
+                  disabled={
+                    attachmentBusy() ||
+                    submitting() ||
+                    voicePhase() === "transcribing" ||
+                    !agentReady() ||
+                    savePending()
+                  }
                 >
-                  <Button
-                    variant="ghost"
-                    type="button"
-                    class="dictation-button"
-                    aria-label={t(voiceButtonLabel(voicePhase()))}
-                    disabled={
-                      voicePhase() === "requesting" ||
-                      voicePhase() === "preparing" ||
-                      voicePhase() === "transcribing" ||
-                      (voicePhase() === "idle" && (!props.agent || !agentReady()))
-                    }
-                    onClick={() => void startVoiceRecording()}
-                  >
-                    <Show
-                      when={
-                        voicePhase() === "preparing" || voicePhase() === "requesting" || voicePhase() === "transcribing"
-                      }
-                      fallback={<Mic aria-hidden="true" />}
+                  <Plus aria-hidden="true" />
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content aria-label={t("composer.add.label")}>
+                    <DropdownMenu.Item
+                      disabled={attachmentBusy()}
+                      onPointerDown={(event) => {
+                        if (event.button === 0) openAttachmentPicker();
+                      }}
+                      onKeyDown={(event) => openAttachmentPickerFromKey(event)}
                     >
-                      <LoaderCircle class="composer-spinner" aria-hidden="true" />
+                      <Image aria-hidden="true" />
+                      <span>{t("composer.add.image")}</span>
+                    </DropdownMenu.Item>
+                    {/* A skill belongs to one agent, and a channel message goes to the agents it routes to. */}
+                    <Show when={!channel}>
+                      <DropdownMenu.Item
+                        onPointerDown={(event) => {
+                          if (event.button === 0) skillPickerChosen = true;
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") skillPickerChosen = true;
+                        }}
+                      >
+                        <Puzzle aria-hidden="true" />
+                        <span>{t("composer.add.skill")}</span>
+                      </DropdownMenu.Item>
                     </Show>
-                  </Button>
-                </VoiceRecordingMorph>
-              </Show>
+                    <DropdownMenu.Item
+                      disabled={attachmentBusy()}
+                      onPointerDown={(event) => {
+                        if (event.button === 0) openAttachmentPicker();
+                      }}
+                      onKeyDown={(event) => openAttachmentPickerFromKey(event)}
+                    >
+                      <File aria-hidden="true" />
+                      <span>{t("composer.add.context")}</span>
+                    </DropdownMenu.Item>
+                    <Show when={!channel && sideQuestionAvailable()}>
+                      <DropdownMenu.Separator />
+                      <DropdownMenu.Item
+                        onSelectAfterClose={() => {
+                          // The draft goes to the side question, so that the chat gets nothing of it. A draft
+                          // with attachments stays: the side question cannot send files.
+                          const draft = currentDraft();
+                          const text = draft.attachments.length === 0 ? draft.text : "";
+                          if (text) updateCurrentDraft({ text: "" });
+                          // The menu gives the focus back first. A side panel tab that gets it selects its
+                          // pane, so open the side question after that.
+                          requestAnimationFrame(() => openSideQuestion(text));
+                        }}
+                      >
+                        <MessageCircleQuestionMark aria-hidden="true" />
+                        <span>{t("conversation.sidePanel.pane.question")}</span>
+                      </DropdownMenu.Item>
+                    </Show>
+                    {/* Only where a side question is: after its separator. */}
+                    <Show when={voiceConversationAvailable()}>
+                      <DropdownMenu.Item
+                        onSelectAfterClose={() => {
+                          // As for the side question: open the pane after the menu gives the focus back.
+                          requestAnimationFrame(() => openSidePanelPane("voice"));
+                        }}
+                      >
+                        <AudioLines aria-hidden="true" />
+                        <span>{t("conversation.sidePanel.pane.voice")}</span>
+                      </DropdownMenu.Item>
+                    </Show>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+              <div class="composer-primary-actions">
+                <Show when={attachmentBusy() && props.runtime?.cancelImportFiles} keyed>
+                  {(cancelImportFiles) => (
+                    <Button variant="ghost" type="button" onClick={() => void cancelImportFiles()}>
+                      {t("composer.upload.cancel")}
+                    </Button>
+                  )}
+                </Show>
+                <Show when={voiceAvailable() && voicePhase() === "preparing"}>
+                  <span class="voice-model-progress" role="status">
+                    {t("composer.voice.progress", { progress: voiceModelProgress() ?? 0 })}
+                  </span>
+                </Show>
+                <Show when={voiceAvailable()} fallback={<SendControl />}>
+                  <VoiceRecordingMorph
+                    recording={voicePhase() === "recording"}
+                    levels={voiceLevels()}
+                    elapsedSeconds={voiceElapsedSeconds()}
+                    onCancel={cancelVoiceRecording}
+                    onFinish={stopVoiceRecording}
+                    send={<SendControl />}
+                  >
+                    <Button
+                      variant="ghost"
+                      type="button"
+                      class="dictation-button"
+                      aria-label={t(voiceButtonLabel(voicePhase()))}
+                      disabled={
+                        voicePhase() === "requesting" ||
+                        voicePhase() === "preparing" ||
+                        voicePhase() === "transcribing" ||
+                        (voicePhase() === "idle" && (!props.agent || !agentReady()))
+                      }
+                      onClick={() => void startVoiceRecording()}
+                    >
+                      <Show
+                        when={
+                          voicePhase() === "preparing" ||
+                          voicePhase() === "requesting" ||
+                          voicePhase() === "transcribing"
+                        }
+                        fallback={<Mic aria-hidden="true" />}
+                      >
+                        <LoaderCircle class="composer-spinner" aria-hidden="true" />
+                      </Show>
+                    </Button>
+                  </VoiceRecordingMorph>
+                </Show>
+              </div>
             </div>
           </div>
         </div>

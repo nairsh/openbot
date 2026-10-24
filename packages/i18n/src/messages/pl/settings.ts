@@ -46,6 +46,10 @@ export const messages = {
   "settings.externalLinks.description": "Wybierz, gdzie otwierają się linki z rozmów.",
   "settings.externalLinks.defaultBrowser": "Przeglądarka",
   "settings.externalLinks.openbot": "OpenBot",
+  "settings.chatWidth.title": "Szerokość czatu",
+  "settings.chatWidth.description": "Szerokość wiadomości i pola wiadomości.",
+  "settings.chatWidth.full": "Pełna",
+  "settings.chatWidth.medium": "Średnia",
   "settings.sendShortcut.title": "Skrót wysyłania",
   "settings.sendShortcut.description":
     "Wybierz klawisze, które wysyłają wiadomość na tym urządzeniu i w tej przeglądarce.",

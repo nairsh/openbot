@@ -1,7 +1,7 @@
 /*
- * Waiting for replies: the task list rows, in the queue panel's surface. It hangs off the top of the
- * next panel like the queue: its bottom goes under the composer, or under the queue when the queue
- * shows, and that panel paints over the overlap.
+ * Waiting for replies: one row for each agent that works on a request, in the queue panel's
+ * surface. It hangs off the top of the next panel like the queue: its bottom goes under the
+ * composer, or under the queue when the queue shows, and that panel paints over the overlap.
  */
 
 .awaiting-replies {
@@ -18,21 +18,22 @@
   animation: queue-panel-in var(--openbot-duration-normal) cubic-bezier(0.23, 1, 0.32, 1) both;
 }
 
-.awaiting-replies.task-list .task-list-header {
-  min-width: 0;
-  flex: 1;
-  border-radius: var(--openbot-radius-lg);
+/* No header: the rows are the block, so they take its top padding too. */
+.awaiting-replies.task-list .task-list-items {
+  padding-top: var(--openbot-space-3);
 }
 
-/* The close button sits next to the header button, because a button cannot hold another. */
-.awaiting-replies-bar {
-  display: flex;
-  align-items: center;
-}
-
+/* The close button sits in the top corner, next to the first row. */
 .awaiting-replies-dismiss {
-  margin-right: var(--openbot-space-2);
+  position: absolute;
+  top: var(--openbot-space-2);
+  right: var(--openbot-space-2);
+  z-index: 1;
   color: var(--openbot-text-muted);
+}
+
+.awaiting-replies:has(.awaiting-replies-dismiss) .awaiting-replies-item:first-child {
+  padding-right: var(--openbot-space-6);
 }
 
 .composer-wrap:has(.composer-attachment) .awaiting-replies:last-child {

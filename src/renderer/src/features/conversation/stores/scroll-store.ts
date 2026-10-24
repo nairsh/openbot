@@ -80,6 +80,8 @@ export function createScrollStore(deps: ScrollStoreDeps) {
     deps.props.messages.filter(
       (message) =>
         message.kind !== "thinking" &&
+        // An answer shows once it is complete, not word by word; the activity line shows the work.
+        !(message.author === "agent" && message.streaming === true && message.kind === "text") &&
         !(message.kind === "memory-changes" && answeredTurns().has(message.turnId)) &&
         !silentAgentAnswer(message),
     ),

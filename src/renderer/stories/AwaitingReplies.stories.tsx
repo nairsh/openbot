@@ -44,9 +44,6 @@ type Story = StoryObj<typeof meta>;
 
 export const Waiting: Story = {};
 
-/** The person closed the block. The header names the agent that works. */
-export const Collapsed: Story = { args: { defaultOpen: false } };
-
 export const OneFailed: Story = {
   args: {
     items: [

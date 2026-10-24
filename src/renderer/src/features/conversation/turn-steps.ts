@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@openbot/ui/data";
-import type { AgentStep } from "@openbot/ui/features/conversation/AgentSteps";
+import { type AgentStep, reasoningParts } from "@openbot/ui/features/conversation/AgentSteps";
 import { silentAgentAnswer } from "@openbot/ui/features/conversation/new-message-tally";
 import { createMemo } from "solid-js";
 import type { TurnStepLines } from "./turn-step-lines";
@@ -46,12 +46,27 @@ export function createTurnSteps(deps: {
     const thinking = new Map<string, AgentMessage>();
     const memory = new Map<string, AgentMessage>();
     const answers = new Map<string, string>();
+    // When each turn started and last wrote. A turn starts when the person's message before it was sent.
+    const spans = new Map<string, { start: number; end: number }>();
+    let lastSent: number | undefined;
     for (const message of deps.messages()) {
       const turnId = message.turnId;
+      const at = Date.parse(message.createdAt ?? "");
+      if (message.author === "you") {
+        if (Number.isFinite(at)) lastSent = at;
+        continue;
+      }
       if (!turnId) continue;
+      const written = [at, ...(message.itemCreatedAt ?? []).map((value) => Date.parse(value))].filter(Number.isFinite);
+      if (written.length > 0) {
+        const span = spans.get(turnId) ?? { start: lastSent ?? Math.min(...written), end: 0 };
+        span.end = Math.max(span.end, ...written);
+        spans.set(turnId, span);
+      }
       if (message.kind === "thinking") thinking.set(turnId, message);
       else if (message.kind === "memory-changes") memory.set(turnId, message);
-      else if (isTurnAnswer(message) && !answers.has(turnId)) answers.set(turnId, message.id);
+      // A streaming answer does not show yet, so the steps stay with the activity line until it is complete.
+      else if (isTurnAnswer(message) && !message.streaming && !answers.has(turnId)) answers.set(turnId, message.id);
     }
     // The caches keep only what the chat still holds, so another page or chat frees them.
     const thoughtIds = new Set([...thinking.values()].flatMap((message) => message.itemIds ?? []));
@@ -59,7 +74,7 @@ export function createTurnSteps(deps: {
     const lines = deps.lines() ?? {};
     for (const turnId of lists.keys())
       if (!thinking.has(turnId) && !memory.has(turnId) && !lines[turnId]) lists.delete(turnId);
-    return { thinking, memory, answers };
+    return { thinking, memory, answers, spans };
   });
 
   function stepsOf(turnId: string | null | undefined): AgentStep[] {
@@ -74,7 +89,8 @@ export function createTurnSteps(deps: {
       const written = Date.parse(thoughts?.itemCreatedAt?.[index] ?? "");
       const at = Number.isFinite(written) ? written : (seenAt.get(id) ?? now);
       seenAt.set(id, at);
-      timed.push({ step: { id, kind: "thinking", text }, at });
+      for (const [part, partText] of reasoningParts(text).entries())
+        timed.push({ step: { id: part === 0 ? id : `${id}:${part}`, kind: "thinking", text: partText }, at });
     }
     for (const line of deps.lines()?.[turnId] ?? []) {
       timed.push({ step: { id: line.id, kind: "progress", text: line.text }, at: line.at });
@@ -127,6 +143,12 @@ export function createTurnSteps(deps: {
       const turnId = messageId === undefined ? undefined : turnOfAnswer().get(messageId);
       const steps = stepsOf(turnId);
       return steps.length > 0 ? steps : undefined;
+    },
+    /** How long the turn of an answer worked, from the message that started it to its last write. */
+    durationAbove(messageId: string | undefined): number | undefined {
+      const turnId = messageId === undefined ? undefined : turnOfAnswer().get(messageId);
+      const span = turnId ? sources().spans.get(turnId) : undefined;
+      return span && span.end > span.start ? span.end - span.start : undefined;
     },
     /** The steps of the turn of a memory-changes message that has no answer to stand above. */
     stepsOfTurn(turnId: string | undefined): AgentStep[] {
