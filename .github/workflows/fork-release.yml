@@ -1,0 +1,122 @@
+name: Fork release (macOS)
+
+# Builds an unsigned macOS ARM64 release of this fork and publishes it as a GitHub release of this
+# repository, where the fork's updater (`publish` in electron-builder.yml) looks for new versions.
+#
+# - The fork has no Developer ID certificate, so the app is ad-hoc signed only. Open it the first
+#   time with right-click > Open. On macOS the updater finds a new release, but Squirrel.Mac does
+#   not install an update without a Developer ID signature: download the new DMG from the release.
+# - The tag is `fork-v<version>`, not `v<version>`, so the upstream `release.yml` does not start.
+# - The version is `<major>.<minor>.<patch * 1000 + run number>`. It always goes up, also when the
+#   upstream version changes, so the updater always sees the newest fork release as newer.
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: fork-release
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    name: Build and publish unsigned macOS ARM64 release
+    if: github.repository != 'nightly-labs/openbot'
+    runs-on: macos-14
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+        with:
+          install: none
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Set the fork version
+        id: version
+        shell: bash
+        run: |
+          base="$(bun -p 'require("./package.json").version')"
+          IFS=. read -r major minor patch <<< "${base%%-*}"
+          version="$major.$minor.$((patch * 1000 + GITHUB_RUN_NUMBER))"
+          bun -e '
+            const fs = require("node:fs");
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            pkg.version = process.argv[1];
+            fs.writeFileSync("package.json", `${JSON.stringify(pkg, null, 2)}\n`);
+          ' "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Fork version $version (upstream $base)."
+
+      - name: Install and verify native runtimes
+        run: |
+          bun run install:codex-runtime
+          bun run install:claude-runtime
+          bun run install:grok-runtime
+          bun run install:remote-desktop-runtime
+          bun run verify:remote-desktop-runtime
+          bun run prepare:cua-driver
+
+      # `hdiutil create` can fail on a hosted macOS runner with "Device not configured" or
+      # "Resource busy" when nothing is wrong with the app. Only that error gets another attempt.
+      - name: Build unsigned update artifacts
+        shell: bash
+        run: |
+          bun run voice:prepare-runtime
+          bun run build
+          log="$RUNNER_TEMP/electron-builder-mac.log"
+          for attempt in 1 2 3; do
+            if bun x electron-builder --mac --arm64 --publish never \
+              --config.mac.identity=null --config.mac.notarize=false 2>&1 | tee "$log"; then
+              exit 0
+            fi
+            if grep -Eq 'hdiutil: create failed - (Device not configured|Resource busy)' "$log"; then
+              echo "::warning::hdiutil could not create the DMG (attempt $attempt of 3)."
+            else
+              exit 1
+            fi
+          done
+          exit 1
+
+      - name: Verify updater metadata
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          shopt -s nullglob
+          dmgs=(dist/*.dmg)
+          zips=(dist/*.zip)
+          if (( ${#dmgs[@]} != 1 || ${#zips[@]} != 1 )) || [[ ! -f dist/latest-mac.yml ]]; then
+            echo "Expected one DMG, one ZIP, and latest-mac.yml." >&2
+            find dist -maxdepth 1 -type f -print
+            exit 1
+          fi
+          grep -F "version: $VERSION" dist/latest-mac.yml
+          grep -F '.zip' dist/latest-mac.yml
+          grep -F 'owner: nairsh' dist/mac-arm64/OpenBot.app/Contents/Resources/app-update.yml
+
+      - name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          shopt -s nullglob
+          gh release create "fork-v$VERSION" \
+            dist/*.dmg dist/*.zip dist/*.blockmap dist/latest-mac.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "OpenBot $VERSION (fork)" \
+            --latest \
+            --notes "Unsigned macOS Apple silicon build of $GITHUB_REPOSITORY at $GITHUB_SHA. Download the DMG. The first time, open OpenBot with right-click > Open."

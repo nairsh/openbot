@@ -18,9 +18,10 @@ electronFuses:
   onlyLoadAppFromAsar: true
   loadBrowserProcessSpecificV8Snapshot: false
   grantFileProtocolExtraPrivileges: false
+# This fork's updater reads the releases of nairsh/openbot, which fork-release.yml publishes.
 publish:
   provider: github
-  owner: nightly-labs
+  owner: nairsh
   repo: openbot
 files:
   - out/**/*

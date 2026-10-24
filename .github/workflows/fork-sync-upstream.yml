@@ -1,0 +1,64 @@
+name: Sync fork with upstream
+
+# Merges nightly-labs/openbot main into this fork's main every day, then starts fork-release.yml
+# when the merge brought new commits. A merge conflict stops the run and changes nothing: merge by
+# hand, then run this workflow again.
+#
+# GitHub refuses a push of a changed workflow file with the default token. When upstream changes a
+# file in .github/workflows, save a fine-grained token with Contents and Workflows write access to
+# this repository as the FORK_SYNC_TOKEN secret.
+
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: fork-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Merge upstream main
+    if: github.repository != 'nightly-labs/openbot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - name: Check out main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.FORK_SYNC_TOKEN || github.token }}
+
+      - name: Merge upstream main
+        id: merge
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --no-tags https://github.com/nightly-labs/openbot.git main
+          if git merge-base --is-ancestor FETCH_HEAD HEAD; then
+            echo "The fork already has every upstream commit."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! git merge --no-edit -m "Merge nightly-labs/openbot main" FETCH_HEAD; then
+            git diff --name-only --diff-filter=U
+            git merge --abort
+            echo "::error::Upstream main does not merge without conflicts. Merge it by hand."
+            exit 1
+          fi
+          git push origin HEAD:main
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build the merged version
+        if: steps.merge.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run fork-release.yml --repo "$GITHUB_REPOSITORY" --ref main
