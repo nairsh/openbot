@@ -73,7 +73,7 @@ function meterLevel(usage: ContextUsageView): "quiet" | "normal" | RadialProgres
 }
 
 /**
- * The composer's context ring and the popover it opens. It shows how full the agent's provider
+ * The header's context ring and the popover it opens. It shows how full the agent's provider
  * thread is and when it compacts. `newChat` adds the New chat action, which asks first. `compact`
  * adds the Compact action, for a thread that OpenBot compacts (`autoCompactAt` is set).
  */
@@ -125,13 +125,13 @@ export function ContextUsageMeter(props: {
           if (next && compaction().phase === "refused") setCompaction({ phase: "idle" });
           setOpen(next);
         }}
-        // The meter stands to the left of the message box, so its card opens toward the box.
-        placement="top-start"
+        // The meter stands in the header, beside the model picker.
+        placement="bottom-end"
         gutter={8}
       >
         <Popover.Trigger
           ref={setTrigger}
-          class="composer-button context-meter-trigger"
+          class="header-panel-toggle context-meter-trigger"
           aria-label={
             props.usage.compacting
               ? t("composer.context.labelCompacting")

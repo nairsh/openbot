@@ -455,7 +455,8 @@ export function createConversationViewScope(props: ConversationProps) {
     currentPendingSends().some((send) => send.messageId)
       ? new Set([
           ...props.messages.map((message) => message.id),
-          ...presentedQueueDeliveries().map((delivery) => delivery.id),
+          // Only once the panel shows: until then the pending row stands for the message.
+          ...(queuePanelVisible() ? presentedQueueDeliveries().map((delivery) => delivery.id) : []),
         ])
       : new Set<string>(),
   );
@@ -466,12 +467,28 @@ export function createConversationViewScope(props: ConversationProps) {
       .map(pendingSendMessage),
   );
   // The pending row already slid in, so the host's copy of the message takes its place with no second entrance.
+  // A local host answers in a few milliseconds, before that entrance ends, so the host's row plays the
+  // rest of it: the time the pending row started is kept until that row mounts.
+  const sentEntranceStarts = new Map<string, number>();
   createEffect(
     () => currentPendingSends().flatMap((send) => (send.messageId ? [send.messageId] : [])),
     (ids) => {
-      for (const id of ids) markMessageSeen(id);
+      // The send's own timestamp can trail the pending row's mount, so the clock starts here.
+      for (const id of ids) if (markMessageSeen(id)) sentEntranceStarts.set(id, Date.now());
     },
   );
+  /** How much of its entrance the pending row of this sent message played. Read once, by the row that replaces it. */
+  function takeSentEntranceElapsed(messageId: string): number | undefined {
+    const start = sentEntranceStarts.get(messageId);
+    if (start === undefined) return undefined;
+    sentEntranceStarts.delete(messageId);
+    return Math.max(0, Date.now() - start);
+  }
+  /** The context state of the agent's current thread. A state of another thread is stale. */
+  const agentContext = () =>
+    props.contextState?.agentId === props.agent?.id && props.contextState?.threadId === props.agent?.threadId
+      ? props.contextState
+      : undefined;
   /** The pending send a timeline row draws, by the row's message id. */
   const pendingSendFor = (messageId: string | undefined) =>
     messageId?.startsWith(PENDING_SEND_ID_PREFIX)
@@ -1699,6 +1716,8 @@ export function createConversationViewScope(props: ConversationProps) {
     jumpToLatestMessage,
     jumpToUnreadMessages,
     markMessageSeen,
+    takeSentEntranceElapsed,
+    agentContext,
     markUnreadMessages,
     markingRead,
     messageVirtualizer,

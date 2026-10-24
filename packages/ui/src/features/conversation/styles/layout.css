@@ -21,7 +21,7 @@
  * chat at full width. The scroll area and the composer keep the pane width, so the scroll bar stays
  * at the pane edge.
  */
-.conversation-panel > .conversation-scroll > .virtual-chat-list {
+.conversation-panel > .conversation-scroll > :not(.chat-scroll-rail, .scroll-to-latest) {
   max-width: var(--conversation-column-width);
   margin-inline: auto;
 }

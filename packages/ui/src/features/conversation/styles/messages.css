@@ -1435,6 +1435,7 @@ button.chat-action-target:active,
 .message-entry-animated.message-entry-user .message-shell > .ui-bubble {
   transform-origin: right bottom;
   animation: message-sent-in var(--openbot-duration-bubble-enter) var(--openbot-ease-bubble) both;
+  animation-delay: calc(-1 * var(--message-entry-elapsed, 0ms));
 }
 
 .message-entry-animated.message-entry-agent .message-shell > .ui-bubble {
@@ -1442,10 +1443,14 @@ button.chat-action-target:active,
   animation: message-received-in var(--openbot-duration-bubble-enter) var(--openbot-ease-bubble) both;
 }
 
+/* It starts low and small, where the message box is, and is opaque well before it settles. */
 @keyframes message-sent-in {
   from {
     opacity: 0;
-    transform: translateY(var(--openbot-space-8)) scale(0.92);
+    transform: translateY(calc(2 * var(--openbot-space-8))) scale(0.8);
+  }
+  30% {
+    opacity: 1;
   }
   to {
     opacity: 1;

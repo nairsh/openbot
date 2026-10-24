@@ -39,7 +39,7 @@ import {
   ComposerUpdateNotice,
   ComposerUsageLimitNotice,
 } from "@openbot/ui/features/conversation/ComposerNotice";
-import { ComposerCompactionNotice, ContextUsageMeter } from "@openbot/ui/features/conversation/ContextUsage";
+import { ComposerCompactionNotice } from "@openbot/ui/features/conversation/ContextUsage";
 import { CloseIcon, StopIcon } from "@openbot/ui/features/conversation/ConversationIcons";
 import { type OpenWaitItem, OpenWaits } from "@openbot/ui/features/conversation/OpenWaits";
 import { ReplyQuote } from "@openbot/ui/features/conversation/ReplyQuote";
@@ -61,6 +61,7 @@ const [dismissedUsageLimits, setDismissedUsageLimits] = createStore<Record<strin
 /** @internal Stable HMR boundary for conversation composer. */
 export function ConversationComposer() {
   const {
+    agentContext,
     agentReady,
     providerUpdateRequired,
     attachmentAction,
@@ -171,12 +172,8 @@ export function ConversationComposer() {
       ? reading
       : null;
   };
-  const context = () =>
-    props.contextState?.agentId === props.agent?.id && props.contextState?.threadId === props.agent?.threadId
-      ? props.contextState
-      : undefined;
   const compaction = () => {
-    const value = context()?.compaction;
+    const value = agentContext()?.compaction;
     return value && value.id !== dismissedCompactions()[currentChatConversationKey() ?? ""] ? value : null;
   };
 
@@ -591,33 +588,6 @@ export function ConversationComposer() {
           )}
         </Show>
         <div class="composer-row">
-          {/* The context meter stands outside the box, so the text has the whole width. */}
-          <Show when={context()?.usage}>
-            {(usage) => (
-              <ContextUsageMeter
-                newChat={
-                  props.agent && props.onClearAgentContext
-                    ? { agent: props.agent, start: props.onClearAgentContext }
-                    : undefined
-                }
-                compact={props.onCompactAgentContext}
-                usage={{
-                  ...usage(),
-                  compacting: context()?.compaction?.status === "running",
-                  ...(context()?.compaction?.status === "completed" &&
-                  context()?.compaction?.beforeTokens !== undefined &&
-                  context()?.compaction?.afterTokens !== undefined
-                    ? {
-                        lastCompaction: {
-                          beforeTokens: context()?.compaction?.beforeTokens ?? 0,
-                          afterTokens: context()?.compaction?.afterTokens ?? 0,
-                        },
-                      }
-                    : {}),
-                }}
-              />
-            )}
-          </Show>
           <div
             class="composer"
             data-compact={

@@ -16,6 +16,8 @@ export interface ConversationHeaderProps {
   modelPicker: ComponentProps<typeof ProviderModelPicker>;
   /** A model or effort chosen during the running turn. It applies from the next turn. */
   pendingModel?: ConversationHeaderPendingModel | undefined;
+  /** How full the agent's context is. It stands to the left of the model picker. */
+  contextMeter?: JSX.Element | undefined;
   onSettingsIntent: () => void;
   onOpenSettings: () => void;
   remoteControl?: ConversationHeaderRemoteControl | undefined;
@@ -81,6 +83,7 @@ export function ConversationHeader(props: ConversationHeaderProps) {
           }}
         </Show>
         <Show when={props.agent}>
+          {props.contextMeter}
           <ProviderModelPicker {...props.modelPicker} />
         </Show>
         <Show when={props.remoteControl}>

@@ -135,6 +135,7 @@ export function ConversationTimeline() {
     jumpToLatestMessage,
     jumpToUnreadMessages,
     markMessageSeen,
+    takeSentEntranceElapsed,
     markUnreadMessages,
     markingRead,
     messageVirtualizer,
@@ -622,6 +623,8 @@ export function ConversationTimeline() {
                 const initialMessage = untrack(message);
                 if (!initialMessage) return null;
                 const arrives = untrack(() => initialMessage.animate === true && markMessageSeen(initialMessage.id));
+                // The host's row of a sent message plays the rest of the pending row's entrance.
+                const entranceElapsed = arrives ? undefined : takeSentEntranceElapsed(initialMessage.id);
                 const initialActionMarker = untrack(() => initialMessage.actionMarker);
                 // Each state of a routine run is a new message, so the run's row is drawn again for
                 // each one. The run enters once, the first time a row of it is drawn; each new state
@@ -1179,6 +1182,7 @@ export function ConversationTimeline() {
                             }
                             showTime={!continuesRun()}
                             animate={animateEntrance}
+                            entranceElapsed={entranceElapsed}
                             agents={props.agents}
                             skills={installedSkills()}
                             referencedMessage={referencedMessage()}

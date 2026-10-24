@@ -561,7 +561,9 @@ const Conversation = createSimpleContext({
         const next = mappedMessages.map((mapped) => {
           const existing = previousById.get(mapped.id);
           if (!existing) return createStoredMessage({ ...mapped, animate: !initialLoad });
-          if (!agentMessagesEqual(existing, mapped)) updateStored(existing, mapped);
+          // A reply shows only once complete, so its entrance must survive the update that completes it.
+          if (!agentMessagesEqual(existing, mapped))
+            updateStored(existing, existing.animate === undefined ? mapped : { ...mapped, animate: existing.animate });
           return existing;
         });
         if (previous.length === next.length && previous.every((message, index) => message === next[index])) {

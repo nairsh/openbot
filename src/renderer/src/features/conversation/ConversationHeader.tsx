@@ -2,7 +2,9 @@ import { foreignProvider } from "@openbot/contracts/agent-providers";
 import type { AgentModelId, AgentReasoningEffort } from "@openbot/contracts/ipc";
 import { isAgentTaskActive } from "@openbot/team-client/agent-tasks";
 import { reasoningLabel } from "@openbot/ui/components/ProviderModelPicker";
+import { ContextUsageMeter } from "@openbot/ui/features/conversation/ContextUsage";
 import { ConversationHeader as SharedConversationHeader } from "@openbot/ui/features/conversation/ConversationHeader";
+import { Show } from "solid-js";
 import { useConversationViewScope } from "./conversation-scope";
 
 const loadAgentSettingsPanel = () => import("./AgentSettingsPanel");
@@ -13,6 +15,7 @@ import { useText } from "@openbot/ui/text";
 export function ConversationHeader() {
   const { t } = useText();
   const {
+    agentContext,
     actingBrowserControl,
     agentActivity,
     browserControlAgent,
@@ -56,6 +59,37 @@ export function ConversationHeader() {
       onSettingsIntent={() => void loadAgentSettingsPanel()}
       onOpenSettings={() => setActiveRightPanel("settings")}
       pendingModel={pendingModel()}
+      contextMeter={
+        <Show when={agentContext()?.usage}>
+          {(usage) => {
+            const compaction = () => agentContext()?.compaction;
+            return (
+              <ContextUsageMeter
+                newChat={
+                  props.agent && props.onClearAgentContext
+                    ? { agent: props.agent, start: props.onClearAgentContext }
+                    : undefined
+                }
+                compact={props.onCompactAgentContext}
+                usage={{
+                  ...usage(),
+                  compacting: compaction()?.status === "running",
+                  ...(compaction()?.status === "completed" &&
+                  compaction()?.beforeTokens !== undefined &&
+                  compaction()?.afterTokens !== undefined
+                    ? {
+                        lastCompaction: {
+                          beforeTokens: compaction()?.beforeTokens ?? 0,
+                          afterTokens: compaction()?.afterTokens ?? 0,
+                        },
+                      }
+                    : {}),
+                }}
+              />
+            );
+          }}
+        </Show>
+      }
       modelPicker={{
         provider: settingsProvider(),
         foreignProvider: props.agent ? foreignProvider(props.agent.provider) : undefined,

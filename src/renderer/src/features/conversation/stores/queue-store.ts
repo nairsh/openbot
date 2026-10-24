@@ -5,6 +5,9 @@ import { agentAwaitingReplies } from "../../../awaiting-replies";
 import { activeQueueDeliveries, presentQueueDeliveries, queuedDeliveriesInOrder } from "../../../queue-reconciliation";
 import type { ConversationProps } from "../conversation-types";
 
+/** Longer than a local host takes to start a sent message. */
+const IDLE_QUEUE_SHOW_DELAY_MS = 500;
+
 export interface QueueStoreDeps {
   props: ConversationProps;
   hiddenAwaitingReplyIds: Accessor<ReadonlySet<string>>;
@@ -36,6 +39,7 @@ export function createQueueStore(deps: QueueStoreDeps) {
   const [renderedQueueDeliveries, setRenderedQueueDeliveries] = createSignal<QueueDelivery[]>([]);
   const queuePanelVisible = createMemo(() => renderedQueueDeliveries().length > 0);
   let queueExitTimer: number | undefined;
+  let queueShowTimer: number | undefined;
   createEffect(
     () => presentedQueueDeliveries(),
     (deliveries) => {
@@ -44,9 +48,20 @@ export function createQueueStore(deps: QueueStoreDeps) {
         queueExitTimer = undefined;
       }
       if (deliveries.length > 0) {
-        setRenderedQueueDeliveries(deliveries);
+        if (untrack(renderedQueueDeliveries).length > 0 || untrack(() => deps.props.activeTurnId)) {
+          setRenderedQueueDeliveries(deliveries);
+        } else {
+          // A message to an idle agent passes through the queue on its way to the transcript. The
+          // panel waits that long, so it does not open and close above the composer.
+          queueShowTimer ??= window.setTimeout(() => {
+            queueShowTimer = undefined;
+            setRenderedQueueDeliveries(untrack(presentedQueueDeliveries));
+          }, IDLE_QUEUE_SHOW_DELAY_MS);
+        }
         return;
       }
+      window.clearTimeout(queueShowTimer);
+      queueShowTimer = undefined;
       if (untrack(renderedQueueDeliveries).length === 0) return;
       queueExitTimer = window.setTimeout(() => {
         queueExitTimer = undefined;
@@ -56,6 +71,7 @@ export function createQueueStore(deps: QueueStoreDeps) {
   );
   onCleanup(() => {
     if (queueExitTimer !== undefined) window.clearTimeout(queueExitTimer);
+    window.clearTimeout(queueShowTimer);
   });
 
   return {

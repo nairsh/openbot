@@ -493,8 +493,14 @@
   }
 
   /* The page spans the sidebar, so the line at the end of the sidebar does not show. */
-  .app-frame-edge[data-window-page-kind="titled"] > .sidebar::before {
+  .app-frame-edge[data-window-page-kind="titled"] > .sidebar::before,
+  .app-frame-edge:not([data-window-page-kind="agents"]) > .sidebar-compact::before {
     display: none;
+  }
+
+  /* A compact sidebar has its expand button in a row under the top row, so the page covers it. */
+  .app-frame-edge:not([data-window-page-kind="agents"]) > .sidebar-compact .sidebar-toggle-button {
+    visibility: hidden;
   }
 
   .app-window

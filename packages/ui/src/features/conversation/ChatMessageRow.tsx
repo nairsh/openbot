@@ -49,6 +49,8 @@ export interface ChatMessageRowProps {
   /** Whether the time stands beside the author name. Without a name, the time is in the action row. */
   showTime?: boolean | undefined;
   animate?: boolean;
+  /** Milliseconds of the entrance that an earlier row of this message already played. */
+  entranceElapsed?: number | undefined;
   agents: AgentProfile[];
   skills?: InstalledSkill[] | undefined;
   referencedMessage?: AgentMessage | undefined;
@@ -101,6 +103,8 @@ export function ChatMessageRow(props: ChatMessageRowProps): JSX.Element {
   // own head colour, read through the same helper the action markers use, so a name matches the
   // face beside it.
   const authorStyle = () => {
+    // The row continues the entrance where the row it replaces stopped, so the bubble does not jump.
+    if (props.entranceElapsed !== undefined) return `--message-entry-elapsed: ${props.entranceElapsed}ms`;
     const currentSeed = seed();
     if (own() || currentSeed === undefined) return undefined;
     return `--message-author-color: ${avatarHeadColor(currentSeed, props.author.agent?.avatarHue ?? null)}`;
@@ -108,7 +112,7 @@ export function ChatMessageRow(props: ChatMessageRowProps): JSX.Element {
   const rowClass = () => [
     "message-entry",
     {
-      "message-entry-animated": props.animate === true,
+      "message-entry-animated": props.animate === true || props.entranceElapsed !== undefined,
       "message-entry-user": person(),
       "message-entry-agent": !person(),
       "message-entry-with-author": props.showAuthor === true && !person(),

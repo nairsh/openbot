@@ -957,7 +957,7 @@
 }
 
 /*
- * The chat's own message box: the context meter, then a rounded box that lifts off the chat. A
+ * The chat's own message box: a rounded box that lifts off the chat. A
  * one-line box is a pill with round buttons, as in a phone's messages; it grows into a rounded
  * card for more lines or attachments. The other composers keep the plain box.
  */
@@ -968,10 +968,6 @@
   gap: var(--openbot-space-2);
 }
 
-.composer-row > .context-meter-trigger {
-  margin-bottom: var(--openbot-space-3);
-}
-
 .composer-row > .composer {
   min-width: 0;
   flex: 1;
@@ -980,20 +976,15 @@
   box-shadow: var(--openbot-shadow-composer);
 }
 
+/* The buttons keep their 28px: the microphone's recording shape is drawn for that size. */
 .composer-row > .composer[data-compact] {
-  min-height: calc(var(--openbot-control-md) + 2 * var(--openbot-space-2) + 2px);
-  grid-template-columns: var(--openbot-control-md) minmax(0, 1fr) auto;
+  min-height: calc(28px + 2 * var(--openbot-space-1-5) + 2px);
   border-radius: var(--openbot-radius-pill);
-  padding: var(--openbot-space-2);
+  padding: var(--openbot-space-1-5);
 }
 
 .composer-row > .composer[data-compact] .composer-input-label {
   padding-inline: var(--openbot-space-1);
-}
-
-.composer-row > .composer[data-compact] :is(.composer-button, .dictation-button, .voice-button) {
-  width: var(--openbot-control-md);
-  height: var(--openbot-control-md);
 }
 
 .composer-row > .composer:focus-within {

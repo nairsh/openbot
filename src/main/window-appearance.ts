@@ -6,7 +6,7 @@ import {
 import { type BrowserWindow, nativeTheme } from "electron";
 
 /** The light canvas, `--openbot-bg-canvas` in `tokens-light.css`, so a light window opens without a dark frame. */
-const LIGHT_WINDOW_BACKGROUND = "#f5f5f6";
+const LIGHT_WINDOW_BACKGROUND = "#fafafb";
 
 /** The macOS material behind a transparent main window. The page paints its own tint over it. */
 const GLASS_VIBRANCY = "under-window";
