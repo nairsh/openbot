@@ -22,8 +22,10 @@ import { createOpenBotLogger } from "@openbot/logging";
 
 // Methods that `src/preload/index.ts` writes by hand. Each one narrows a scoped event and must
 // subscribe to its channel. `onAttachmentImport` has no channel: the preload's own handlers call it.
+// `spelling.correction` has none either: the spellchecker runs in the renderer.
 const HAND_WRITTEN_METHODS: ReadonlyMap<string, IpcEndpoint | null> = new Map<string, IpcEndpoint | null>([
   ["agent.onAttachmentImport", null],
+  ["spelling.correction", null],
   ["agent.onEvent", IPC_ENDPOINTS.agent.scopedEvent],
   ["servers.onPresence", IPC_ENDPOINTS.servers.scopedPresence],
   ["servers.onDirectMessage", IPC_ENDPOINTS.servers.scopedDirectMessage],
@@ -120,6 +122,7 @@ function runPreload(fileName: string): PreloadRun {
       once: (channel: string) => calls.push({ method: "once", channel }),
       removeListener: () => undefined,
     },
+    webFrame: { isWordMisspelled: () => false, getWordSuggestions: () => [] },
     webUtils: { getPathForFile: () => "" },
   };
   // The main window's URL: the preload reads it for the server of a chat window.

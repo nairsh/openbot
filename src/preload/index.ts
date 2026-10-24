@@ -70,7 +70,7 @@ import {
   decodeWebhookSecret,
   decodeWebhookTestResult,
 } from "@openbot/contracts/ipc-events";
-import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import {
   decodeAccountUsageFromMain,
   decodeAgent,
@@ -1201,6 +1201,13 @@ const openbotApi: OpenBotDesktopApi = {
     disconnect: decodeVoid,
     event: decodeRemoteDesktopSessions,
   }),
+  // The macOS spellchecker answers in this renderer. One typed word only: the page is not trusted.
+  spelling: {
+    correction: (word: unknown) => {
+      if (typeof word !== "string" || word.length > 64 || !webFrame.isWordMisspelled(word)) return null;
+      return webFrame.getWordSuggestions(word)[0] ?? null;
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld("openbot", openbotApi);

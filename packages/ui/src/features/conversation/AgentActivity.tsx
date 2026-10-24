@@ -150,9 +150,14 @@ export function AgentActivityBody(props: {
   const [stepsChoice, setStepsChoice] = createSignal<boolean>();
   const hasSteps = () => (props.steps?.length ?? 0) > 0;
   const stepsOpen = () => hasSteps() && (stepsChoice() ?? props.stepsOpenByDefault === true);
+  // The list is built when it first opens and kept after it closes, so it can fold away.
+  const [stepsBuilt, setStepsBuilt] = createSignal(false);
   // A new turn starts with no steps, and with the setting again.
   createEffect(hasSteps, (has) => {
     if (!has) setStepsChoice(undefined);
+  });
+  createEffect(stepsOpen, (open) => {
+    if (open) setStepsBuilt(true);
   });
   return (
     <div class="agent-activity-body">
@@ -176,8 +181,12 @@ export function AgentActivityBody(props: {
           </Button>
         </Show>
       </section>
-      <Show when={stepsOpen()}>
-        <div class="agent-activity-steps">
+      <Show when={stepsBuilt() && hasSteps()}>
+        <div
+          class="agent-activity-steps"
+          data-closed={stepsOpen() ? undefined : ""}
+          inert={stepsOpen() ? undefined : true}
+        >
           <AgentStepList id={stepsId} steps={props.steps ?? []} live={props.live} />
         </div>
       </Show>

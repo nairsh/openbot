@@ -43,6 +43,7 @@ export interface ConversationPort {
     | "setDirectTyping"
   >;
   storage: Pick<OpenBotDesktopApi["storage"], "openLocation">;
+  spelling: OpenBotDesktopApi["spelling"];
   browserDock: Pick<OpenBotDesktopApi["browserDock"], "publishPresentation" | "onAction" | "onShown">;
 }
 

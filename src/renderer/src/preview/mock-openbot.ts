@@ -2330,7 +2330,8 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
             turnId,
             status: "completed",
           });
-        }, 80);
+          // As long as a short real turn, so the preview shows the activity line between the two bubbles.
+        }, 1_800);
 
         const receipt: QueuedMessageReceipt = {
           messageId,
@@ -2734,6 +2735,11 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
       discard: async () => undefined,
     },
     remoteDesktop: mockTeam.remoteDesktop,
+    // A few common typos, so the preview shows the message box correcting a word.
+    spelling: {
+      correction: (word: string) =>
+        ({ teh: "the", recieve: "receive", definately: "definitely", wierd: "weird" })[word.toLowerCase()] ?? null,
+    },
   };
 
   return {

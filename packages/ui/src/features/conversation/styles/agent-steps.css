@@ -22,7 +22,25 @@
 }
 
 .agent-activity-steps {
+  display: grid;
+  grid-template-rows: 1fr;
   padding: 0 0 var(--openbot-space-2) var(--openbot-space-6);
+  transition:
+    grid-template-rows var(--openbot-duration-overlay) var(--openbot-ease-out),
+    padding-bottom var(--openbot-duration-overlay) var(--openbot-ease-out),
+    opacity var(--openbot-duration-normal) var(--openbot-ease-out);
+}
+
+@starting-style {
+  .agent-activity-steps {
+    grid-template-rows: 0fr;
+    padding-bottom: 0;
+    opacity: 0;
+  }
+}
+
+.agent-activity-steps[data-closed] {
+  padding-bottom: 0;
 }
 
 .agent-steps-chevron {
@@ -89,7 +107,7 @@
     opacity var(--openbot-duration-normal) var(--openbot-ease-out);
 }
 
-/* The panel exists only while the row is open, so it opens from its first frame. */
+/* The panel is built when the row first opens, so it opens from its first frame. */
 @starting-style {
   .agent-steps-panel {
     grid-template-rows: 0fr;
@@ -97,7 +115,15 @@
   }
 }
 
+/* A row that closes keeps its panel, which folds away with the motion that opened it. */
+.agent-steps:not([data-open]) > .agent-steps-panel,
+.agent-activity-steps[data-closed] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
 .agent-steps-viewport {
+  min-height: 0;
   max-height: 220px;
   overflow: hidden;
   padding-left: var(--openbot-space-3);
@@ -163,6 +189,7 @@
 @media (prefers-reduced-motion: reduce) {
   .agent-steps-chevron,
   .agent-steps-panel,
+  .agent-activity-steps,
   .agent-steps-list {
     transition: none;
   }

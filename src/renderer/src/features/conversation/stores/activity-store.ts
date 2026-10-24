@@ -44,7 +44,6 @@ export interface ActivityStoreDeps {
 
 export function createActivityStore(deps: ActivityStoreDeps) {
   const [renderedAgentActivity, setRenderedAgentActivity] = createSignal<RenderedAgentActivity | null>(null);
-  const [agentActivitySpaceReserved, setAgentActivitySpaceReserved] = createSignal(false);
   const streamingAgentMessage = createMemo(() => {
     for (let index = deps.props.messages.length - 1; index >= 0; index -= 1) {
       const message = deps.props.messages[index];
@@ -60,9 +59,17 @@ export function createActivityStore(deps: ActivityStoreDeps) {
     if (!hold || hold.agentId !== deps.props.agent?.id) return null;
     return deps.props.activeTurnId ? null : hold;
   });
+  /**
+   * The chat ends on the complete answer of the agent. The answer replaces the activity line at
+   * once, even while the host still closes the turn; a later message brings the line back.
+   */
+  const endsOnAnswer = createMemo(() => {
+    const last = deps.props.messages.at(-1);
+    return last?.author === "agent" && last.kind === "text" && !last.streaming && last.itemType !== "commentary";
+  });
   const activeActivityId = createMemo(() => {
     const agentId = deps.props.agent?.id;
-    if (!agentId) return null;
+    if (!agentId || endsOnAnswer()) return null;
     const delivery = deps.activeDeliveries()[0];
     if (delivery) return `${agentId}:delivery:${delivery.id}`;
     if (deps.props.activeTurnId) return `${agentId}:turn:${deps.props.activeTurnId}`;
@@ -155,8 +162,10 @@ export function createActivityStore(deps: ActivityStoreDeps) {
       activityId: activeActivityId(),
       agent: deps.props.agent,
       label: activityLabel(),
+      // The host can end the turn before its answer arrives; the answer then cuts the wait short.
+      answered: endsOnAnswer(),
     }),
-    ({ activityId, agent, label }) => {
+    ({ activityId, agent, label, answered }) => {
       clearAgentActivityShowTimer();
       clearAgentActivityExitDelayTimer();
       clearAgentActivityExitTimer();
@@ -171,7 +180,6 @@ export function createActivityStore(deps: ActivityStoreDeps) {
         };
         const current = untrack(renderedAgentActivity);
         if (current?.agent?.id === agent?.id) {
-          setAgentActivitySpaceReserved(true);
           setRenderedAgentActivity(nextActivity);
           return;
         }
@@ -179,7 +187,6 @@ export function createActivityStore(deps: ActivityStoreDeps) {
         agentActivityShowTimer = window.setTimeout(() => {
           agentActivityShowTimer = undefined;
           if (untrack(activeActivityId) === activityId) {
-            setAgentActivitySpaceReserved(true);
             setRenderedAgentActivity({ ...nextActivity, detail: untrack(activeActivityDetail) });
           }
         }, showDelay);
@@ -208,7 +215,7 @@ export function createActivityStore(deps: ActivityStoreDeps) {
           );
         }, exitDuration);
       };
-      const exitDelay = agentActivityExitDelay();
+      const exitDelay = answered ? 0 : agentActivityExitDelay();
       if (exitDelay === 0) beginExit();
       else agentActivityExitDelayTimer = window.setTimeout(beginExit, exitDelay);
     },
@@ -298,8 +305,6 @@ export function createActivityStore(deps: ActivityStoreDeps) {
   return {
     renderedAgentActivity,
     setRenderedAgentActivity,
-    agentActivitySpaceReserved,
-    setAgentActivitySpaceReserved,
     streamingAgentMessage,
     activeActivityId,
     activeActivityDetail,

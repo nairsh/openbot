@@ -213,7 +213,6 @@ export function ChatMessageRow(props: ChatMessageRowProps): JSX.Element {
           >
             <BubbleContent>
               <MessageBody
-                animate={props.animate}
                 message={props.message}
                 referencedMessage={props.referencedMessage}
                 referencedAuthorName={props.referencedAuthorName}

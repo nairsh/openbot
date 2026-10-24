@@ -6,6 +6,7 @@ import {
   limitedQuoteText,
 } from "@openbot/contracts/chat-tag-references";
 import type { McpSignInRelayPage, UpdateAgentInput } from "@openbot/contracts/ipc";
+import { rendererDuration } from "@openbot/ui/features/conversation/activity-timing";
 import type { QuoteRequest } from "@openbot/ui/features/conversation/ComposerEditor";
 import { currentText } from "@openbot/ui/text";
 import { usesTouchLayout } from "@openbot/ui/utils";
@@ -364,15 +365,7 @@ export function createConversationViewScope(props: ConversationProps) {
     agentActivityLabels: resources.agentActivityLabels,
     turnRuntimes: resources.turnRuntimes,
   });
-  const {
-    renderedAgentActivity,
-    agentActivitySpaceReserved,
-    setAgentActivitySpaceReserved,
-    agentActivity,
-    runningTurnRuntime,
-    providerSilentMinutes,
-    providerOffline,
-  } = activity;
+  const { renderedAgentActivity, agentActivity, runningTurnRuntime, providerSilentMinutes, providerOffline } = activity;
   const browser = createBrowserStore({
     props,
     browserOpenRequests: resources.browserOpenRequests,
@@ -1113,10 +1106,20 @@ export function createConversationViewScope(props: ConversationProps) {
       currentUnreadCount = unreadCount;
       const conversationIdentity = `${serverId}:${agentId ?? ""}`;
       if (conversationIdentity !== lastConversationIdentity) {
-        if (lastConversationIdentity !== undefined) closeChatSearch(false);
+        if (lastConversationIdentity !== undefined) {
+          closeChatSearch(false);
+          // The next chat fades in, so a switch does not cut from one transcript to the other.
+          scrollElement?.animate(
+            { opacity: [0.4, 1] },
+            {
+              duration: rendererDuration("--openbot-duration-slow", 200),
+              easing:
+                getComputedStyle(document.documentElement).getPropertyValue("--openbot-ease-out").trim() || "ease-out",
+            },
+          );
+        }
         lastConversationIdentity = conversationIdentity;
         setStickToLatest(true);
-        setAgentActivitySpaceReserved(false);
       }
       if (latestScrollFrame !== undefined) cancelAnimationFrame(latestScrollFrame);
       if (latestScrollSettleFrame !== undefined) cancelAnimationFrame(latestScrollSettleFrame);
@@ -1641,7 +1644,6 @@ export function createConversationViewScope(props: ConversationProps) {
     runningTurnRuntime,
     agentReady,
     providerUpdateRequired,
-    agentActivitySpaceReserved,
     activateBrowserTab,
     showBrowserTabOf,
     browserTabOwner,

@@ -1,7 +1,7 @@
 import type { ConversationMemoryChange } from "@openbot/contracts/ipc";
 import { countConversationMemoryChanges } from "@openbot/contracts/ipc";
 import { Dynamic, type JSX } from "@solidjs/web";
-import { createSignal, createUniqueId, For, onSettled, Show } from "solid-js";
+import { createEffect, createSignal, createUniqueId, For, onSettled, Show, untrack } from "solid-js";
 import { Button } from "../../button";
 import {
   BookOpen,
@@ -197,6 +197,12 @@ export function AgentStepsDisclosure(props: {
   const panelId = createUniqueId();
   const [choice, setChoice] = createSignal<boolean>();
   const open = () => choice() ?? props.defaultOpen;
+  // A long chat has a row for each turn, so a row builds its list only when it first opens. It then
+  // keeps the list, so the list can close with the same motion that opened it.
+  const [built, setBuilt] = createSignal(untrack(open));
+  createEffect(open, (isOpen) => {
+    if (isOpen) setBuilt(true);
+  });
   return (
     <div class="agent-steps" data-open={open() ? "" : undefined}>
       <Button
@@ -210,9 +216,8 @@ export function AgentStepsDisclosure(props: {
         <span class="agent-steps-summary">{stepsSummary(props.steps, props.durationMs, text)}</span>
         <ChevronDown class="agent-steps-chevron" aria-hidden="true" />
       </Button>
-      {/* A long chat has a row for each turn, so a closed row builds no list. */}
-      <Show when={open()}>
-        <div class="agent-steps-panel">
+      <Show when={built()}>
+        <div class="agent-steps-panel" inert={open() ? undefined : true}>
           <AgentStepList id={panelId} steps={props.steps} live={false} />
         </div>
       </Show>

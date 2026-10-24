@@ -51,6 +51,7 @@ import { reportErrorBanner, reportNotification } from "../../error-reports";
 import { deviceSendShortcut, sendShortcutAriaKey, sendShortcutHintKey } from "../../send-shortcut-preference";
 import { speechReading } from "../speech/speech-playback";
 import { stopSpokenReply } from "../speech/speech-replies";
+import { conversationPort } from "./conversation-port";
 import { useConversationViewScope } from "./conversation-scope";
 
 // Module scope: the composer remounts on navigation, and a dismissed notice must stay dismissed.
@@ -676,6 +677,7 @@ export function ConversationComposer() {
                 sendShortcut={deviceSendShortcut(props.platform)}
                 onPickerOpenChange={setPickerOpen}
                 dictation={{ text: voiceLiveText(), final: voicePhase() === "transcribing" }}
+                correctWord={props.runtime ? undefined : (word) => conversationPort().spelling.correction(word)}
                 onPasteFiles={(files) => {
                   if (props.runtime?.importFiles) void props.runtime.importFiles(files);
                 }}

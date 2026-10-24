@@ -111,7 +111,6 @@ function routineMarkerAvailable(
 export function ConversationTimeline() {
   const {
     activeChatSearchIndex,
-    agentActivitySpaceReserved,
     attachmentAction,
     browserTakeoverPreview,
     browserTakeoverResolution,
@@ -1332,11 +1331,7 @@ export function ConversationTimeline() {
           <Show when={!compactionBefore()}>
             <CompactionMarker />
           </Show>
-          <div
-            class="agent-activity-slot"
-            data-reserved={agentActivitySpaceReserved() ? "true" : "false"}
-            ref={setAgentActivitySlotElement}
-          >
+          <div class="agent-activity-slot" ref={setAgentActivitySlotElement}>
             <Show
               when={!channel}
               fallback={

@@ -104,7 +104,16 @@ interface ComposerEditorProps {
    * the final text. See `dictationWords` for how they show.
    */
   dictation?: { text: string; final: boolean };
+  /**
+   * The system's correction of one misspelled word, or null. With it, a space or a punctuation mark
+   * after a word corrects that word, as text fields in macOS do. Undo restores what was typed.
+   */
+  correctWord?: ((word: string) => string | null) | undefined;
 }
+
+/** A plain word at the end of the text. A mention, a path, a link or a name with inner capitals is not one. */
+const CORRECTABLE_WORD = /(?:^|[\s(["'])([A-Za-z][a-z']*[a-z])$/;
+const WORD_END_KEY = /^[ .,!?;:]$/;
 
 export interface QuoteRequest {
   id: number;
@@ -720,6 +729,8 @@ export function ComposerEditor(props: ComposerEditorProps) {
     }
     ensureEditorSelection();
 
+    if (WORD_END_KEY.test(event.key) && !event.metaKey && !event.ctrlKey && !event.altKey) correctLastWord();
+
     if (event.key === "Backspace" && removeTrailingLineBreak()) {
       event.preventDefault();
       return;
@@ -756,6 +767,24 @@ export function ComposerEditor(props: ComposerEditorProps) {
       event.preventDefault();
       props.onSubmit();
     }
+  }
+
+  /* The key that ends the word goes on after this, so it lands after the corrected word. */
+  function correctLastWord(): void {
+    if (!editor || !props.correctWord) return;
+    const selection = readEditorSelection(editor);
+    if (!selection || selection.anchor !== selection.focus) return;
+    const word = CORRECTABLE_WORD.exec(editorText(editor).slice(0, selection.anchor))?.[1];
+    const correction = word ? props.correctWord(word) : null;
+    if (!word || !correction || correction === word) return;
+    const range = rangeFromTextOffsets(editor, selection.anchor - word.length, selection.anchor);
+    if (!range) return;
+    const nativeSelection = window.getSelection();
+    nativeSelection?.removeAllRanges();
+    nativeSelection?.addRange(range);
+    const capitalized = word[0] !== word[0]?.toLowerCase();
+    insertPlainText(editor, capitalized ? correction[0]?.toUpperCase() + correction.slice(1) : correction);
+    emitValue();
   }
 
   function removeTrailingLineBreak(): boolean {

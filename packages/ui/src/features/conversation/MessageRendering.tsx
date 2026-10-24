@@ -87,11 +87,9 @@ function streamingTimings() {
   };
 }
 
-function createStreamingBody(message: () => AgentMessage, animate?: boolean) {
+/* A reply that arrives complete shows at once, as in a phone's messages: only its bubble enters. */
+function createStreamingBody(message: () => AgentMessage) {
   const initialMessage = untrack(message);
-  const animateInitialText =
-    untrack(() => initialMessage.author === "agent" && (animate ?? initialMessage.animate) === true) &&
-    !prefersReducedMotion();
   let targetBody = untrack(() => initialMessage.body);
   let targetStreaming = untrack(() => initialMessage.author === "agent" && initialMessage.streaming === true);
   /* A virtual chat row can show a different message later. The reveal buffer belongs to one
@@ -99,12 +97,12 @@ function createStreamingBody(message: () => AgentMessage, animate?: boolean) {
   let shownId = untrack(() => initialMessage.id);
   /* A plain copy of `body`, because the signal can still hold its earlier value until the
      next flush. */
-  let shownBody = animateInitialText ? "" : targetBody;
+  let shownBody = targetBody;
   const [buffer, setBuffer] = createSignal({ id: shownId, text: shownBody });
   const [trail, setTrail] = createSignal<StreamingRevealChunk[]>([]);
   const [animateTail, setAnimateTail] = createSignal(false);
-  const [smoothHeight, setSmoothHeight] = createSignal(targetStreaming || animateInitialText);
-  let smoothingActive = targetStreaming || animateInitialText;
+  const [smoothHeight, setSmoothHeight] = createSignal(targetStreaming);
+  let smoothingActive = targetStreaming;
   /* A plain copy, for the same reason as `shownBody`: true when the height smoothing, tail and
      trail are all off and no timer will change them. */
   let smoothingSettled = !smoothingActive;
@@ -256,7 +254,6 @@ const codeContent = (block: MessageContentBlock) => (block.type === "code" ? blo
 const textContent = (block: MessageContentBlock) => (block.type === "text" ? block : undefined);
 
 export function MessageBody(props: {
-  animate?: boolean | undefined;
   message: AgentMessage;
   referencedMessage?: AgentMessage | undefined;
   /**
@@ -286,10 +283,7 @@ export function MessageBody(props: {
   mediaSource?: AttachmentMediaSource | undefined;
 }) {
   const { t } = useText();
-  const streamingBody = createStreamingBody(
-    () => props.message,
-    untrack(() => props.animate),
-  );
+  const streamingBody = createStreamingBody(() => props.message);
   const streamedBody = streamingBody.body;
   const referenceOpens = () => Boolean(props.onOpenReference);
   const referenceTextId = `message-reply-${createUniqueId()}`;
