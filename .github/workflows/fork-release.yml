@@ -10,11 +10,10 @@ name: Fork release (macOS)
 # - The version is `<major>.<minor>.<patch * 1000 + run number>`. It always goes up, also when the
 #   upstream version changes, so the updater always sees the newest fork release as newer.
 
-# Start it from the Actions tab, or push a tag such as `fork-build-1`.
+# Each push to main makes a release. It can also start from the Actions tab.
 on:
   push:
-    tags:
-      - "fork-build-*"
+    branches: [main]
   workflow_dispatch:
 
 permissions: {}
