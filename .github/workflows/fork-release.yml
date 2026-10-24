@@ -1,11 +1,14 @@
 name: Fork release (macOS)
 
-# Builds an unsigned macOS ARM64 release of this fork and publishes it as a GitHub release of this
-# repository, where the fork's updater (`publish` in electron-builder.yml) looks for new versions.
+# Builds a macOS ARM64 release of this fork and publishes it as a GitHub release of this repository,
+# where the fork's updater (`publish` in electron-builder.yml) looks for new versions.
 #
-# - The fork has no Developer ID certificate, so the app is ad-hoc signed only. Open it the first
-#   time with right-click > Open. On macOS the updater finds a new release, but Squirrel.Mac does
-#   not install an update without a Developer ID signature: download the new DMG from the release.
+# - The app is signed with the fork's self-signed certificate, from the FORK_CSC_LINK (base64 .p12)
+#   and FORK_CSC_KEY_PASSWORD secrets. Squirrel.Mac installs an update only when it has the same
+#   signature as the running app, so every release must use the same certificate. Without the
+#   secrets the run stops, so that no release breaks the chain of updates.
+# - Apple does not trust the certificate, so the first install needs right-click > Open. The hardened
+#   runtime and the Apple-only entitlements are off: they need an Apple Developer ID.
 # - The tag is `fork-v<version>`, not `v<version>`, so the upstream `release.yml` does not start.
 # - The version is `<major>.<minor>.<patch * 1000 + run number>`. It always goes up, also when the
 #   upstream version changes, so the updater always sees the newest fork release as newer.
@@ -24,7 +27,7 @@ concurrency:
 
 jobs:
   macos:
-    name: Build and publish unsigned macOS ARM64 release
+    name: Build and publish signed macOS ARM64 release
     if: github.repository != 'nightly-labs/openbot'
     runs-on: macos-14
     timeout-minutes: 90
@@ -33,6 +36,17 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
+      - name: Require the fork signing certificate
+        shell: bash
+        env:
+          FORK_CSC_LINK: ${{ secrets.FORK_CSC_LINK }}
+          FORK_CSC_KEY_PASSWORD: ${{ secrets.FORK_CSC_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$FORK_CSC_LINK" || -z "$FORK_CSC_KEY_PASSWORD" ]]; then
+            echo "Save FORK_CSC_LINK and FORK_CSC_KEY_PASSWORD as repository secrets." >&2
+            exit 1
+          fi
+
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -71,17 +85,37 @@ jobs:
           bun run verify:remote-desktop-runtime
           bun run prepare:cua-driver
 
+      # codesign accepts only a certificate that the runner trusts for code signing.
+      - name: Trust the fork signing certificate
+        shell: bash
+        env:
+          FORK_CSC_LINK: ${{ secrets.FORK_CSC_LINK }}
+          FORK_CSC_KEY_PASSWORD: ${{ secrets.FORK_CSC_KEY_PASSWORD }}
+        run: |
+          p12="$RUNNER_TEMP/fork-signing.p12"
+          pem="$RUNNER_TEMP/fork-signing.pem"
+          printf '%s' "$FORK_CSC_LINK" | /usr/bin/base64 -D > "$p12"
+          /usr/bin/openssl pkcs12 -in "$p12" -passin env:FORK_CSC_KEY_PASSWORD -nokeys -clcerts -out "$pem"
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "$pem"
+          rm -f "$p12" "$pem"
+
       # `hdiutil create` can fail on a hosted macOS runner with "Device not configured" or
       # "Resource busy" when nothing is wrong with the app. Only that error gets another attempt.
-      - name: Build unsigned update artifacts
+      - name: Build signed update artifacts
         shell: bash
+        env:
+          CSC_LINK: ${{ secrets.FORK_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.FORK_CSC_KEY_PASSWORD }}
         run: |
           bun run voice:prepare-runtime
           bun run build
           log="$RUNNER_TEMP/electron-builder-mac.log"
           for attempt in 1 2 3; do
             if bun x electron-builder --mac --arm64 --publish never \
-              --config.mac.identity=null --config.mac.notarize=false 2>&1 | tee "$log"; then
+              --config.mac.identity="OpenBot Fork Code Signing" \
+              --config.mac.notarize=false \
+              --config.mac.hardenedRuntime=false \
+              --config.mac.entitlements=build/entitlements.fork.mac.plist 2>&1 | tee "$log"; then
               exit 0
             fi
             if grep -Eq 'hdiutil: create failed - (Device not configured|Resource busy)' "$log"; then
@@ -91,6 +125,14 @@ jobs:
             fi
           done
           exit 1
+
+      - name: Verify the signature
+        shell: bash
+        run: |
+          app_path="dist/mac-arm64/OpenBot.app"
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          codesign -d -r- "$app_path" 2>&1 | tee "$RUNNER_TEMP/requirement.txt"
+          grep -E 'certificate (leaf|root)' "$RUNNER_TEMP/requirement.txt"
 
       - name: Verify updater metadata
         shell: bash
@@ -122,4 +164,4 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "OpenBot $VERSION (fork)" \
             --latest \
-            --notes "Unsigned macOS Apple silicon build of $GITHUB_REPOSITORY at $GITHUB_SHA. Download the DMG. The first time, open OpenBot with right-click > Open."
+            --notes "macOS Apple silicon build of $GITHUB_REPOSITORY at $GITHUB_SHA, signed with the fork certificate. Install the DMG once and open OpenBot with right-click > Open. Later releases install by themselves."
