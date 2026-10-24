@@ -158,6 +158,26 @@ export function ConversationComposer() {
     },
   );
   onCleanup(() => window.clearTimeout(awaitingExitTimer));
+  /*
+   * Text that wraps in the one-line layout moves the composer to the tall layout, and it stays there
+   * until the draft is empty: the tall layout is wider, so measuring it would unwrap the text and
+   * flip the layout back on each key.
+   */
+  let composerElement: HTMLDivElement | undefined;
+  const [textWrapped, setTextWrapped] = createSignal(false);
+  createEffect(
+    () => currentDraft().text,
+    (text) => {
+      if (!text) {
+        setTextWrapped(false);
+        return;
+      }
+      const surface = composerElement?.querySelector<HTMLElement>(".composer-editor-surface");
+      if (!composerElement?.hasAttribute("data-compact") || !surface) return;
+      // One line is about 20px high and the surface has 4px of padding above and below.
+      if (surface.scrollHeight > 36) setTextWrapped(true);
+    },
+  );
   const waitItems = createMemo(() => openWaitItems(props.waits ?? [], props.queue));
   const waitsVisible = () => waitItems().length > 0 && Boolean(props.onCancelWait) && !pickerOpen();
   const slotOpen = () => queueVisible() || awaitingVisible() || waitsVisible();
@@ -590,9 +610,12 @@ export function ConversationComposer() {
         </Show>
         <div class="composer-row">
           <div
+            ref={(element) => (composerElement = element)}
             class="composer"
             data-compact={
-              currentDraft().text.includes("\n") || unreferencedDraftAttachments().length > 0 ? undefined : ""
+              currentDraft().text.includes("\n") || textWrapped() || unreferencedDraftAttachments().length > 0
+                ? undefined
+                : ""
             }
             data-has-attachments={unreferencedDraftAttachments().length > 0 ? "" : undefined}
             onPointerDown={(event) => {
