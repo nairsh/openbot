@@ -660,3 +660,34 @@ like a plugin link, the link itself installs nothing. The page's fallback line a
 page links `/app` with the four invitation fields, and a plugin page links `/app?plugin=<slug>`. The
 browser client removes these fields after it reads them and opens the join dialog or the marketplace
 listing. It never joins or installs without a press.
+
+## Context and prompt cache
+
+OpenBot keeps a long chat useful and its provider prompt cache valid with these rules.
+
+- **Memory flush.** When a compaction of an agent's own chat starts, `AgentService` runs one call
+  without tools (`agent/memory-flush.ts`) on the end of the chat that OpenBot stores, with the
+  saved memories. The answer names new durable facts, and `AgentMemories.saveFlushed` saves them as
+  automatic, searchable memories. It runs for every provider, Claude's own compactions included,
+  beside the compaction and at most once in 10 minutes for each agent. The provider session is not
+  touched. `OPENBOT_MEMORY_FLUSH=off` turns it off.
+- **Frozen memories.** Claude gets memory and section-mate changes with the user turns
+  (`memoriesInTurns`). The other clients get them in the instructions when a session loads. A change
+  that the agent makes itself, with `remember` or the flush, keeps their sessions loaded, so the
+  instructions at the start of the prompt do not change. The session loads them at its next start
+  and after a compaction (`ConversationRuntime.reloadThread`). A change that the user makes reloads
+  every session at once, so a removed memory is gone at the next turn.
+- **Idle compaction.** A chat that waits 54 minutes after a turn with a long context compacts before
+  the one-hour cache expires (`ContextCompaction.scheduleIdle`).
+- **Pi sessions.** `pi-context.ts` adds a Pi extension to Pi, Inception and Direct. A tool result of
+  more than 30,000 characters, other than Pi's own `bash` and `read`, goes to a file next to the
+  session, and the model gets its start, its end and the path. After the prompt cache time, the next
+  request clears the text of tool results before the last three answers; the cleared results stay
+  cleared, so later requests send the same bytes. A compaction that OpenBot asks for adds "Pending
+  user asks" and "Exact identifiers" to Pi's own summary, which Pi updates at each compaction.
+- **Cache time by source.** A Claude or Pi session that is not saved, such as a routine run or a
+  one-time generation, keeps the 5-minute cache. Pi chats use Pi's long cache when the server's
+  prompt cache time is 1 hour. `CacheReadMonitor` logs when the cached share of a session's prompt
+  drops while the cache should still hold it.
+- **Earlier messages.** A summary loses detail; `history_search` and `history_read` find the full
+  text of the conversation after its latest reset.

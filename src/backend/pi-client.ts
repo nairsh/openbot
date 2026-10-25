@@ -24,6 +24,7 @@ import {
 import { mcpSecretValues, redactMcpRecord, redactMcpValues } from "./mcp-redaction";
 import type { CustomProviderSource } from "./opencode-config";
 import { PendingServerRequests } from "./pending-server-requests";
+import { createPiContextExtension, PI_LONG_CACHE_MS, PI_SHORT_CACHE_MS } from "./pi-context";
 import { createPiEndpointsExtension } from "./pi-endpoints";
 import { createPiInceptionExtension } from "./pi-inception";
 import { createPiMcpExtension, type PiMcpExtension } from "./pi-mcp";
@@ -69,6 +70,17 @@ const PiSessionUsage = Schema.Struct({
   cost: Schema.optional(Schema.Number),
 });
 
+/**
+ * What OpenBot adds to Pi's own summary when it asks for a compaction. Pi already keeps the goal,
+ * the progress, the decisions and the next steps, and updates its earlier summary. The facts that a
+ * summary most often loses are the user's open requests and the exact names of things.
+ */
+const PI_COMPACTION_INSTRUCTIONS = [
+  'Add a "Pending user asks" section: each request of the user that is not done yet, in the user\'s words.',
+  'Add an "Exact identifiers" section: copy file paths, commands, URLs, commit hashes, issue and pull request numbers, error messages and names exactly as they appear.',
+  "End with a line that says openbot.history_search and openbot.history_read find the full text of the earlier messages.",
+].join("\n");
+
 export interface PiProviderOptions {
   requestTimeoutMs?: number;
   discoveryCwd?: () => string;
@@ -84,6 +96,12 @@ export interface PiProviderOptions {
    * endpoints' models, as `<endpointId>/<model>`, and adds the web tools.
    */
   directEndpoints?: CustomProviderSource;
+  /**
+   * Whether a chat asks the provider for its long prompt cache, one hour where the provider has it.
+   * A session that is not saved, such as a routine run, keeps the short cache: no person comes back
+   * to it within the hour.
+   */
+  longPromptCache?: () => boolean;
   providerStateDirectory?: string;
   profileGeneration?: boolean;
   mcpServers?: McpServerSource;
@@ -113,6 +131,8 @@ interface PiThread {
   rpc: PiRpc;
   mcp: LocalMcpSession;
   extension: PiMcpExtension;
+  /** The extension that keeps a long session small. Absent in profile generation. */
+  context: PiMcpExtension | null;
   /** The extension that adds the models of Inception or Direct, loaded before the others. */
   models: PiMcpExtension | null;
   turn: PiTurn | null;
@@ -194,7 +214,10 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
       yield* thread.rpc.stop();
       thread.mcp.close();
       yield* thread.extension.close();
-    }).pipe(Effect.ensuring(thread.models ? thread.models.close().pipe(Effect.orDie) : Effect.void));
+    }).pipe(
+      Effect.ensuring(thread.models ? thread.models.close().pipe(Effect.orDie) : Effect.void),
+      Effect.ensuring(thread.context ? thread.context.close().pipe(Effect.orDie) : Effect.void),
+    );
   });
 
   readonly releaseThread = Effect.fn("PiAgentClient.releaseThread")(function* (this: PiAgentClient, id: string) {
@@ -298,7 +321,9 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
       case "thread/compact/start": {
         const id = yield* providerSync(() => requiredString(params, "threadId"));
         const thread = yield* this.#thread(id, params);
-        yield* thread.gate.withPermit(thread.rpc.request({ type: "compact" }, timeoutMs ?? 120_000));
+        yield* thread.gate.withPermit(
+          thread.rpc.request({ type: "compact", customInstructions: PI_COMPACTION_INSTRUCTIONS }, timeoutMs ?? 120_000),
+        );
         response = {};
         break;
       }
@@ -416,6 +441,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
     let thread: PiThread | null = null;
     let extension: PiMcpExtension | null = null;
     let models: PiMcpExtension | null = null;
+    let context: PiMcpExtension | null = null;
     const rpc = new PiRpc(this.#redact, this.provider);
     let retained = false;
     const mcp = yield* this.#bridge
@@ -439,6 +465,15 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
       extension = yield* createPiMcpExtension(handoff.servers, mcp, this.options.providerStateDirectory);
       for (const secret of extension.secrets) this.#secrets.add(secret);
       models = yield* this.#modelsExtension();
+      const longCache =
+        !this.options.profileGeneration &&
+        !(isRecord(params) && params.persistSession === false) &&
+        this.options.longPromptCache?.() === true;
+      if (!this.options.profileGeneration)
+        context = yield* createPiContextExtension(
+          longCache ? PI_LONG_CACHE_MS : PI_SHORT_CACHE_MS,
+          this.options.providerStateDirectory,
+        );
       rpc.on("diagnostic", (text) => this.emit("diagnostic", text, { duringStop: thread?.closed ?? false }));
       rpc.on("record", (record) => {
         if (thread && !thread.closed) this.#record(thread, record);
@@ -462,12 +497,18 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
           ? ["--no-tools", "--no-extensions", "--no-mcp"]
           : ["--extension", extension.path]),
       );
+      if (context) args.push("--extension", context.path);
       // Direct also gives the search tools that Pi has but does not turn on.
       if (this.provider === "direct" && !this.options.profileGeneration) args.push("--tools", "+grep,+find,+ls");
       const instructions = getString(params, "developerInstructions");
       if (instructions) args.push("--append-system-prompt", instructions);
       if (!this.#running) return yield* providerFailure(new Error(sourceText("error.provider.piStopped")));
-      const environment = { ...extension?.environment, ...models?.environment };
+      const environment = {
+        ...extension?.environment,
+        ...context?.environment,
+        ...models?.environment,
+        ...(longCache ? { PI_CACHE_RETENTION: "long" } : {}),
+      };
       yield* providerSync(() => this.#spawn(rpc, cwd, args, environment));
       if (resume && requestedId) {
         const loaded = yield* rpc.request({ type: "switch_session", sessionPath: requestedId });
@@ -506,6 +547,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
         mcp,
         extension,
         models,
+        context,
         turn: null,
         closed: false,
         gate: Semaphore.makeUnsafe(1),
@@ -524,6 +566,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
           mcp.close();
           if (extension) yield* extension.close().pipe(Effect.orDie);
           if (models) yield* models.close().pipe(Effect.orDie);
+          if (context) yield* context.close().pipe(Effect.orDie);
         }),
       ),
     );

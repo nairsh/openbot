@@ -148,7 +148,7 @@ import { ConversationRuntime } from "./agent/conversation-runtime";
 import { CustomEndpoints, toEndpointChangeFailed } from "./agent/custom-endpoints";
 import { agentNamesById, displayMessageReferences } from "./agent/delivery-content";
 import { DeltaBuffer } from "./agent/delta-buffer";
-import type { SectionTeammates } from "./agent/developer-instructions";
+import { memoriesInTurns, type SectionTeammates } from "./agent/developer-instructions";
 import { DrainScheduler } from "./agent/drain-scheduler";
 import { DuplicationGate, toAgentDuplicationFailed } from "./agent/duplication-gate";
 import type { FailureContext, FailureSignal } from "./agent/failure-signal";
@@ -157,6 +157,7 @@ import { ImageGenRuntime } from "./agent/image-gen-runtime";
 import { MailboxSync } from "./agent/mailbox-sync";
 import { type GitHubConnectorSource, McpGateway, type TestMcpServerOptions } from "./agent/mcp-gateway";
 import { mcpServersFromGateway } from "./agent/mcp-tools";
+import { MEMORY_FLUSH_CHAT_MESSAGES, memoryFlushFacts, memoryFlushPrompt } from "./agent/memory-flush";
 import { MemoryHold } from "./agent/memory-hold";
 import {
   creationModel,
@@ -245,6 +246,8 @@ import {
 } from "./workspace-paths";
 
 const logger = createOpenBotLogger("agent-service");
+/** A compaction soon after another one finds no new durable facts. */
+const MEMORY_FLUSH_INTERVAL_MS = 10 * 60_000;
 
 /**
  * Only the application knows which managed CLIs it downloaded, so a caller that says nothing gets
@@ -433,6 +436,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #deltas: DeltaBuffer;
   readonly #turn: TurnLifecycle;
   readonly #compaction: ContextCompaction;
+  /** When each agent last flushed its memories before a compaction. */
+  readonly #memoryFlushes = new Map<string, number>();
   readonly #duplication: DuplicationGate;
   readonly #removal: AgentRemoval;
   readonly #tools: OpenBotToolRouter;
@@ -777,7 +782,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       emitError: (code, error, agentId) => this.#emitError(code, error, agentId),
       scheduleDrain: (agentId) => this.#drain.scheduleDrain(agentId),
       rotateSession: (agentId, client, threadId) => this.#threads.rotateProviderSession(agentId, client, threadId),
-      compacted: (threadId) => this.channels.contextCompacted(threadId),
+      compacted: (threadId) => {
+        this.channels.contextCompacted(threadId);
+        // A client that keeps its session's memories until it loads again gets them now: the
+        // summary replaced the cached prefix anyway.
+        const client = this.#conversation.loadedClientFor(threadId);
+        if (client && !memoriesInTurns(client.provider)) this.#conversation.reloadThread(threadId);
+      },
+      compacting: (threadId) => this.#flushMemoriesBeforeCompaction(threadId),
       compactIdle: (agentId, threadId) => this.#compactIdleContext(agentId, threadId),
     });
     this.#attention = new AttentionRegistry({
@@ -2920,6 +2932,66 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     });
     yield* this.#compaction.request(agentId, externalThreadId);
   }, Effect.uninterruptible).bind(this);
+
+  /**
+   * The memory flush before a compaction of the agent's own chat: a call without tools reads the end
+   * of the chat that OpenBot keeps and names the durable facts that no memory holds yet, and OpenBot
+   * saves them. It works for every provider, also one that compacts by itself, and it does not touch
+   * the provider session, so its prompt cache stays. It runs beside the compaction, at most once in
+   * `MEMORY_FLUSH_INTERVAL_MS` for each agent, and a failure is only logged.
+   */
+  #flushMemoriesBeforeCompaction(threadId: string): void {
+    if (process.env.OPENBOT_MEMORY_FLUSH === "off" || this.#stopping) return;
+    const agentId = this.#conversation.agentForThread(threadId);
+    const agent = agentId ? this.#store.list().find((candidate) => candidate.id === agentId) : undefined;
+    if (!agent?.threadId) return;
+    const session = this.#store.database.activeProviderSession(agent.threadId, agent.provider);
+    if (session?.externalSessionId !== threadId) return;
+    const last = this.#memoryFlushes.get(agent.id);
+    if (last !== undefined && Date.now() - last < MEMORY_FLUSH_INTERVAL_MS) return;
+    this.#memoryFlushes.set(agent.id, Date.now());
+    Effect.runFork(
+      this.#flushMemories(agent).pipe(
+        Effect.catchCause((cause) =>
+          Effect.sync(() =>
+            logger.warn("Could not save memories before a compaction.", { provider: agent.provider, cause }),
+          ),
+        ),
+        Effect.forkIn(this.#scope, { startImmediately: true }),
+      ),
+    );
+  }
+
+  readonly #flushMemories = Effect.fn("AgentService.flushMemories")(function* (
+    this: AgentService,
+    agent: AgentSummary,
+  ) {
+    const model = this.#endpoints
+      .available()
+      .find((candidate) => candidate.provider === agent.provider && candidate.id === agent.model);
+    // A busy generation slot belongs to the user's own side questions and profiles; the flush waits
+    // for the next compaction rather than take it.
+    if (!model || this.#profileClients.busy()) return;
+    const messages = this.#store.database.readConversationPage(
+      agent.id,
+      agent.threadId,
+      { type: "latest" },
+      MEMORY_FLUSH_CHAT_MESSAGES,
+    ).messages;
+    const memories = this.#memories.listFor(agent.id);
+    const client = this.#providers.createProfileClient(agent.provider);
+    const answer = yield* this.#profileClients.run(client, (cancelled) =>
+      generateTextWithoutTools(
+        client,
+        { ...model, defaultReasoningEffort: agent.reasoningEffort },
+        memoryFlushPrompt(agent, messages, memories),
+        cancelled,
+      ),
+    );
+    const facts = yield* Effect.try(() => memoryFlushFacts(answer, memories));
+    const saved = this.#memories.saveFlushed(agent.id, facts);
+    if (saved > 0) logger.info("Saved memories before a compaction.", { provider: agent.provider, saved });
+  });
 
   /**
    * Idle compaction of the agent's own chat. It is a manual compaction that no one asked for, so it

@@ -514,6 +514,8 @@ function piClient(
       : {}),
     extraEnv: () => ({ ...context.agentEnvironment?.() }),
     ...piModels(provider, context),
+    // The server's prompt cache time, which the Claude settings set, also asks Pi for its long cache.
+    longPromptCache: () => (context.promptCacheTtl?.() ?? DEFAULT_PROMPT_CACHE_TTL.ttl) === "1h",
     ...(context.providerStateDirectory ? { providerStateDirectory: context.providerStateDirectory } : {}),
     mcpServers: context.mcpServers,
     ...(context.reportMcpDrops ? { reportMcpDrops: context.reportMcpDrops } : {}),

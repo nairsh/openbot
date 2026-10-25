@@ -755,6 +755,14 @@ export class ConversationRuntime {
     this.#unloadedThreads.delete(externalThreadId);
   }
 
+  /** The next turn of this session loads it again, with the instructions and memories of now. */
+  reloadThread(externalThreadId: string): void {
+    const client = this.#loadedThreads.get(externalThreadId);
+    if (!client) return;
+    this.#loadedThreads.delete(externalThreadId);
+    this.#unloadedThreads.set(externalThreadId, client);
+  }
+
   unloadThread(externalThreadId: string): void {
     this.#loadedThreads.delete(externalThreadId);
     this.#unloadedThreads.delete(externalThreadId);
@@ -773,12 +781,12 @@ export class ConversationRuntime {
    * Every provider session this agent holds: its own chat, and each channel thread it runs. The
    * developer instructions are written when a session loads, so a change of the profile or of the
    * memories has to unload all of them. One session alone would leave a channel turn on the values
-   * the agent had before.
+   * the agent had before. `only` keeps the sessions of the other clients loaded.
    */
-  unloadAgentThreads(agentId: string): void {
+  unloadAgentThreads(agentId: string, only?: (client: AgentClient) => boolean): void {
     for (const [externalThreadId, owner] of this.#threadToAgent) {
       const client = owner === agentId ? this.#loadedThreads.get(externalThreadId) : undefined;
-      if (!client) continue;
+      if (!client || (only && !only(client))) continue;
       this.#loadedThreads.delete(externalThreadId);
       this.#unloadedThreads.set(externalThreadId, client);
     }

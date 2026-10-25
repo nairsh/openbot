@@ -49,6 +49,8 @@ export interface ContextCompactionOptions {
   changed?(): void;
   /** A provider session finished a compaction: its summary replaces what it read before. */
   compacted?(threadId: string): void;
+  /** A compaction of a provider session started, so its earlier messages leave the context soon. */
+  compacting?(threadId: string): void;
   /**
    * Compacts the agent's own chat after it stayed idle, when nothing needs the session. Absent, or
    * with `OPENBOT_IDLE_COMPACTION=off`, there is no idle compaction. Tests give a short delay.
@@ -101,6 +103,7 @@ export class ContextCompaction {
   readonly #durations = new Map<string, number>();
   readonly #changed: () => void;
   readonly #compacted: (threadId: string) => void;
+  readonly #compacting: (threadId: string) => void;
   readonly #timers = new Map<string, NodeJS.Timeout>();
   /** The idle timer of each provider thread whose last turn ended. */
   readonly #idleTimers = new Map<string, NodeJS.Timeout>();
@@ -111,6 +114,7 @@ export class ContextCompaction {
   constructor(options: ContextCompactionOptions) {
     this.#changed = options.changed ?? (() => {});
     this.#compacted = options.compacted ?? (() => {});
+    this.#compacting = options.compacting ?? (() => {});
     this.#timeoutMs = options.timeoutMs ?? CONTEXT_COMPACTION_TIMEOUT_MS;
     this.#graceMs = Math.ceil(this.#timeoutMs / 4);
     this.#store = options.store;
@@ -210,6 +214,7 @@ export class ContextCompaction {
     this.#display.set(threadId, display);
     this.#emitChanged();
     if (status === "completed") this.#compacted(threadId);
+    else if (status === "running") this.#compacting(threadId);
   }
 
   /** Ends a running compaction whose provider stopped before it reported the result. */

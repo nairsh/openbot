@@ -36,7 +36,7 @@ function chatMessage(message: ConversationMessage): boolean {
   );
 }
 
-function chatTranscript(agent: AgentSummary, messages: readonly ConversationMessage[]) {
+export function chatTranscript(agent: AgentSummary, messages: readonly ConversationMessage[]) {
   const entries: { from: string; text: string }[] = [];
   let characters = 0;
   for (const message of [...messages].filter(chatMessage).reverse()) {

@@ -51,6 +51,7 @@ import type { ConversationRuntime } from "./conversation-runtime";
 import { agentNamesById } from "./delivery-content";
 import {
   developerInstructions,
+  memoriesInTurns,
   memoryContext,
   type SectionTeammates,
   type VaultContents,
@@ -946,8 +947,8 @@ export class ThreadLifecycle {
       serverHost: this.#serverHost,
       memoryLimit: this.#memories.limit(),
       storedMemoryCount: this.#memories.listFor(agent.id).length,
-      memoriesInTurns: client.provider === "claude",
-      teammatesInTurns: client.provider === "claude",
+      memoriesInTurns: memoriesInTurns(client.provider),
+      teammatesInTurns: memoriesInTurns(client.provider),
       sectionTeammates: section,
     };
     const instructions = developerInstructions(

@@ -883,6 +883,9 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
             // Without a terminal, the CLI gives the newer models no TodoWrite or task tools, so the
             // agent has no plan for OpenBot to show as a task list.
             CLAUDE_CODE_ENABLE_TODO_TOOLS: "1",
+            // A session that is not saved, such as a routine run or a one-time generation, keeps
+            // the 5-minute cache: no person comes back to it, and the 1-hour cache costs more to write.
+            ...(config.persistSession ? {} : { ENABLE_PROMPT_CACHING_1H: undefined }),
           },
         },
       }),

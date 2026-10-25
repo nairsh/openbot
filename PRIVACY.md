@@ -94,6 +94,12 @@ Channel history keeps its existing membership and task checks. Messaging history
 current link. The full conversation stays in local SQLite storage. No history text is sent to the
 account service or analytics by these tools.
 
+When the context of an agent's own chat is compacted, OpenBot first sends the end of that chat
+(at most 120 messages) and the agent's saved memory texts to the agent's own provider and model, in
+a separate request with no tools. The answer lists durable facts, and OpenBot saves them on this
+computer as the agent's automatic memories. A fact that holds a secret is not saved. This happens at
+most once in 10 minutes for each agent. Set `OPENBOT_MEMORY_FLUSH=off` to turn it off.
+
 ## Local scripts
 
 Local scripts is off by default for each agent. When enabled, scripts that run as the same OS user

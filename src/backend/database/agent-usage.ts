@@ -16,6 +16,7 @@ import {
   type UsageTokens,
 } from "@openbot/contracts/ipc";
 import type { DynamicRecord } from "@openbot/contracts/runtime-values";
+import { CacheReadMonitor } from "../agent/cache-read-monitor";
 import { estimateUsageCost } from "../agent/usage-pricing";
 import type { DatabaseCore } from "./database-core";
 import { databaseRow, databaseRows, optionalNumberColumn, requiredStringColumn } from "./database-rows";
@@ -55,6 +56,7 @@ export interface TurnModelUsage {
 /** Owns numeric analytics and cumulative checkpoints. Conversation deletion does not erase usage. */
 export class AgentUsage {
   readonly #core: DatabaseCore;
+  readonly #cacheReads = new CacheReadMonitor();
   constructor(core: DatabaseCore) {
     this.#core = core;
   }
@@ -174,6 +176,7 @@ export class AgentUsage {
           estimate.basis,
           new Date().toISOString(),
         );
+        this.#cacheReads.observe(sample.sessionId, sample.provider, sample.model, delta);
         return null;
       },
     );
