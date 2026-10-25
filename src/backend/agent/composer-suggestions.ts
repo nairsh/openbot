@@ -29,7 +29,7 @@ export function usesNativeSuggestions(preference: ComposerSuggestionPreference, 
 }
 
 /** The prompt of a separate prediction. The generation has no tools, so it reads only this text. */
-export function composerSuggestionPrompt(agent: AgentSummary, messages: readonly ConversationMessage[]): string {
+function composerSuggestionPrompt(agent: AgentSummary, messages: readonly ConversationMessage[]): string {
   return [
     `You predict the next message that the user will type in their chat with the agent ${tagSafe(agent.name)}. Read the end of the chat and write the message the user is most likely to send next.`,
     `Write it as the user, not as the agent: at most ${SUGGESTION_WORDS} words, in the language of the chat. A good prediction is the natural next step, the answer to a question the agent asked, or a short approval such as "Yes, go ahead". Do not start a new topic.`,
@@ -44,7 +44,7 @@ export function composerSuggestionPrompt(agent: AgentSummary, messages: readonly
  * The suggestion in a model's answer, or null when there is none to show: no answer, `NONE`, more
  * than one line's worth of text, a secret, or the user's last message again.
  */
-export function composerSuggestionText(answer: string, messages: readonly ConversationMessage[]): string | null {
+function composerSuggestionText(answer: string, messages: readonly ConversationMessage[]): string | null {
   const [line = ""] = answer.trim().split("\n");
   const text = line
     .trim()
