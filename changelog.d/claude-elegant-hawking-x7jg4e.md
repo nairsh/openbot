@@ -19,3 +19,8 @@
 - Routine runs and one-time generations use the 5-minute prompt cache, which costs less to write.
 - The message box eases to its new height when the text gains or loses a line.
 - A new reaction on a message pops in.
+
+### Fixed
+
+- Start the app again after the last update. The main process stopped at launch with
+  "`__dirname` is not defined in ES module scope".
