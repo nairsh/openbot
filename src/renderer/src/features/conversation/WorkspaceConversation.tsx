@@ -231,6 +231,8 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
   });
   const remoteAgentSettings = remoteAgentAdmin.settings;
 
+  const lastMessageIsContextReset = () => activeMessages().at(-1)?.actionMarker?.kind === "context-reset";
+
   /** A new chat with the active agent, on this computer or on a host that serves `context-reset-v1`. */
   const clearActiveAgentContext = createMemo(() => {
     const agent = activeAgent();
@@ -554,7 +556,10 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
         browserTakeover={activeBrowserTakeover()}
         activeTurnId={activeAgent() ? activeTurns()[activeAgent()?.id ?? ""] : null}
         activityDetail={activeAgent() ? turnProgress()[activeAgent()?.id ?? ""]?.detail : undefined}
-        composerSuggestion={activeAgent() ? composerSuggestions()[activeAgent()?.id ?? ""] : undefined}
+        // A cleared chat does not start a turn, so its marker, not a turn start, makes the suggestion stale.
+        composerSuggestion={
+          activeAgent() && !lastMessageIsContextReset() ? composerSuggestions()[activeAgent()?.id ?? ""] : undefined
+        }
         onComposerSuggestionClose={() => {
           const agentId = activeAgent()?.id;
           if (agentId) setComposerSuggestions((current) => withoutAgent(current, agentId));
