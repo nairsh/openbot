@@ -23,10 +23,11 @@ export const PI_LONG_CACHE_MS = 60 * 60_000;
  *   before the last three answers. A cleared result stays cleared for the rest of the process, so
  *   later requests send the same bytes and the cache that the first one writes stays valid.
  */
-const EXTENSION = `import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-
-export default function (pi) {
+const EXTENSION = `export default async function (pi) {
+  // Dynamic imports only: main's bundle holds this text, and electron-vite puts its \`__dirname\`
+  // shim after the last static import that it finds there, also one inside a string.
+  const { mkdirSync, writeFileSync } = await import("node:fs");
+  const { dirname, join } = await import("node:path");
   const slot = Symbol.for("openbot.pi.context");
   globalThis[slot] ??= { cacheMs: Number(process.env.OPENBOT_PI_CACHE_TTL_MS) || ${PI_SHORT_CACHE_MS}, sessions: new Map() };
   delete process.env.OPENBOT_PI_CACHE_TTL_MS;
