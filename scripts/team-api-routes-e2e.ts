@@ -1165,14 +1165,14 @@ try {
     const hiddenBy = (protocol: number) =>
       AGENT_PROVIDERS.filter((provider) => isPeerHiddenProvider(provider, protocol));
     const expectedHidden: Record<number, readonly string[]> = {
-      1: ["opencode", "antigravity", "acp", "cursor", "cline", "pi", "muse", "inception"],
-      3: ["opencode", "antigravity", "acp", "cursor", "cline", "pi", "muse", "inception"],
-      4: ["antigravity", "acp", "cursor", "cline", "pi", "muse", "inception"],
-      5: ["cursor", "cline", "pi", "muse", "inception"],
-      6: ["pi", "muse", "inception"],
-      7: ["inception"],
-      8: ["inception"],
-      9: ["inception"],
+      1: ["opencode", "antigravity", "acp", "cursor", "cline", "pi", "muse", "inception", "direct"],
+      3: ["opencode", "antigravity", "acp", "cursor", "cline", "pi", "muse", "inception", "direct"],
+      4: ["antigravity", "acp", "cursor", "cline", "pi", "muse", "inception", "direct"],
+      5: ["cursor", "cline", "pi", "muse", "inception", "direct"],
+      6: ["pi", "muse", "inception", "direct"],
+      7: ["inception", "direct"],
+      8: ["inception", "direct"],
+      9: ["inception", "direct"],
     };
     const hiddenRows = Object.entries(expectedHidden).map(([protocol, expected]) => ({
       protocol: Number(protocol),
@@ -1180,7 +1180,7 @@ try {
       expected: AGENT_PROVIDERS.filter((provider) => expected.includes(provider)),
     }));
     check(
-      "the frozen provider lists hide each provider that a protocol below 8 does not know, and every protocol hides Inception",
+      "the frozen provider lists hide each provider that a protocol below 8 does not know, and every protocol hides Inception and Direct",
       hiddenRows.every((row) => isDeepStrictEqual(row.hidden, row.expected)),
       hiddenRows,
     );

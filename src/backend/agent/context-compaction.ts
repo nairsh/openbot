@@ -21,6 +21,15 @@ interface ThreadContextBudget {
 
 const CONTEXT_COMPACTION_THRESHOLD = 0.8;
 const CONTEXT_COMPACTION_TIMEOUT_MS = 120_000;
+/**
+ * Idle compaction: a long context that waits this long after its last turn is compacted before the
+ * provider's one-hour prompt cache expires, so the next message sends a summary instead of reading
+ * the whole context again at the uncached price. The same rule as Claude Code's idle compaction.
+ */
+const IDLE_COMPACTION_DELAY_MS = 54 * 60_000;
+/** The smallest context that idle compaction takes: 200K tokens, or half of a smaller window. */
+const IDLE_COMPACTION_MIN_TOKENS = 200_000;
+const IDLE_COMPACTION_MIN_SHARE = 0.5;
 /** Usage arrives after each model step; one runtime snapshot carries the latest value of a burst. */
 const USAGE_CHANGE_DELAY_MS = 250;
 
@@ -40,6 +49,12 @@ export interface ContextCompactionOptions {
   changed?(): void;
   /** A provider session finished a compaction: its summary replaces what it read before. */
   compacted?(threadId: string): void;
+  /**
+   * Compacts the agent's own chat after it stayed idle, when nothing needs the session. Absent, or
+   * with `OPENBOT_IDLE_COMPACTION=off`, there is no idle compaction. Tests give a short delay.
+   */
+  compactIdle?(agentId: string, threadId: string): Effect.Effect<void>;
+  idleDelayMs?: number | undefined;
 }
 
 /** Whether OpenBot can ask for a compaction of this client, automatically or for the user. */
@@ -87,6 +102,10 @@ export class ContextCompaction {
   readonly #changed: () => void;
   readonly #compacted: (threadId: string) => void;
   readonly #timers = new Map<string, NodeJS.Timeout>();
+  /** The idle timer of each provider thread whose last turn ended. */
+  readonly #idleTimers = new Map<string, NodeJS.Timeout>();
+  readonly #compactIdle: ContextCompactionOptions["compactIdle"];
+  readonly #idleDelayMs: number;
   #usageTimer: NodeJS.Timeout | null = null;
 
   constructor(options: ContextCompactionOptions) {
@@ -99,6 +118,8 @@ export class ContextCompaction {
     this.#emitError = options.emitError;
     this.#scheduleDrain = options.scheduleDrain;
     this.#rotateSession = options.rotateSession;
+    this.#compactIdle = process.env.OPENBOT_IDLE_COMPACTION === "off" ? undefined : options.compactIdle;
+    this.#idleDelayMs = options.idleDelayMs ?? IDLE_COMPACTION_DELAY_MS;
   }
 
   /** Only personal sessions appear in the desktop snapshot; execution threads remain separate. */
@@ -197,7 +218,35 @@ export class ContextCompaction {
   }
 
   beginTurn(threadId: string): void {
+    this.#clearIdle(threadId);
     this.#awaitingPostCompaction.delete(threadId);
+  }
+
+  /**
+   * A turn of the agent's own chat ended without a compaction. If the chat stays idle until the
+   * prompt cache would expire and its context is long, it compacts then. A new turn cancels it.
+   */
+  scheduleIdle(agentId: string, threadId: string): void {
+    this.#clearIdle(threadId);
+    const compactIdle = this.#compactIdle;
+    if (!compactIdle) return;
+    const timer = setTimeout(() => {
+      this.#idleTimers.delete(threadId);
+      const budget = this.#budgets.get(threadId);
+      if (!budget || budget.phase !== "idle" || this.#compactingAgents.has(agentId)) return;
+      const minimum = Math.min(IDLE_COMPACTION_MIN_TOKENS, budget.contextWindow * IDLE_COMPACTION_MIN_SHARE);
+      // A context that the last compaction left as it is would compact to the same summary.
+      if (budget.usedTokens < minimum || budget.lastCompactedTokens === budget.usedTokens) return;
+      Effect.runFork(compactIdle(agentId, threadId));
+    }, this.#idleDelayMs);
+    timer.unref?.();
+    this.#idleTimers.set(threadId, timer);
+  }
+
+  #clearIdle(threadId: string): void {
+    const timer = this.#idleTimers.get(threadId);
+    if (timer) clearTimeout(timer);
+    this.#idleTimers.delete(threadId);
   }
 
   /** One clause of the drain guard the queue engine composes. False means "hold this agent's queue". */
@@ -378,6 +427,7 @@ export class ContextCompaction {
   forgetThread(threadId: string): void {
     this.#budgets.delete(threadId);
     const displayed = this.#display.delete(threadId);
+    this.#clearIdle(threadId);
     this.#durations.delete(threadId);
     this.#awaitingPostCompaction.delete(threadId);
     if (displayed) this.#emitChanged();
@@ -421,6 +471,8 @@ export class ContextCompaction {
     this.#usageTimer = null;
     for (const timer of this.#timers.values()) clearTimeout(timer);
     this.#timers.clear();
+    for (const timer of this.#idleTimers.values()) clearTimeout(timer);
+    this.#idleTimers.clear();
     this.#compactingAgents.clear();
     for (const hold of this.#refusals.values()) clearTimeout(hold.timer);
     this.#refusals.clear();

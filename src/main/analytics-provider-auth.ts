@@ -49,6 +49,8 @@ export function providerAuthKind(agent: AgentSummary, facts: ProviderAuthFacts):
       return facts.account("muse") ? "subscription" : "unknown";
     case "inception":
       return facts.hasApiKey("inception") ? "api_key" : "unknown";
+    case "direct":
+      return "custom";
     case "cursor":
       if (facts.envKey("CURSOR_API_KEY")) return "api_key";
       return facts.account("cursor") ? "subscription" : "unknown";

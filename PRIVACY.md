@@ -1150,6 +1150,18 @@ contact Inception. Pi keeps its session files in its own folder, as for Pi agent
 copy or upload these files. Inception's terms apply: <https://www.inceptionlabs.ai/docs/terms-of-use>.
 Inception agents stay on this computer: OpenBot does not show them to team members.
 
+### Direct
+
+Direct agents run in the Pi CLI that OpenBot downloads for Pi, with the custom endpoints saved under
+Settings › Providers. OpenBot gives each endpoint's address, key, and headers to the local Pi process
+in its environment and redacts them from logs. Pi does not write them to a file. Prompts,
+attachments, and tool results go to that process, and Pi sends them to the endpoint of the agent's
+model. Direct agents also have two web tools. `web_fetch` downloads the address that the agent
+names. `web_search` sends the agent's search query to DuckDuckGo (`html.duckduckgo.com`), or to
+Tavily (`api.tavily.com`) with the `TAVILY_API_KEY` from the environment that OpenBot starts with.
+Pi keeps its session files in its own folder, as for Pi agents. OpenBot does not copy or upload these
+files. Direct agents stay on this computer: OpenBot does not show them to team members.
+
 ### Local model servers
 
 When Server settings shows the Providers section of this computer, and once on the onboarding

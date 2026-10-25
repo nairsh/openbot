@@ -778,6 +778,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       scheduleDrain: (agentId) => this.#drain.scheduleDrain(agentId),
       rotateSession: (agentId, client, threadId) => this.#threads.rotateProviderSession(agentId, client, threadId),
       compacted: (threadId) => this.channels.contextCompacted(threadId),
+      compactIdle: (agentId, threadId) => this.#compactIdleContext(agentId, threadId),
     });
     this.#attention = new AttentionRegistry({
       conversation: this.#conversation,
@@ -2919,6 +2920,17 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     });
     yield* this.#compaction.request(agentId, externalThreadId);
   }, Effect.uninterruptible).bind(this);
+
+  /**
+   * Idle compaction of the agent's own chat. It is a manual compaction that no one asked for, so it
+   * does nothing, and says nothing, when the chat is not the agent's own or something needs it now.
+   */
+  #compactIdleContext(agentId: string, threadId: string): Effect.Effect<void> {
+    const agent = this.#store.list().find((candidate) => candidate.id === agentId);
+    const session = agent?.threadId ? this.#store.database.activeProviderSession(agent.threadId, agent.provider) : null;
+    if (session?.externalSessionId !== threadId) return Effect.void;
+    return this.compactAgentContext(agentId).pipe(Effect.catchCause(() => Effect.void));
+  }
 
   /**
    * The new chat that the agent asked for with `start_new_chat`. The drain calls it when the agent's

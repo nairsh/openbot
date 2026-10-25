@@ -1724,6 +1724,7 @@ export class ProviderRuntime implements ProviderPort {
   readonly reloadOpenCodeConfig = Effect.fn("ProviderRuntime.reloadOpenCodeConfig")(function* (
     this: ProviderRuntime,
   ): Effect.fn.Return<CustomProviderRestart> {
+    yield* this.#reloadDirectEndpoints();
     if (!this.#clients.has("opencode")) return "not-running";
     if (this.#hooks.isProviderBusy("opencode")) return "skipped-busy";
     const result = yield* Effect.result(
@@ -1732,6 +1733,22 @@ export class ProviderRuntime implements ProviderPort {
     if (Result.isFailure(result) && this.#hooks.isProviderBusy("opencode")) return "skipped-busy";
     return "restarted";
   }, Effect.uninterruptible).bind(this);
+
+  /**
+   * Direct runs the same endpoints, so a change reaches it too: its model list, and the Pi sessions
+   * that it opens next. A session that is open keeps the endpoints it started with until it closes.
+   * The OpenCode result stays the one that the caller reports.
+   */
+  readonly #reloadDirectEndpoints = Effect.fn("ProviderRuntime.reloadDirectEndpoints")(function* (
+    this: ProviderRuntime,
+  ) {
+    if (this.#off.has("direct") || this.#hooks.isProviderBusy("direct")) return;
+    yield* Effect.result(
+      this.#clients.has("direct")
+        ? this.#runProviderConnectionCommand("direct", () => this.#reprobeProvider("direct"))
+        : this.refreshProvider("direct"),
+    );
+  });
 
   /**
    * Restarts each running process that read the agent environment when it started, so the next
@@ -2813,7 +2830,9 @@ export class ProviderRuntime implements ProviderPort {
           ? sourceText("error.provider.museSignIn")
           : provider === "inception"
             ? sourceText("error.provider.inceptionSignIn")
-            : agentProviderDescriptor(provider).signInMessage)
+            : provider === "direct"
+              ? sourceText("error.provider.directSignIn")
+              : agentProviderDescriptor(provider).signInMessage)
     );
   }
 

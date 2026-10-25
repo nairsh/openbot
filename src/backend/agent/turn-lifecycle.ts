@@ -1055,7 +1055,11 @@ export class TurnLifecycle {
         ...(quiet ? { quiet: true as const } : {}),
       });
       if (shouldCompact) yield* this.#compaction.request(agentId, threadId);
-      else this.#hooks.scheduleDrain(agentId);
+      else {
+        // A routine's session closes after its turn, so only another chat can wait idle.
+        if (outcome === "completed" && !routineSession) this.#compaction.scheduleIdle(agentId, threadId);
+        this.#hooks.scheduleDrain(agentId);
+      }
     },
     Effect.uninterruptible,
     (completion, agentId, threadId, turnId, status) =>

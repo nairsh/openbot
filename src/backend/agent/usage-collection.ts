@@ -8,6 +8,8 @@ import { getRecord, getString } from "../protocol";
 
 const logger = createOpenBotLogger("usage-collection");
 
+const DIRECT_COST_BASIS = "Cost reported by the custom endpoint, as Pi counted it";
+
 function count(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
@@ -149,6 +151,11 @@ export function collectProviderUsage(
     counterId: `${session.id}:grok`,
     baseline: session.createdAt < usage.collectionStartedAt(),
     tokens: acpTokens(value),
+    // Direct runs the user's own endpoints, which have no list price: the session's cost is the one
+    // that Pi counted, from what the endpoint reported. Like the tokens, it counts the whole session.
+    ...(session.provider === "direct"
+      ? { reportedCost: cost(isDynamicRecord(params) ? params.costUsd : null), reportedCostBasis: DIRECT_COST_BASIS }
+      : {}),
   });
 }
 

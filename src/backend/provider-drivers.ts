@@ -483,9 +483,18 @@ export interface BuiltInProviderDriver {
   validateAccount(account: NonNullable<AccountReadResult["account"]>): void;
 }
 
-/** Pi and Inception run the same Pi client. Inception adds its key, which loads its extension. */
+/**
+ * Pi, Inception and Direct run the same Pi client. Inception adds its key and Direct the saved
+ * custom endpoints, which load their extension.
+ */
+function piModels(provider: "pi" | "inception" | "direct", context: ProviderClientContext) {
+  if (provider === "inception") return { inceptionApiKey: () => context.apiKey("inception") };
+  if (provider === "direct") return { directEndpoints: context.customProviders };
+  return {};
+}
+
 function piClient(
-  provider: "pi" | "inception",
+  provider: "pi" | "inception" | "direct",
   cli: AgentCliInfo,
   timeout: number,
   context: ProviderClientContext,
@@ -504,7 +513,7 @@ function piClient(
         }
       : {}),
     extraEnv: () => ({ ...context.agentEnvironment?.() }),
-    ...(provider === "inception" ? { inceptionApiKey: () => context.apiKey("inception") } : {}),
+    ...piModels(provider, context),
     ...(context.providerStateDirectory ? { providerStateDirectory: context.providerStateDirectory } : {}),
     mcpServers: context.mcpServers,
     ...(context.reportMcpDrops ? { reportMcpDrops: context.reportMcpDrops } : {}),
@@ -515,7 +524,7 @@ function piClient(
 }
 
 function piProfileClient(
-  provider: "pi" | "inception",
+  provider: "pi" | "inception" | "direct",
   cli: AgentCliInfo,
   timeout: number,
   context: ProviderClientContext,
@@ -523,7 +532,7 @@ function piProfileClient(
   return new PiAgentClient(cli, {
     requestTimeoutMs: timeout,
     profileGeneration: true,
-    ...(provider === "inception" ? { inceptionApiKey: () => context.apiKey("inception") } : {}),
+    ...piModels(provider, context),
     ...(context.providerStateDirectory ? { providerStateDirectory: context.providerStateDirectory } : {}),
   });
 }
@@ -548,6 +557,17 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
     createClient: (cli, timeout, context, confinement) => piClient("inception", cli, timeout, context, confinement),
     createProfileClient: (cli, timeout, context) => piProfileClient("inception", cli, timeout, context),
     authState: (account) => ({ kind: "inception", email: account?.email ?? null }),
+    validateAccount: () => undefined,
+  },
+  {
+    id: "direct",
+    // The endpoints are saved under Custom endpoints. Pi's own sign-in stays on the Pi row.
+    signIn: { kind: "external" },
+    cliProvider: "pi",
+    resolveCli: resolvePiCli,
+    createClient: (cli, timeout, context, confinement) => piClient("direct", cli, timeout, context, confinement),
+    createProfileClient: (cli, timeout, context) => piProfileClient("direct", cli, timeout, context),
+    authState: (account) => ({ kind: "direct", email: account?.email ?? null }),
     validateAccount: () => undefined,
   },
   {

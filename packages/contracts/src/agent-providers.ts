@@ -30,6 +30,7 @@ export const AGENT_PROVIDERS = [
   "pi",
   "muse",
   "inception",
+  "direct",
   "acp",
 ] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDERS)[number];
@@ -375,6 +376,28 @@ const AGENT_PROVIDER_DESCRIPTOR_TABLE = {
     reportsUsage: false,
     approvalsInFullAccess: true,
   },
+  // The user's own OpenAI-compatible endpoints, run in the Pi CLI that OpenBot downloads for Pi, with
+  // only the tools a coding agent needs. The endpoints are the ones saved under Custom endpoints.
+  direct: {
+    id: "direct",
+    displayName: "Direct",
+    cliName: "Pi CLI",
+    onboardingDescription: "Your own OpenAI-compatible endpoints in a light built-in agent",
+    signInMessage: "Add a custom endpoint to continue.",
+    installGuideLink: null,
+    defaultModel: "",
+    legacyModelPrefix: null,
+    authKind: "direct",
+    pickerOrder: 10,
+    localCodeSignIn: null,
+    signInPageEnd: "callback",
+    skillFolders: [".agents/skills"],
+    workspaceEnforcement: "confined-process",
+    steer: "native",
+    concurrentTurns: true,
+    reportsUsage: true,
+    approvalsInFullAccess: true,
+  },
   // One provider for every Agent Client Protocol agent the user adds by command. The model id names
   // the agent (`<customAgentId>/<agentModel>`), so one provider row serves them all and the shipped
   // provider CHECK lists grow by one word only once.
@@ -453,7 +476,8 @@ export function isManagedRuntimeProvider(provider: AgentProviderId): provider is
 
 /**
  * The providers that only newer Team API protocols carry: Gemini and custom ACP agents from protocol
- * 5, Cursor and Cline from protocol 6, Pi and Muse from protocol 7. No protocol carries Inception yet.
+ * 5, Cursor and Cline from protocol 6, Pi and Muse from protocol 7. No protocol carries Inception or
+ * Direct yet.
  * A joined server's settings list one only when the host's status names it.
  */
 export const LOCAL_ONLY_PROVIDERS = [
@@ -463,6 +487,7 @@ export const LOCAL_ONLY_PROVIDERS = [
   "pi",
   "muse",
   "inception",
+  "direct",
   "acp",
 ] as const satisfies readonly AgentProviderId[];
 

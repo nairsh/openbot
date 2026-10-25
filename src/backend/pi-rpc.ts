@@ -24,7 +24,7 @@ export class PiRpc extends EventEmitter<{ record: [DynamicRecord]; diagnostic: [
   #stopping = false;
   constructor(
     private readonly redact: (text: string) => string,
-    private readonly provider: "pi" | "inception" = "pi",
+    private readonly provider: "pi" | "inception" | "direct" = "pi",
   ) {
     super();
   }

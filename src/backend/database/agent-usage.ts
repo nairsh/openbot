@@ -30,6 +30,8 @@ export interface UsageSample {
   tokens: UsageTokens;
   baseline: boolean;
   reportedCost?: number | null;
+  /** Where `reportedCost` comes from. Without it, the Claude SDK's list-price estimate. */
+  reportedCostBasis?: string;
   occurredAt?: string;
   /** The prompt of the last request in this update, when the provider reports it. */
   lastRequestInputTokens?: number | null;
@@ -140,6 +142,7 @@ export class AgentUsage {
             : {
                 cost: Math.max(0, sample.reportedCost - (typeof previousCost === "number" ? previousCost : 0)),
                 basis:
+                  sample.reportedCostBasis ??
                   "Claude SDK list-price estimate; https://platform.claude.com/docs/en/about-claude/pricing; verified 2026-09-07",
               };
         const estimate =

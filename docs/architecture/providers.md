@@ -619,7 +619,7 @@ provider added after v8 needs no new protocol version. The `providers-v8` routes
 The host hides a provider from a peer below v8 when that protocol's frozen list does not have it
 (`FROZEN_PROVIDERS` in `src/main/team-api/provider-visibility.ts`). So a new provider is hidden
 from old peers with no change there. Do not edit those lists. A local-only provider
-(`LOCAL_ONLY_PROVIDERS`, now only Inception) is hidden from peers on every protocol, v8 too, and the
+(`LOCAL_ONLY_PROVIDERS`, now Inception and Direct) is hidden from peers on every protocol, v8 too, and the
 peer key routes refuse its key.
 
 A v8 client keeps the agents of a provider that its build does not know (`ForeignProviderId`,
@@ -794,6 +794,26 @@ environment and a `globalThis` slot, because Pi runs extensions again on `switch
 Inception client lists only the `inception` models, with bare ids such as `mercury-3`. The Pi client
 does not load this extension, so it keeps only the user's own `inception` models. Without a key the provider has no models and asks for a key. Inception is local-only:
 no Team API protocol carries it, v8 included (`LOCAL_ONLY_PROVIDERS`).
+
+## Direct
+
+Direct is the light built-in harness for the user's own OpenAI-compatible endpoints. It runs on Pi's
+managed CLI like Inception (`cliProvider: "pi"`), and it uses the endpoints that are saved under
+Custom endpoints, the same ones OpenCode reads. `pi-endpoints.ts` writes a secret-free extension
+that registers each endpoint as a Pi provider with the endpoint's id, so model ids are
+`<endpointId>/<model>`. An `api.anthropic.com` endpoint uses Pi's Anthropic Messages API; every other
+endpoint uses chat completions. The keys and header values are in the process environment and a
+`globalThis` slot, escaped so that Pi reads them as literals.
+
+The extension also adds `web_fetch` and `web_search` (DuckDuckGo, or Tavily with `TAVILY_API_KEY`),
+and the client turns on Pi's `grep`, `find` and `ls`. With Pi's `read`, `bash`, `edit` and `write`
+and the OpenBot tools over the local MCP bridge, that is the tool set of a coding agent. The client
+lists only the endpoints' models. A saved, changed or removed endpoint refreshes Direct with OpenCode.
+
+Pi prices a model from its cost table, which is empty for an endpoint. When the endpoint reports a
+cost with its usage, as OpenRouter does, the extension puts it on the message, Pi adds it to the
+session, and the usage notice carries it as `costUsd`. The usage collector books it as the reported
+cost of the session's counter. Direct is local-only, like Inception.
 
 ## Muse
 
