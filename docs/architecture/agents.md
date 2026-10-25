@@ -708,7 +708,7 @@ closes it. The feature is desktop only and local only.
   is part of the thread configuration key, so a change of the setting restarts the query at the next
   resume; `AgentService.composerSuggestionsChanged` reloads each Claude chat for that.
 - **Other cases.** `ComposerSuggestions` (`agent/composer-suggestions.ts`) runs one generation without
-  tools through `WarmGenerations`, on the end of the stored chat (24 messages, 12,000 characters), with
+  tools through `WarmGenerations`, on the end of the stored chat after its latest context reset (24 messages, 12,000 characters), with
   the agent's model or the chosen model at its lowest reasoning level. It never waits for a busy
   generation slot, and a turn start interrupts it. A model that the catalog no longer lists predicts
   nothing; no other model takes its place. The usage goes to the agent under a

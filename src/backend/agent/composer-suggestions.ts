@@ -5,6 +5,7 @@ import {
   COMPOSER_SUGGESTION_TEXT_LIMIT,
   type ComposerSuggestionPreference,
   type ConversationMessage,
+  isContextResetMarker,
 } from "@openbot/contracts/ipc";
 import { redactText } from "@openbot/logging";
 import { Effect, Fiber } from "effect";
@@ -22,6 +23,12 @@ const CHAT_CHARACTERS = 12_000;
 const SUGGESTION_WORDS = 15;
 
 type TurnCompleted = Extract<AgentEvent, { type: "turn-completed" }>;
+
+/** The messages after the latest context reset: the agent does not see the earlier ones, so no prediction reads them. */
+function currentContext(messages: readonly ConversationMessage[]): readonly ConversationMessage[] {
+  const reset = messages.findLastIndex(isContextResetMarker);
+  return reset === -1 ? messages : messages.slice(reset + 1);
+}
 
 /** Whether the agent's own session predicts: Claude does it from its prompt cache, at almost no cost. */
 export function usesNativeSuggestions(preference: ComposerSuggestionPreference, provider: AgentProvider): boolean {
@@ -114,7 +121,7 @@ export class ComposerSuggestions {
     if (!owed || owed.threadId !== threadId || !agent) return;
     this.#owed.delete(agentId);
     if (!usesNativeSuggestions(this.#options.preference(), agent.provider)) return;
-    const text = composerSuggestionText(suggestion, this.#options.messages(agent));
+    const text = composerSuggestionText(suggestion, currentContext(this.#options.messages(agent)));
     if (text) this.#options.emit({ type: "composer-suggestion", agentId, threadId, turnId: owed.turnId, text });
   }
 
@@ -148,7 +155,7 @@ export class ComposerSuggestions {
       defaultReasoningEffort: listed.supportedReasoningEfforts[0] ?? listed.defaultReasoningEffort,
     };
     this.#stop(agent.id);
-    const messages = this.#options.messages(agent);
+    const messages = currentContext(this.#options.messages(agent));
     const predict = this.#options.generate(agent, provider, model, composerSuggestionPrompt(agent, messages)).pipe(
       Effect.map((answer) => composerSuggestionText(answer, messages)),
       Effect.tap((text) =>

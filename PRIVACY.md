@@ -102,8 +102,8 @@ most once in 10 minutes for each agent. Set `OPENBOT_MEMORY_FLUSH=off` to turn i
 
 Next message suggestions are off by default (Settings › Agents). When you turn them on, a turn that
 you started in an agent's own chat can make one more request after it ends. With "Agent's model",
-Claude makes the request in its own session, and other providers get the end of that chat (at most
-24 messages and 12,000 characters) in a separate request with no tools. With "Chosen model", every
+Claude makes the request in its own session, and other providers get the end of that chat after its latest reset (at
+most 24 messages and 12,000 characters) in a separate request with no tools. With "Chosen model", every
 agent sends that end of the chat to the provider and model that you chose, which can be a different
 provider from the agent's own. The answer is one suggested message. It shows in the message box and
 is not saved. A suggestion that holds a secret is not shown. The setting is saved on this computer
