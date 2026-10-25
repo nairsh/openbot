@@ -61,6 +61,24 @@ export const messages = {
   "settings.busyMessage.title": "作業中のエージェントの方向を修正",
   "settings.busyMessage.description":
     "新しいメッセージはキューに入らず、エージェントの現在の作業に加わります。ChatGPT と Claude で使えます。",
+  "settings.composerSuggestions.title": "次のメッセージの候補",
+  "settings.composerSuggestions.description":
+    "エージェントが返信すると、次に送りそうな内容をメッセージ欄に表示します。Tab キーで入力欄に入ります。送信はされません。",
+  "settings.composerSuggestions.mode": "候補",
+  "settings.composerSuggestions.off": "オフ",
+  "settings.composerSuggestions.agent": "エージェントのモデル",
+  "settings.composerSuggestions.model": "選択したモデル",
+  "settings.composerSuggestions.offDescription": "メッセージ欄に候補を表示しません。",
+  "settings.composerSuggestions.agentDescription":
+    "Claude は自分のチャット内で少ないコストで候補を作ります。他のプロバイダーはチャットの末尾をエージェントのモデルにもう一度送ります。",
+  "settings.composerSuggestions.modelDescription":
+    "各エージェントはチャットの末尾を下のモデルに送ります。小さく速いモデルほど費用が少なくなります。",
+  "settings.composerSuggestions.modelLabel": "モデル",
+  "settings.composerSuggestions.modelHint": "候補にはこのプロバイダーのアカウントを使います。",
+  "settings.composerSuggestions.modelMissing":
+    "このモデルは利用できません。候補を表示するには別のモデルを選んでください。",
+  "settings.composerSuggestions.modelsElsewhere":
+    "モデルを変更するには、サイドバーでこのコンピューターを開いてください。",
   "settings.keepRemoteSessions.title": "サーバーへの高速接続",
   "settings.keepRemoteSessions.description":
     "参加しているサーバーへの接続を起動の間も維持します。OpenBot の起動が約 1 秒速くなります。OpenBot を終了しても、OpenBot サービスは接続を閉じません。",

@@ -22,6 +22,7 @@ import { unloadedHistory } from "@openbot/ui/features/conversation/ChatScrollRai
 import { sidebarAgentWaits } from "@openbot/ui/features/sidebar/sidebar-agent-states";
 import { createEffect, createMemo } from "solid-js";
 import { desktopAnalytics } from "../../analytics";
+import { withoutAgent } from "../../app-message-projection";
 import { ProviderSignInDialogs } from "../../components/ProviderSignInDialogs";
 import { useNavigation } from "../../navigation";
 import { usePlatform } from "../../platform";
@@ -123,6 +124,8 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
   } = useAgents();
   const {
     contextStates,
+    composerSuggestions,
+    setComposerSuggestions,
     activeQueue,
     activeWaits,
     activeRoutineIds,
@@ -551,6 +554,11 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
         browserTakeover={activeBrowserTakeover()}
         activeTurnId={activeAgent() ? activeTurns()[activeAgent()?.id ?? ""] : null}
         activityDetail={activeAgent() ? turnProgress()[activeAgent()?.id ?? ""]?.detail : undefined}
+        composerSuggestion={activeAgent() ? composerSuggestions()[activeAgent()?.id ?? ""] : undefined}
+        onComposerSuggestionClose={() => {
+          const agentId = activeAgent()?.id;
+          if (agentId) setComposerSuggestions((current) => withoutAgent(current, agentId));
+        }}
         turnStepLines={turnStepLines()}
         skillsMarketplaceOpen={skillsMarketplaceOpen()}
         mcpSettingsOpen={serverSettingsOpen() || skillsMarketplaceOpen()}

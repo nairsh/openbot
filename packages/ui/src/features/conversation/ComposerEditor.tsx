@@ -3,7 +3,7 @@ import { attachmentReferenceIds } from "@openbot/contracts/attachment-references
 import { serializeChatTagReference } from "@openbot/contracts/chat-tag-references";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import type { DraftAttachment } from "@openbot/contracts/ipc";
-import { Badge, Blocks, Listbox, Puzzle } from "@openbot/ui";
+import { Badge, Blocks, Kbd, Listbox, Puzzle } from "@openbot/ui";
 import { usesTouchLayout } from "@openbot/ui/utils";
 import { Dynamic, Portal } from "@solidjs/web";
 import {
@@ -109,6 +109,13 @@ interface ComposerEditorProps {
    * after a word corrects that word, as text fields in macOS do. Undo restores what was typed.
    */
   correctWord?: ((word: string) => string | null) | undefined;
+  /**
+   * The user's likely next message. It shows in place of the placeholder while the editor is
+   * empty; Tab puts it in the editor and does not send it.
+   */
+  suggestion?: string | undefined;
+  /** The suggestion went away: Tab put it in the editor (`accepted`), or Escape or typing closed it. */
+  onSuggestionClose?: ((accepted: boolean) => void) | undefined;
 }
 
 /** A plain word at the end of the text. A mention, a path, a link or a name with inner capitals is not one. */
@@ -148,6 +155,9 @@ export function ComposerEditor(props: ComposerEditorProps) {
     content: string;
   } | null>(null);
   const attachmentTooltipId = `composer-file-tooltip-${createUniqueId()}`;
+  const suggestionId = `composer-suggestion-${createUniqueId()}`;
+  /** The suggestion that shows now: only in an empty editor, and not while the user dictates. */
+  const shownSuggestion = () => (!props.value && !dictating() ? props.suggestion : undefined);
   /*
    * Measured again on every keystroke, and almost always the same two values. Without this
    * comparison each measurement is a new object, which moves the picker to a new portal and
@@ -719,6 +729,7 @@ export function ComposerEditor(props: ComposerEditorProps) {
      */
     if (isComposing || event.isComposing || event.keyCode === 229 || event.key === "Process") return;
     if (handleMentionPickerKeyDown(event)) return;
+    if (handleSuggestionKeyDown(event)) return;
     if (event.key === "Backspace" && removeAutomaticMentionSpace()) {
       event.preventDefault();
       return;
@@ -767,6 +778,24 @@ export function ComposerEditor(props: ComposerEditorProps) {
       event.preventDefault();
       props.onSubmit();
     }
+  }
+
+  /** Tab takes the shown suggestion into the editor, without sending it; Escape closes it. */
+  function handleSuggestionKeyDown(event: KeyboardEvent): boolean {
+    const suggestion = shownSuggestion();
+    if (!suggestion || !editor || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return false;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      props.onSuggestionClose?.(false);
+      return true;
+    }
+    if (event.key !== "Tab") return false;
+    event.preventDefault();
+    placeCaretAtEnd(editor);
+    insertPlainText(editor, suggestion);
+    emitValue();
+    props.onSuggestionClose?.(true);
+    return true;
   }
 
   /* The key that ends the word goes on after this, so it lands after the corrected word. */
@@ -833,10 +862,26 @@ export function ComposerEditor(props: ComposerEditorProps) {
   return (
     <div class="composer-editor-root" data-size={props.size ?? "default"} data-dictating={dictating() ? "" : undefined}>
       <Show when={!props.value && !dictating()}>
-        <span class="composer-editor-placeholder" aria-hidden="true">
-          {props.placeholder}
-        </span>
+        <Show
+          when={props.suggestion}
+          fallback={
+            <span class="composer-editor-placeholder" aria-hidden="true">
+              {props.placeholder}
+            </span>
+          }
+        >
+          {(suggestion) => (
+            <span class="composer-editor-placeholder composer-editor-suggestion" aria-hidden="true">
+              <span class="composer-editor-suggestion-text">{suggestion()}</span>
+              <Kbd class="composer-editor-suggestion-key">{t("composer.suggestion.key")}</Kbd>
+            </span>
+          )}
+        </Show>
       </Show>
+      {/* A hidden description still names the suggestion to a screen reader. */}
+      <span id={suggestionId} hidden>
+        {shownSuggestion() ? t("composer.suggestion.description", { text: shownSuggestion() ?? "" }) : ""}
+      </span>
       {/* biome-ignore lint/a11y/useSemanticElements: contenteditable is required for inline agent chips. */}
       {/* biome-ignore lint/a11y/useFocusableInteractive: Solid 2 uses the lowercase tabindex DOM attribute. */}
       <div
@@ -848,12 +893,15 @@ export function ComposerEditor(props: ComposerEditorProps) {
         aria-label={props.ariaLabel}
         aria-disabled={props.disabled ? "true" : "false"}
         aria-multiline="true"
+        aria-describedby={shownSuggestion() ? suggestionId : undefined}
         spellcheck="true"
         data-cuelume-type=""
         onFocus={ensureEditorSelection}
         onInput={() => {
           emitValue();
           updateMention();
+          // Typing closes the suggestion, as it does in Claude Code.
+          if (props.suggestion && editor && serializeEditor(editor)) props.onSuggestionClose?.(false);
         }}
         onClick={handleEditorClick}
         onKeyDown={handleKeyDown}

@@ -5,6 +5,7 @@ import {
   type AgentDefaultSetting,
   type AgentDefaultsAgent,
   agentDefaultSettingTitle,
+  type ComposerSuggestionModels,
   SettingsAgentsTab,
 } from "@openbot/ui/features/settings/SettingsAgentsTab";
 import { currentText, useText } from "@openbot/ui/text";
@@ -50,6 +51,8 @@ export function createSettingsAgentsSection(options: {
   visible: () => boolean;
   value: () => GeneralSettingsValue;
   onValueChange: (value: GeneralSettingsValue) => void;
+  /** This computer's models for "Chosen model", or undefined while they cannot be listed. */
+  suggestionModels: () => ComposerSuggestionModels | undefined;
 }): SettingsAgentsSection {
   const { t } = useText();
   const [state, setState] = createStore<AgentsSectionState>({ agents: [], loadFailed: false, setting: null });
@@ -130,6 +133,11 @@ export function createSettingsAgentsSection(options: {
         }
         onDefaultChange={changeDefault}
         onChoiceChange={changeChoice}
+        suggestions={options.value().composerSuggestions}
+        suggestionModels={options.suggestionModels()}
+        onSuggestionsChange={(composerSuggestions) =>
+          options.onValueChange({ ...options.value(), composerSuggestions })
+        }
       />
     ),
     crumb() {

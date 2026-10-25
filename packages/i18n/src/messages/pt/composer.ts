@@ -132,4 +132,6 @@ export const messages = {
   "composer.newChat.action": "Novo chat",
   "composer.context.compact": "Compactar agora",
   "composer.context.compactFailed": "Não foi possível compactar o contexto. Tente de novo.",
+  "composer.suggestion.key": "Tab",
+  "composer.suggestion.description": "Próxima mensagem sugerida: {text}. Pressione Tab para usar.",
 } as const satisfies PartialTranslation<typeof source>;

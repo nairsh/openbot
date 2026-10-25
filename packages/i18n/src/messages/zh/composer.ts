@@ -129,4 +129,6 @@ export const messages = {
   "composer.newChat.action": "新对话",
   "composer.context.compact": "立即压缩",
   "composer.context.compactFailed": "无法压缩上下文，请重试。",
+  "composer.suggestion.key": "Tab",
+  "composer.suggestion.description": "建议的下一条消息：{text}。按 Tab 键使用。",
 } as const satisfies PartialTranslation<typeof source>;

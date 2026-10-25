@@ -178,6 +178,27 @@ export function workflowUsageObserver(
   };
 }
 
+/**
+ * Books the usage of one composer prediction to the agent whose chat it reads, under a session of
+ * its own: the cost is the agent's. It records no turn activity, because it is not a turn of its chat.
+ */
+export function composerSuggestionUsageObserver(
+  usage: AgentUsage,
+  agent: Pick<AgentSummary, "id">,
+  provider: ProviderSession["provider"],
+  model: AgentSummary["model"],
+): (notification: { method: string; params?: unknown }) => void {
+  const session = { id: `composer-suggestion:${randomUUID()}`, provider, createdAt: new Date().toISOString() };
+  return ({ method, params }) => {
+    if (method === "turn/started") return;
+    try {
+      collectProviderUsage(usage, { id: agent.id, model }, session, method, params);
+    } catch (error) {
+      logger.warn("Could not save the usage of a composer prediction.", { provider, error });
+    }
+  };
+}
+
 /** An ACP `Usage`, whose `inputTokens` include the cache reads and writes. */
 function acpTokens(value: DynamicRecord): UsageTokens {
   const input = count(value.inputTokens);

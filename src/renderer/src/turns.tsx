@@ -83,6 +83,8 @@ const Turns = createSimpleContext({
     >(seed?.turnProgress ?? {});
     // Every progress line of the newest turns, by turn, for the steps under the activity line.
     const [turnStepLines, setTurnStepLines] = createSignal<TurnStepLines>({});
+    // The likely next message of the user after each agent's last turn. The next turn removes it.
+    const [composerSuggestions, setComposerSuggestions] = createSignal<Record<string, string | undefined>>({});
     const [failedTurns, setFailedTurns] = createSignal<Record<string, string | undefined>>(seed?.failedTurns ?? {});
     // The agents whose queue waits for a provider plan to reset, in epoch seconds. Only a runtime snapshot of the local host carries it.
     const [contextStates, setContextStates] = createSignal<Record<string, AgentContextState>>({});
@@ -459,6 +461,8 @@ const Turns = createSimpleContext({
       setTurnProgress,
       turnStepLines,
       setTurnStepLines,
+      composerSuggestions,
+      setComposerSuggestions,
       failedTurns,
       setFailedTurns,
       contextStates,

@@ -73,6 +73,22 @@ export const messages = {
   "settings.agentDefaults.setAllLabel": "모든 에이전트에 {setting} 설정",
   "settings.agentDefaults.agentLabel": "{agent}의 {setting}",
   "settings.agentDefaults.loadFailed": "에이전트를 읽을 수 없어요.",
+  "settings.composerSuggestions.title": "다음 메시지 제안",
+  "settings.composerSuggestions.description":
+    "에이전트가 답하면 다음에 보낼 가능성이 높은 내용을 메시지 상자에 표시합니다. Tab 키를 누르면 입력됩니다. 전송되지는 않습니다.",
+  "settings.composerSuggestions.mode": "제안",
+  "settings.composerSuggestions.off": "끄기",
+  "settings.composerSuggestions.agent": "에이전트 모델",
+  "settings.composerSuggestions.model": "선택한 모델",
+  "settings.composerSuggestions.offDescription": "메시지 상자에 제안을 표시하지 않습니다.",
+  "settings.composerSuggestions.agentDescription":
+    "Claude는 자체 채팅에서 적은 비용으로 제안합니다. 다른 제공자는 채팅의 끝부분을 에이전트 모델에 다시 보냅니다.",
+  "settings.composerSuggestions.modelDescription":
+    "각 에이전트는 채팅의 끝부분을 아래 모델에 보냅니다. 작고 빠른 모델일수록 비용이 적습니다.",
+  "settings.composerSuggestions.modelLabel": "모델",
+  "settings.composerSuggestions.modelHint": "제안에는 이 제공자의 계정이 사용됩니다.",
+  "settings.composerSuggestions.modelMissing": "이 모델을 사용할 수 없습니다. 제안을 받으려면 다른 모델을 선택하세요.",
+  "settings.composerSuggestions.modelsElsewhere": "모델을 바꾸려면 사이드바에서 이 컴퓨터를 여세요.",
   "settings.keepRemoteSessions.title": "서버에 빠르게 연결",
   "settings.keepRemoteSessions.description":
     "참여 중인 서버와의 연결을 실행 사이에도 유지해요. OpenBot이 약 1초 더 빨리 시작돼요. OpenBot을 종료해도 OpenBot 서비스가 연결을 닫지 않아요.",

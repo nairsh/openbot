@@ -63,6 +63,23 @@ export const messages = {
   "settings.busyMessage.title": "Направлять агентов, пока они работают",
   "settings.busyMessage.description":
     "Новые сообщения присоединяются к текущей работе агента, а не встают в очередь. Работает с ChatGPT и Claude.",
+  "settings.composerSuggestions.title": "Подсказки следующего сообщения",
+  "settings.composerSuggestions.description":
+    "После ответа агента поле сообщения показывает, что вы, скорее всего, отправите дальше. Нажмите Tab, чтобы вставить текст. Он не отправляется.",
+  "settings.composerSuggestions.mode": "Подсказки",
+  "settings.composerSuggestions.off": "Выкл.",
+  "settings.composerSuggestions.agent": "Модель агента",
+  "settings.composerSuggestions.model": "Выбранная модель",
+  "settings.composerSuggestions.offDescription": "Поле сообщения не показывает подсказки.",
+  "settings.composerSuggestions.agentDescription":
+    "Claude подсказывает в своём чате с небольшими затратами. Другие провайдеры снова отправляют конец чата модели агента.",
+  "settings.composerSuggestions.modelDescription":
+    "Каждый агент отправляет конец своего чата модели ниже. Небольшая быстрая модель стоит дешевле.",
+  "settings.composerSuggestions.modelLabel": "Модель",
+  "settings.composerSuggestions.modelHint": "Подсказки используют ваш аккаунт у этого провайдера.",
+  "settings.composerSuggestions.modelMissing":
+    "Эта модель недоступна. Выберите другую модель, чтобы получать подсказки.",
+  "settings.composerSuggestions.modelsElsewhere": "Откройте этот компьютер на боковой панели, чтобы сменить модель.",
   "settings.keepRemoteSessions.title": "Быстрое подключение к серверам",
   "settings.keepRemoteSessions.description":
     "Сохранять подключение к серверам между запусками. OpenBot запускается примерно на секунду быстрее. При выходе из OpenBot сервис OpenBot не закрывает подключение.",

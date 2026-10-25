@@ -766,6 +766,8 @@ export function ConversationComposer() {
                 onPasteFiles={(files) => {
                   if (props.runtime?.importFiles) void props.runtime.importFiles(files);
                 }}
+                suggestion={channel || replyTarget() ? undefined : props.composerSuggestion}
+                onSuggestionClose={() => props.onComposerSuggestionClose?.()}
                 onOpenAttachment={(attachment) =>
                   canPreviewAttachment(attachment)
                     ? void previewAttachment(attachment)

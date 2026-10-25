@@ -36,12 +36,17 @@ function chatMessage(message: ConversationMessage): boolean {
   );
 }
 
-export function chatTranscript(agent: AgentSummary, messages: readonly ConversationMessage[]) {
+/** The newest chat messages that fit `budget` characters, oldest first. */
+export function chatTranscript(
+  agent: AgentSummary,
+  messages: readonly ConversationMessage[],
+  budget: number = CHAT_CHARACTERS,
+) {
   const entries: { from: string; text: string }[] = [];
   let characters = 0;
   for (const message of [...messages].filter(chatMessage).reverse()) {
     const text = message.text.slice(0, MESSAGE_CHARACTERS);
-    if (characters + text.length > CHAT_CHARACTERS) break;
+    if (characters + text.length > budget) break;
     characters += text.length;
     const from =
       message.author === "user"

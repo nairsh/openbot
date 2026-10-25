@@ -131,4 +131,6 @@ export const messages = {
   "composer.newChat.action": "新しいチャット",
   "composer.context.compact": "今すぐ圧縮",
   "composer.context.compactFailed": "コンテキストを圧縮できませんでした。もう一度お試しください。",
+  "composer.suggestion.key": "Tab",
+  "composer.suggestion.description": "次のメッセージの候補: {text}。Tab キーで使えます。",
 } as const satisfies PartialTranslation<typeof source>;

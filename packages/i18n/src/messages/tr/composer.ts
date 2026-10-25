@@ -132,4 +132,6 @@ export const messages = {
   "composer.newChat.action": "Yeni sohbet",
   "composer.context.compact": "Şimdi sıkıştır",
   "composer.context.compactFailed": "Bağlam sıkıştırılamadı. Tekrar deneyin.",
+  "composer.suggestion.key": "Tab",
+  "composer.suggestion.description": "Önerilen sonraki mesaj: {text}. Kullanmak için Tab tuşuna bas.",
 } as const satisfies PartialTranslation<typeof source>;

@@ -83,6 +83,23 @@ export const messages = defineMessages("settings", {
   "settings.agentDefaults.setAllLabel": "Set {setting} for all agents",
   "settings.agentDefaults.agentLabel": "{setting} for {agent}",
   "settings.agentDefaults.loadFailed": "The agents could not be read.",
+  // The Agents tab: the next message that the composer suggests after a turn.
+  "settings.composerSuggestions.title": "Next message suggestions",
+  "settings.composerSuggestions.description":
+    "After an agent replies, the message box shows what you will probably send next. Press Tab to use it. It is not sent.",
+  "settings.composerSuggestions.mode": "Suggestions",
+  "settings.composerSuggestions.off": "Off",
+  "settings.composerSuggestions.agent": "Agent’s model",
+  "settings.composerSuggestions.model": "Chosen model",
+  "settings.composerSuggestions.offDescription": "The message box shows no suggestions.",
+  "settings.composerSuggestions.agentDescription":
+    "Claude suggests in its own chat, at a small cost. Other providers send the end of the chat to the agent’s model again.",
+  "settings.composerSuggestions.modelDescription":
+    "Each agent sends the end of its chat to the model below. A small, fast model costs less.",
+  "settings.composerSuggestions.modelLabel": "Model",
+  "settings.composerSuggestions.modelHint": "Suggestions use your account with this provider.",
+  "settings.composerSuggestions.modelMissing": "This model is not available. Choose another model to get suggestions.",
+  "settings.composerSuggestions.modelsElsewhere": "Open this computer in the sidebar to change the model.",
   "settings.keepRemoteSessions.title": "Fast connection to servers",
   "settings.keepRemoteSessions.description":
     "Keep the connection to your joined servers between launches. OpenBot starts about a second faster. When you quit OpenBot, the OpenBot service does not close the connection.",

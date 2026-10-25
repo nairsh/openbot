@@ -4,8 +4,10 @@ import {
   type AgentDefaults,
   type AgentMemoryLimit,
   type BusyMessageMode,
+  type ComposerSuggestionPreference,
   DEFAULT_AGENT_DEFAULTS,
   DEFAULT_AGENT_MEMORY_LIMIT,
+  DEFAULT_COMPOSER_SUGGESTION_PREFERENCE,
 } from "@openbot/contracts/ipc";
 /** Which chord sends a message. Re-exported here so settings state can name the same type. */
 import type { SendShortcutMode } from "../conversation/send-shortcut";
@@ -50,6 +52,8 @@ export interface GeneralSettingsValue {
   showAgentSteps: boolean;
   /** What a message sent to a busy agent does, unless the agent or the message sets its own. */
   busyMessageMode: BusyMessageMode;
+  /** Which model predicts the next message after a turn. This computer stores it; no server does. */
+  composerSuggestions: ComposerSuggestionPreference;
   /** What an agent of this computer does when it has no value of its own for the setting. */
   agentDefaults: AgentDefaults;
   /** How many memories one agent on this computer can hold. Read only here: Server settings set it. */
@@ -88,6 +92,7 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettingsValue = {
   sendShortcut: "enter",
   showAgentSteps: false,
   busyMessageMode: "queue",
+  composerSuggestions: DEFAULT_COMPOSER_SUGGESTION_PREFERENCE,
   agentDefaults: DEFAULT_AGENT_DEFAULTS,
   agentMemoryLimit: DEFAULT_AGENT_MEMORY_LIMIT,
   keepRemoteSessions: true,
