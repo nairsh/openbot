@@ -197,6 +197,8 @@ export const messages = {
     "O provedor de modelos do OpenCode reportou uma requisição de upload inválida. Escolha outro modelo e continue. Verifique as rotinas salvas antes de recriá-las.\n{detail}",
   "error.provider.opencodeUnreadableContent":
     "Este modelo não consegue ler um arquivo ou uma imagem neste chat. Escolha um modelo que leia arquivos e envie sua mensagem de novo.",
+  "error.provider.opencodeFreeLimit":
+    "Os modelos gratuitos do OpenCode atingiram o limite de uso. Todos os modelos gratuitos compartilham esse limite. Para continuar, cole uma chave do OpenCode Go nas configurações do OpenCode ou escolha um modelo de outro provedor.",
   "error.provider.opencodeProviderFailed":
     "Ocorreu uma falha no provedor do modelo. Sua conexão não é a causa. Tente novamente mais tarde ou escolha outro modelo.\n{detail}",
   "error.provider.opencodeNetwork":
@@ -272,6 +274,8 @@ export const messages = {
     "Um ID de agente deve conter letras minúsculas, dígitos ou `-`, e não pode ser o ID de um provedor integrado.",
   "error.provider.customAgentEnvInvalid":
     "Um nome de variável deve conter letras, dígitos ou `_` e não pode começar com um dígito. Use cada nome uma única vez, com no máximo 16 nomes.",
+  "error.provider.customAgentUsagePromptInvalid":
+    "Um comando de uso deve ser uma única linha com no máximo 256 caracteres.",
   "error.provider.customAgentCommandInvalid":
     "O comando deve ser um caminho completo, um caminho que comece com ~/ ou um nome de comando sem espaços.",
   "error.provider.customAgentArgsInvalid":
@@ -310,6 +314,8 @@ export const messages = {
   "error.provider.accountNotFound": "Esta conta de {provider} não está neste computador. Atualize e tente novamente.",
   "error.provider.accountAlreadyAdded": "Esta conta de {provider} já está conectada.",
   "error.provider.accountDefault": "A primeira conta de {provider} não pode ser removida.",
+  "error.provider.accountUsesKey":
+    "Esta conta de {provider} usa a chave de API salva e não tem login. Altere a chave em Configurações do servidor → Provedores.",
   "error.provider.accountInUse":
     "Um agente que usa esta conta está trabalhando. Tente novamente quando o agente parar.",
   "error.provider.accountsReadOnly":

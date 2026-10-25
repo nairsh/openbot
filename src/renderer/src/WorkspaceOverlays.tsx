@@ -45,6 +45,8 @@ import { settingsPort } from "./features/settings/settings-port";
 import { useUpdates } from "./features/updates/updates-context";
 import { useWhatsNew } from "./features/updates/whats-new-context";
 import { usePlanLimitRows } from "./features/usage/plan-limit-rows";
+import { createVaultStore } from "./features/vault/stores/vault-store";
+import { desktopVaultCalls } from "./features/vault/vault-port";
 import { useWindowPage } from "./features/window/window-page-context";
 import { useGlobalSearchSources } from "./global-search-sources";
 import { RemoteDesktopWorkspace, SettingsModal } from "./lazy-views";
@@ -421,6 +423,8 @@ function ServerSettings(props: { connectors: ConnectorRegistry }) {
     const calls = desktopBrowserProfileCalls(browserProfileServerId());
     return createBrowserProfilesStore(() => calls);
   });
+  /** The Vault of this computer. A joined server keeps its Vault on its host. */
+  const vault = createVaultStore(desktopVaultCalls());
   // The workspace belongs to the selected server. For another server, the switch comes first and
   // the agent is published for the scope it lands in; a message there opens as its agent's chat.
   const openOnServer = (server: ServerSummary, agentId: string, open: () => void) => {
@@ -695,6 +699,7 @@ function ServerSettings(props: { connectors: ConnectorRegistry }) {
           hostUpdate={{}}
           hostTimezone={{}}
           hostMemoryLimit={{}}
+          hostPromptCacheTtl={{}}
           agentAccess={{ listAgents: () => appPort().agent.listAgents(server().id) }}
           initialSection={serverSettingsSection()}
           // Any member imports into this computer or a remote host with `agent-import-v1`.
@@ -726,6 +731,7 @@ function ServerSettings(props: { connectors: ConnectorRegistry }) {
               ? { store: browserProfiles(), listAgents: () => appPort().agent.listAgents(server().id) }
               : undefined
           }
+          vault={server().kind === "local" ? { store: vault } : undefined}
         />
       )}
     </Show>

@@ -40,6 +40,7 @@ import {
   decodeOldRuntimeVersions,
   decodeOptionalStorageDisk,
   decodeOptionalStorageUsage,
+  decodePromptCacheTtlSetting,
   decodeProviderHostSignInStatus,
   decodeProviderRelaySignInStatus,
   decodeRegistryEntries,
@@ -127,6 +128,7 @@ import {
   decodeCustomAgentCheckResult,
   decodeCustomAgentResult,
   decodeCustomAgents,
+  decodeCustomAgentUsage,
   decodeCustomProviderResult,
   decodeCustomProviders,
   decodeDetectedAcpAgents,
@@ -272,6 +274,19 @@ import {
   decodeTeamPresenceSnapshot,
   decodeTeamSessions,
 } from "./team-decoding";
+import { decodeVaultImportResult, decodeVaultSecret, decodeVaultState } from "./vault-decoding";
+import {
+  decodeWorkflowDetail,
+  decodeWorkflowGraph,
+  decodeWorkflowRunDetail,
+  decodeWorkflowRunPage,
+  decodeWorkflowSaveResult,
+  decodeWorkflowStep,
+  decodeWorkflowSummaries,
+  decodeWorkflowSummary,
+  decodeWorkflowVersions,
+  decodeWorkflowWebhookSecret,
+} from "./workflow-decoding";
 
 const attachmentImportListeners = new Set<(event: AttachmentImportEvent) => void>();
 /**
@@ -675,6 +690,26 @@ const openbotApi: OpenBotDesktopApi = {
     disconnect: decodeVoid,
     updateLink: decodeRoutineFlowLink,
   }),
+  workflows: bridgeGroup(IPC_ENDPOINTS.workflows, {
+    list: decodeWorkflowSummaries,
+    get: decodeWorkflowDetail,
+    create: decodeWorkflowDetail,
+    rename: decodeWorkflowSummary,
+    delete: decodeVoid,
+    saveGraph: decodeWorkflowSaveResult,
+    versions: decodeWorkflowVersions,
+    versionGraph: decodeWorkflowGraph,
+    restoreVersion: decodeWorkflowDetail,
+    startRun: decodeWorkflowRunDetail,
+    runStep: decodeWorkflowStep,
+    stopStep: decodeVoid,
+    stopRun: decodeVoid,
+    retryStep: decodeWorkflowStep,
+    decide: decodeVoid,
+    runs: decodeWorkflowRunPage,
+    run: decodeWorkflowRunDetail,
+    rotateWebhookSecret: decodeWorkflowWebhookSecret,
+  }),
   routineResults: bridgeGroup(IPC_ENDPOINTS.routineResults, {
     options: decodeRoutineResultOptions,
     destination: decodeRoutineResultDestination,
@@ -778,6 +813,16 @@ const openbotApi: OpenBotDesktopApi = {
     hostConnect: decodeBitwardenConnectorStatus,
     hostDisconnect: decodeBitwardenConnectorStatus,
   }),
+  vault: bridgeGroup(IPC_ENDPOINTS.vault, {
+    list: decodeVaultState,
+    save: decodeVaultState,
+    delete: decodeVaultState,
+    reveal: decodeVaultSecret,
+    copy: decodeVoid,
+    importCsv: decodeVaultImportResult,
+    reset: decodeVaultState,
+    changed: decodeVaultState,
+  }),
   onePasswordConnector: bridgeGroup(IPC_ENDPOINTS.onePasswordConnector, {
     status: decodeOnePasswordConnectorStatus,
     checkSetup: decodeOnePasswordConnectorStatus,
@@ -836,6 +881,7 @@ const openbotApi: OpenBotDesktopApi = {
     save: decodeCustomAgentResult,
     delete: decodeCustomAgentResult,
     check: decodeCustomAgentCheckResult,
+    usage: decodeCustomAgentUsage,
   }),
   providerDetection: bridgeGroup(IPC_ENDPOINTS.providerDetection, {
     scanModelServers: decodeDetectedModelServers,
@@ -923,6 +969,8 @@ const openbotApi: OpenBotDesktopApi = {
     setTimezone: decodeHostTimezoneSettings,
     getAgentMemoryLimit: decodeHostAgentMemoryLimit,
     setAgentMemoryLimit: decodeHostAgentMemoryLimit,
+    getPromptCacheTtl: decodePromptCacheTtlSetting,
+    setPromptCacheTtl: decodePromptCacheTtlSetting,
     getAgentAccess: decodeAgentAccessSnapshot,
     setAgentAccess: decodeAgentAccessSnapshot,
   }),

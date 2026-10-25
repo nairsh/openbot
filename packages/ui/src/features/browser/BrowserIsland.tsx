@@ -1,4 +1,4 @@
-import type { BrowserDockIsland, RespondToBrowserSecretInput } from "@openbot/contracts/ipc";
+import type { BrowserDockIsland, LocalBrowserSecretResponse } from "@openbot/contracts/ipc";
 import { Button, LoaderCircle, MousePointer2, X } from "@openbot/ui";
 import { QuestionPromptBubble } from "@openbot/ui/components/QuestionPromptBubble";
 import type { ComposerAgent } from "@openbot/ui/data";
@@ -46,7 +46,9 @@ export interface BrowserIslandFaceProps {
   handoffPending?: boolean | undefined;
   sendShortcut?: SendShortcut | undefined;
   onHandoff?: (() => void) | undefined;
-  onRespondSecret: (input: RespondToBrowserSecretInput) => Promise<void>;
+  /** Offer "Save to Vault" on a password card: only on the local server. */
+  vaultSave?: boolean | undefined;
+  onRespondSecret: (input: LocalBrowserSecretResponse) => Promise<void>;
   /** Resolves true when the host has the answers. An empty record cancels the questions. */
   onAnswerPrompt: (requestId: string | number, answers: Record<string, string[]>) => Promise<boolean>;
   onRespondApproval: (requestId: string | number, decision: "accept" | "decline") => Promise<boolean>;
@@ -104,7 +106,12 @@ export function BrowserIslandFace(props: BrowserIslandFaceProps) {
       <Match when={secret()}>
         {(current) => (
           <div class="browser-dock-island-face">
-            <BrowserSecretCard variant="island" request={current().request} onRespond={props.onRespondSecret} />
+            <BrowserSecretCard
+              variant="island"
+              request={current().request}
+              vaultSave={props.vaultSave}
+              onRespond={props.onRespondSecret}
+            />
           </div>
         )}
       </Match>

@@ -45,6 +45,7 @@ import {
 } from "@openbot/ui/features/settings/OpenCodeKeyDialog";
 import {
   type ProviderDefaultChoice,
+  type ProviderPromptCache,
   type ProviderSettingsDetail,
   ProviderSettingsPage,
 } from "@openbot/ui/features/settings/ProviderSettingsPage";
@@ -55,6 +56,7 @@ import { ProviderSignInDialogs } from "../../components/ProviderSignInDialogs";
 import type { ProviderConnectionApi } from "../../components/provider-connection-api";
 import { createCustomProviderHostState } from "../custom-providers/custom-provider-host-state";
 import { savedCustomModel } from "../onboarding/SetupProviderPicker";
+import { createProviderPromptCache, type ProviderPromptCacheSource } from "./provider-prompt-cache";
 import { createSettingsGeneralStore, type SettingsGeneralStore } from "./stores/general-store";
 
 interface DefaultProviderSettings extends Pick<AppSetupState, "preferredProvider" | "preferredModel"> {
@@ -102,6 +104,7 @@ interface ProviderSettingsSectionProps {
   detectionSettings?: JSX.Element;
   usage?: readonly AccountUsageProviderRow[] | undefined;
   onDetailChange?: ((detail: ProviderSettingsDetail | null) => void) | undefined;
+  promptCache?: ProviderPromptCache | undefined;
 }
 
 /** The provider list of the computer the agents run on, with its custom endpoint dialogs. */
@@ -253,6 +256,7 @@ function ProviderSettingsSection(props: ProviderSettingsSectionProps) {
         accountActions={props.accountActions}
         menuMount={props.selectMount}
         onDetailChange={props.onDetailChange}
+        promptCache={props.promptCache}
         footer={
           <>
             <Show when={props.providerDetection}>
@@ -342,17 +346,25 @@ function createProviderKeyState(props: { readonly open: boolean; readonly provid
   const [keyDialogOpen, setKeyDialogOpen] = createSignal(false);
   const [keyProvider, setKeyProvider] = createSignal<KeyDialogProvider>("opencode");
   const [openCodeKeyStatus, setOpenCodeKeyStatus] = createSignal<ProviderApiKeyStatus | undefined>(undefined);
+  const [claudeKeyStatus, setClaudeKeyStatus] = createSignal<ProviderApiKeyStatus | undefined>(undefined);
+  async function readKeyStatus(keys: ProviderKeyApi, provider: AgentProviderId) {
+    try {
+      return (await keys.getProviderApiKeyState(provider)).status;
+    } catch {
+      return undefined;
+    }
+  }
   async function refreshOpenCodeKeyStatus(): Promise<void> {
     const keys = props.providerKeys;
     if (!keys) return;
-    let status: ProviderApiKeyStatus | undefined;
-    try {
-      status = (await keys.getProviderApiKeyState("opencode")).status;
-    } catch {
-      status = undefined;
-    }
+    const [openCode, claude] = await Promise.all([
+      readKeyStatus(keys, "opencode"),
+      keys.readsClaudeKey ? readKeyStatus(keys, "claude") : undefined,
+    ]);
     // An answer from a source the modal has since left belongs to the other computer.
-    if (keys === props.providerKeys) setOpenCodeKeyStatus(status);
+    if (keys !== props.providerKeys) return;
+    setOpenCodeKeyStatus(openCode);
+    setClaudeKeyStatus(claude);
   }
   // The badge has to answer on first paint: the key state arrives after the rows, so an open
   // without a read would show no badge until something else re-renders the list. The keys can move
@@ -362,6 +374,7 @@ function createProviderKeyState(props: { readonly open: boolean; readonly provid
     () => (props.open ? props.providerKeys : undefined),
     (keys) => {
       setOpenCodeKeyStatus(undefined);
+      setClaudeKeyStatus(undefined);
       if (keys) void untrack(refreshOpenCodeKeyStatus);
     },
   );
@@ -369,9 +382,14 @@ function createProviderKeyState(props: { readonly open: boolean; readonly provid
     keyDialogOpen,
     keyProvider,
     openCodeKeyStatus,
-    /** Only the providers whose sign-in can be a pasted key are served: OpenCode, Muse and Gemini. */
+    claudeKeyStatus,
+    /**
+     * Only the providers whose sign-in can be a pasted key are served: OpenCode, Muse, Gemini and
+     * Claude. Claude's Sign in also lands here on an older host, which would store the key and never
+     * read it.
+     */
     openKeyDialog(provider: AgentProviderId): void {
-      if (isKeyDialogProvider(provider)) {
+      if (isKeyDialogProvider(provider) && (provider !== "claude" || props.providerKeys?.readsClaudeKey)) {
         setKeyProvider(provider);
         setKeyDialogOpen(true);
       }
@@ -472,8 +490,11 @@ export function HostProviderSettingsPanel(
     hostName?: string | undefined;
     selectMount: HTMLElement | undefined;
     onDetailChange?: ((detail: ProviderSettingsDetail | null) => void) | undefined;
+    /** The Claude page's prompt cache time, for a host with `prompt-cache-ttl-v1` that this account administers. */
+    promptCache?: ProviderPromptCacheSource | undefined;
   },
 ) {
+  const promptCache = createProviderPromptCache(() => props.promptCache);
   const keys = createProviderKeyState({
     open: true,
     get providerKeys() {
@@ -491,6 +512,7 @@ export function HostProviderSettingsPanel(
       return props.providerAvailableVersions;
     },
     openCodeKeyStatus: keys.openCodeKeyStatus,
+    claudeKeyStatus: keys.claudeKeyStatus,
     get providerHostName() {
       return props.hostName;
     },
@@ -533,6 +555,7 @@ export function HostProviderSettingsPanel(
         onSignInProvider={props.providerKeys ? keys.openKeyDialog : undefined}
         usage={props.usage}
         onDetailChange={props.onDetailChange}
+        promptCache={promptCache()}
         detectionSettings={
           <Show when={props.detectionSettings}>
             {(value) => (

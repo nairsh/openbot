@@ -202,6 +202,8 @@ export const messages = {
     "Der Modellanbieter von OpenCode hat eine ungültige Upload-Anfrage gemeldet. Wähle ein anderes Modell und fahre fort. Prüfe gespeicherte Routinen, bevor du sie erneut erstellst.\n{detail}",
   "error.provider.opencodeUnreadableContent":
     "Dieses Modell kann eine Datei oder ein Bild in diesem Chat nicht lesen. Wähle ein Modell, das Dateien lesen kann, und sende deine Nachricht dann erneut.",
+  "error.provider.opencodeFreeLimit":
+    "Die kostenlosen OpenCode-Modelle haben ihr Nutzungslimit erreicht. Alle kostenlosen Modelle teilen sich dieses Limit. Um weiterzumachen, füge einen OpenCode-Go-Schlüssel in den OpenCode-Einstellungen ein oder wähle ein Modell eines anderen Anbieters.",
   "error.provider.opencodeProviderFailed":
     "Beim Modellanbieter ist ein Fehler aufgetreten. Deine Verbindung ist nicht die Ursache. Versuche es später erneut oder wähle ein anderes Modell.\n{detail}",
   "error.provider.opencodeNetwork":
@@ -282,6 +284,7 @@ export const messages = {
     "Eine Agenten-ID darf nur Kleinbuchstaben, Ziffern oder `-` enthalten und darf nicht die ID eines integrierten Anbieters sein.",
   "error.provider.customAgentEnvInvalid":
     "Ein Variablenname darf nur Buchstaben, Ziffern oder `_` enthalten und nicht mit einer Ziffer beginnen. Verwende jeden Namen einmal und höchstens 16 Namen.",
+  "error.provider.customAgentUsagePromptInvalid": "Ein Nutzungsbefehl muss eine Zeile mit höchstens 256 Zeichen sein.",
   "error.provider.customAgentCommandInvalid":
     "Der Befehl muss ein vollständiger Pfad, ein mit ~/ beginnender Pfad oder ein Befehlsname ohne Leerzeichen sein.",
   "error.provider.customAgentArgsInvalid":
@@ -326,6 +329,8 @@ export const messages = {
     "Dieses {provider}-Konto ist nicht auf diesem Computer. Aktualisiere und versuche es erneut.",
   "error.provider.accountAlreadyAdded": "Dieses {provider}-Konto ist bereits verbunden.",
   "error.provider.accountDefault": "Das erste {provider}-Konto kann nicht entfernt werden.",
+  "error.provider.accountUsesKey":
+    "Dieses {provider}-Konto verwendet den gespeicherten API-Schlüssel und hat keine Anmeldung. Ändere den Schlüssel in Servereinstellungen → Anbieter.",
   "error.provider.accountInUse":
     "Ein Agent mit diesem Konto arbeitet gerade. Versuche es erneut, wenn der Agent anhält.",
   "error.provider.accountsReadOnly":

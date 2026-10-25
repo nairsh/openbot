@@ -96,11 +96,15 @@ export const RunningClosed: Story = {
   ),
 };
 
-/** A finished turn: the closed row above its answer. */
+/** A finished turn: the closed row above its answer, with the time of the turn and its failed steps. */
 export const Finished: Story = {
   render: () => (
     <div style={{ width: "640px" }}>
-      <AgentStepsDisclosure steps={[...STEPS, ...MEMORY]} defaultOpen={false} />
+      <AgentStepsDisclosure
+        steps={[...STEPS, ...MEMORY]}
+        defaultOpen={false}
+        facts={{ durationMs: 74_000, failed: 1 }}
+      />
     </div>
   ),
 };

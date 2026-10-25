@@ -11,6 +11,7 @@ import { type HostRestartEvent, hostRestartEvent } from "./host-update-v1";
 import { type QuietTurnCompletedEvent, quietTurnEvent } from "./quiet-turn-v1";
 import { type RoutineFlowsEvent, routineFlowsEvent } from "./routine-flows-v1";
 import { type SkillsEvent, skillsEvent } from "./skills-events-v1";
+import { type WorkflowsEvent, workflowsEvent } from "./workflows-v1";
 
 export type OptionalTeamEvent =
   | AgentAccessEvent
@@ -23,7 +24,8 @@ export type OptionalTeamEvent =
   | HostRestartEvent
   | SkillsEvent
   | QuietTurnCompletedEvent
-  | RoutineFlowsEvent;
+  | RoutineFlowsEvent
+  | WorkflowsEvent;
 
 /** The optional event in `value`, or null for any other event. A malformed optional event throws. */
 export function optionalTeamEvent(value: unknown): OptionalTeamEvent | null {
@@ -38,7 +40,8 @@ export function optionalTeamEvent(value: unknown): OptionalTeamEvent | null {
     hostRestartEvent(value) ??
     skillsEvent(value) ??
     quietTurnEvent(value) ??
-    routineFlowsEvent(value)
+    routineFlowsEvent(value) ??
+    workflowsEvent(value)
   );
 }
 

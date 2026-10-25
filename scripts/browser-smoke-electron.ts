@@ -384,6 +384,9 @@ const server = createServer((request, response) => {
       <button aria-label="Accessible override" onclick="document.querySelector('output').textContent='visible-text:' + event.isTrusted">Unique action text</button>
       <span style="position:relative;display:inline-block"><button aria-label="Covered">Covered</button><span style="position:absolute;inset:0;z-index:2" aria-hidden="true"></span></span>
       <span style="position:relative;display:inline-block"><button style="width:200px" aria-label="Partially covered" onclick="document.querySelector('output').textContent='partial:' + event.isTrusted">Partially covered</button><span style="position:absolute;left:70px;right:70px;top:0;bottom:0;z-index:2" aria-hidden="true"></span></span>
+      <style>.pseudo-option{position:relative;display:inline-block;width:160px;height:28px}.pseudo-option input{position:absolute;left:8px;top:6px;margin:0}.pseudo-option::after{content:'';position:absolute;inset:0}</style>
+      <label class="pseudo-option"><input type="radio" name="pay" aria-label="Pay by card" />Card</label>
+      <span class="pseudo-option"><input type="radio" name="pay" aria-label="Pay by transfer" /></span>
       <span hidden data-hidden-wait>hidden wait sentinel</span>
       <button aria-label="SPA" onclick="setTimeout(() => { history.pushState({}, '', '/v2#done'); document.querySelector('output').textContent='SPA done'; }, 20)">SPA</button>
       <button draggable="true" aria-label="Drag source">Drag source</button><button aria-label="Drop target" ondragover="event.preventDefault()" ondrop="event.preventDefault();document.querySelector('output').textContent='drag:' + event.isTrusted">Drop target</button>
@@ -2673,6 +2676,25 @@ async function runControlActions(browser: BrowserHost, tabId: string, v2Contents
   );
   if (editableValue !== "editable text appended") {
     throw new Error("V2 contenteditable target did not receive text.");
+  }
+  // A styled label's ::after covers its radio, as on Stripe Checkout. The label activates the radio,
+  // so the click goes through. The same layer on an element that is not a label still blocks it.
+  const pseudoLabel = await callBrowserTool(browser, "click", {
+    tabId: tabId,
+    target: { kind: "role", role: "radio", name: "Pay by card", exact: true },
+  });
+  if (!pseudoLabel.success) throw new Error(`V2 click through a label ::after failed: ${toolError(pseudoLabel)}`);
+  const pseudoChecked = await v2Contents.executeJavaScript(
+    `document.querySelector('[aria-label="Pay by card"]').checked`,
+    true,
+  );
+  if (pseudoChecked !== true) throw new Error("V2 click through a label ::after did not select the radio.");
+  const pseudoBlocked = await callBrowserTool(browser, "click", {
+    tabId: tabId,
+    target: { kind: "role", role: "radio", name: "Pay by transfer", exact: true },
+  });
+  if (pseudoBlocked.success || !toolError(pseudoBlocked).includes("covered by")) {
+    throw new Error("V2 hit testing ignored a ::after layer that is not a label.");
   }
 }
 

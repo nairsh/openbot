@@ -145,6 +145,10 @@ export const messages = {
   "provider.geminiKey.description":
     "Speichere einen Gemini-API-Schlüssel auf diesem Computer. Ein gespeicherter Schlüssel wird statt deines Google-Kontos verwendet. Um dich mit Google anzumelden, entferne den Schlüssel und wähle „Verbinden“ in der Gemini-Zeile.",
   "provider.geminiKey.label": "Gemini-API-Schlüssel",
+  "provider.claudeKey.title": "Anthropic-API-Schlüssel",
+  "provider.claudeKey.description":
+    "Speichere einen Anthropic-API-Schlüssel auf dem Host. Anthropic berechnet jede Anfrage über den Schlüssel. Um ihn für einen Agenten zu verwenden, wähle das Konto „API-Schlüssel“ im Modellmenü des Agenten. Wenn Claude nicht angemeldet ist, verwenden alle Agenten den Schlüssel.",
+  "provider.claudeKey.label": "Anthropic-API-Schlüssel",
   "provider.inceptionKey.title": "Inception-API-Schlüssel",
   "provider.inceptionKey.description":
     "Speichere einen Inception-API-Schlüssel auf diesem Computer, um die Mercury-Modelle zu verwenden. OpenBot führt sie in der Pi-CLI aus, die es herunterlädt.",
@@ -167,6 +171,7 @@ export const messages = {
   "provider.account.addLabel": "Weiteres {name}-Konto hinzufügen",
   "provider.account.count": { one: "{count} Konto", other: "{count} Konten" },
   "provider.account.numbered": "Konto {number}",
+  "provider.account.apiKey": "API-Schlüssel",
   "provider.account.listLabel": "{name}-Konten",
   "provider.account.usedBy": "Verwendet von {agents}",
   "provider.account.failed": "Anmeldung fehlgeschlagen",
@@ -191,4 +196,11 @@ export const messages = {
   "provider.account.resetUsageNoCredit": "{name} hat kein Guthaben zum Zurücksetzen der Nutzung mehr.",
   "provider.account.resetUsageAlreadyRedeemed": "Dieses Guthaben von {name} wurde bereits verwendet.",
   "provider.account.resetUsageFailed": "Die Nutzung von {name} konnte nicht zurückgesetzt werden.",
+  "provider.settings.cache": "Cache",
+  "provider.settings.promptCache": "Prompt-Cache",
+  "provider.settings.promptCacheDescription":
+    "Wie lange Claude den Kontext eines Agenten zwischen den Zügen im Cache behält.",
+  "provider.settings.promptCacheHour": "1 Stunde",
+  "provider.settings.promptCacheDefault": "Claude Code-Standard",
+  "provider.settings.promptCacheLoadFailed": "Die Prompt-Cache-Dauer dieses Servers konnte nicht geladen werden.",
 } as const satisfies PartialTranslation<typeof source>;

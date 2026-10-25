@@ -365,6 +365,12 @@ The server has no `--version`, so staging writes `antigravity-package.json` and
 `verifyInstalledRuntime` reads the version from that file (`versionFile`). OpenBot never searches
 `PATH`, because the Antigravity editor installs an `antigravity` command that is not this server.
 
+The server offers its Claude and GPT models only to a client whose `initialize` `clientInfo.name` is
+`zed`, `xcode`, `jetbrains.*` or `android studio*` (`supports_third_party_models` in 1.4.3). Other
+clients get only the Gemini models. So `ANTIGRAVITY_ACP_FLAVOR.clientInfo` sends the name `zed` and
+the title `OpenBot`. The server also sends the name and version to Google in its User-Agent
+(`_surface`), so Google sees OpenBot's requests as `zed/0.1.0`.
+
 Sign in is an ACP `authenticate` call with `oauth-personal`, in a separate process
 (`src/backend/acp-sign-in.ts`). On Linux, OpenBot reads the Google sign-in link from the
 server and opens it with the desktop browser. The server browser launch is disabled for this
@@ -459,9 +465,16 @@ reads the Google account's quota summary and sends one Markdown answer. The driv
 `readRateLimits` sends it in a session that no thread owns (`privatePrompt` in
 `src/backend/acp-client.ts`). Each process keeps that one session for every read, because each new
 Antigravity session leaves a conversation database in `~/.gemini/antigravity-acp/conversations`,
-also after it closes. `src/backend/antigravity-usage.ts` reads the Gemini groups of the answer's
-"Quota Limits" section into the dock's windows. The Claude and GPT models that Antigravity also runs
-share another limit, so `accountUsageCoversModel` covers only Gemini models. An older runtime, an
+also after it closes. `src/backend/antigravity-usage.ts` reads one group of the answer's
+"Quota Limits" section into the windows. Google can give a model a group of its own, such as Gemini 4
+Argon, so a read for a model takes the group whose "Models within this group" list names it (#3055),
+and a model that no group names has no reading. The dock's read, with no model, takes the "Gemini
+Models" group. Each reading also carries every group by name and models (`AccountUsageLimit.groups`),
+so the usage popover shows one line per group and the composer notice uses the group of the agent's
+model (`usageGroupForModel`). The ring stays on the reading's own group. The Team API codecs do not
+send `groups`, so a remote client shows the one reading. The Claude and GPT models that Antigravity
+also runs share another limit, so `accountUsageCoversModel` keeps them out of the plan-limit hold. An
+older runtime, an
 API key sign-in ("Not applicable for current authentication method") and an answer that does not
 parse give no reading. A saved Gemini API key comes before the Google sign-in, so the provider
 status sets `apiKeyInUse`, and the API key section of the Gemini provider page says that the key,
@@ -536,7 +549,11 @@ then `~/.cursor/auth.json`; on Linux `$XDG_CONFIG_HOME/cursor/auth.json` or
 this API. `autoPercentUsed` (Cursor's own models) fills the primary window and `apiPercentUsed`
 (all other models) the secondary one, both for the billing cycle; the dock names them by slot for a
 `cursor` row, because both windows have the same length. A plan with only `totalPercentUsed` fills
-the primary window. No token, a 401 or 403, or no percentage gives no reading. The dock poll calls
+the primary window. The reader also sends `GetPlanInfo`: on a merged plan (`isMerged`), such as an X
+subscription, the included usage covers Grok and Composer only, so `totalPercentUsed` alone fills the
+primary window and the dock shows no other models window, as the Cursor app does. The Cursor app
+keeps the split for a merged Enterprise team plan; the reader cannot see the membership type, so it
+does not. A failed `GetPlanInfo` keeps the split. No token, a 401 or 403, or no percentage gives no reading. The dock poll calls
 `readCursorUsage` directly, as it does for OpenCode, so it does not start the CLI for a reading.
 `scripts/cursor-usage-e2e.ts` covers it.
 
@@ -644,6 +661,21 @@ same `PATH`, so their Bash tool and hooks find the user's tools; an `env.PATH` i
 wins. The agents run confined with no state paths. Migration 23 adds `acp` to
 `projection_provider_sessions`. The host hides `acp` agents, models, status, and sign-in state from
 peers before protocol 5, and the `customAgents` IPC group is local only.
+
+A custom agent can have a usage prompt (`usagePrompt`, "Usage command" in the form), one line such
+as `/usage`. `customAgents.usage` asks each agent that has one: `ProviderRuntime.customAgentUsage`
+sends it through `readUsageText` on the agent's model list process, in the session that no thread
+owns (`privatePrompt`). The answer is redacted and kept to `CUSTOM_AGENT_LIMITS.usageAnswer`
+characters. OpenBot does not read a percent from it, so `acp` keeps `reportsUsage: false`: the rail
+shows the agent's logo with no ring, and its hover card shows the text. The renderer polls with the
+plan usage interval, only while the local server is active. One read runs at a time, and a read from
+the last minute answers the next request. While `acp` is released, the read returns the last answers
+and starts the router again only when an answer is older than an hour or its prompt changed. A read
+that times out cancels the prompt in the agent. A prompt that the agent does not answer itself is a
+model turn on each read. The registry install result of `acp-registry-v1` has no `usagePrompt`, so
+the summary check accepts a summary without it. An older build drops `usagePrompt` from `custom-agents.json`
+the next time it saves the file. An instance transfer does not carry it, because the import never
+saves a custom agent.
 
 ### Local detection and endpoint edit
 

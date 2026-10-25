@@ -260,6 +260,7 @@ export const messages = defineMessages("error.backend", {
   "error.backend.uiBlockAnswerInvalid": "This answer does not fit the agent's block.",
   "error.backend.uiBlockActionNotAllowed": "Only the server owner or an admin can choose this action.",
   "error.backend.approvalInactive": "This approval is no longer active.",
+  "error.backend.approvalOwnerOnly": "Only the server owner can approve this action.",
   "error.backend.takeoverInactive": "This browser takeover is no longer active.",
   "error.backend.authSubmitting": "Authentication submission is already in progress.",
   "error.backend.apiKeySaveFailed": "OpenBot could not save the API key. Try again.",

@@ -7,6 +7,7 @@ import { appPort } from "../../app-port";
 import { useLayout } from "../../layout";
 import { usePlatform } from "../../platform";
 import { useChannels } from "../channels/channels-context";
+import { useCustomAgents } from "../custom-agents/custom-agents-context";
 import { serverSupportsCapability } from "../servers/server-capabilities";
 import { useServers } from "../servers/servers-context";
 import { useSettings } from "../settings/settings-context";
@@ -17,8 +18,8 @@ import { RailHelpMenu } from "./RailHelpMenu";
 import { useWindowPage } from "./window-page-context";
 
 /**
- * The page rail of the desktop window. Agents, Routines, Schedule, Usage, Marketplace and Settings
- * change the page in the card.
+ * The page rail of the desktop window. Agents, Routines, Workflows, Schedule, Usage, Marketplace and
+ * Settings change the page in the card.
  */
 export function WorkspacePageRail(props: { hidden: boolean }) {
   const text = useText();
@@ -43,6 +44,9 @@ export function WorkspacePageRail(props: { hidden: boolean }) {
     layout.setSidebarView(view);
   }
   const usageRows = usePlanLimitRows();
+  const { customAgentUsage } = useCustomAgents();
+  /** The custom agents run on this computer, so a joined server does not show their usage. */
+  const localAgentUsage = () => (activeServer()?.kind === "local" ? customAgentUsage() : []);
   /** The compact sidebar has no footer, so the update island does not show. The Settings button then marks the update. */
   const updateNotice = () => {
     const phase = updates.status().phase;
@@ -64,8 +68,11 @@ export function WorkspacePageRail(props: { hidden: boolean }) {
       hidden={props.hidden}
       current={current()}
       usageRows={usageRows()}
+      customAgentUsage={localAgentUsage()}
       onAgents={() => showSidebarView("agents")}
       onRoutines={() => showSidebarView("routines")}
+      // A joined server without workflows shows its notice on the page.
+      onWorkflows={() => windowPage.openWorkflows(null)}
       onSchedule={windowPage.openSchedule}
       onTasks={tasksAvailable() ? windowPage.openTasks : undefined}
       onUsage={windowPage.openUsage}

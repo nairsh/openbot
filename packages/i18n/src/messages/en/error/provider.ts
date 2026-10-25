@@ -187,6 +187,8 @@ export const messages = defineMessages("error.provider", {
     "OpenCode's model provider reported an invalid upload request. Choose another model and continue. Check saved routines before you create them again.\n{detail}",
   "error.provider.opencodeUnreadableContent":
     "This model cannot read a file or image in this chat. Choose a model that can read files, then send your message again.",
+  "error.provider.opencodeFreeLimit":
+    "The free OpenCode models reached their usage limit. All free models share this limit. To continue, paste an OpenCode Go key in the OpenCode settings, or choose a model from another provider.",
   "error.provider.opencodeProviderFailed":
     "The model provider failed on its side. Your connection is not the cause. Try again later or choose another model.\n{detail}",
   "error.provider.opencodeNetwork":
@@ -261,6 +263,7 @@ export const messages = defineMessages("error.provider", {
     "An agent ID must be lowercase letters, digits or `-`, and cannot be the ID of a built-in provider.",
   "error.provider.customAgentEnvInvalid":
     "A variable name must be letters, digits or `_`, and not start with a digit. Use each name once, at most 16 names.",
+  "error.provider.customAgentUsagePromptInvalid": "A usage command must be one line of at most 256 characters.",
   "error.provider.customAgentCommandInvalid":
     "The command must be a full path, a path that starts with ~/, or a command name with no spaces.",
   "error.provider.customAgentArgsInvalid": "An argument cannot contain a line break. Use at most 32 arguments.",
@@ -297,6 +300,8 @@ export const messages = defineMessages("error.provider", {
   "error.provider.accountNotFound": "This {provider} account is not on this computer. Refresh and try again.",
   "error.provider.accountAlreadyAdded": "This {provider} account is already connected.",
   "error.provider.accountDefault": "The first {provider} account cannot be removed.",
+  "error.provider.accountUsesKey":
+    "This {provider} account uses the saved API key and has no sign-in. Change the key in Server settings → Providers.",
   "error.provider.accountInUse": "An agent on this account is working. Try again when the agent stops.",
   "error.provider.accountsReadOnly":
     "The saved provider accounts cannot be read. Update OpenBot before you change them.",

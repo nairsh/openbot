@@ -48,16 +48,13 @@ import {
   type RespondToApprovalInput,
   type RespondToBrowserSecretInput,
   type RespondToBrowserTakeoverInput,
-  type Routine,
-  type RoutineRun,
+  remoteBrowserSecretResponse,
   type SetAgentMemoryInclusionInput,
   type StartAgentTaskInput,
   type SteerQueuedMessageInput,
-  type TestRoutineInput,
   type UpdateQueuedMessageInput,
-  type UpdateRoutineInput,
 } from "@openbot/contracts/ipc";
-import { guardedDecoder } from "@openbot/contracts/ipc-decoding";
+import { guardedDecoder, guardedListDecoder } from "@openbot/contracts/ipc-decoding";
 import { isDynamicRecord, isString } from "@openbot/contracts/runtime-values";
 import { TEAM_API_ROUTES } from "@openbot/contracts/team-api-routes";
 import { AGENT_IMPORT_ROUTES, AGENT_IMPORT_UPLOAD_BYTES } from "@openbot/contracts/team-protocol/agent-import-v1";
@@ -290,7 +287,10 @@ export const respondToBrowserSecret = Effect.fn("TeamClient.respondToBrowserSecr
   request: TeamApiRequest,
   input: RespondToBrowserSecretInput,
 ): Effect.fn.Return<void, TeamRequestError> {
-  return yield* teamCall(() => request("POST", BROWSER_SECRET_RESPONSE_PATH, ignoreResponse, { ...input }));
+  // Only the released fields: `saveToVault` is for the Vault of the local computer.
+  return yield* teamCall(() =>
+    request("POST", BROWSER_SECRET_RESPONSE_PATH, ignoreResponse, { ...remoteBrowserSecretResponse(input) }),
+  );
 });
 
 /** The channel calls of the desktop IPC surface, which a remote desktop sends to the host the same way. */
@@ -336,31 +336,36 @@ export function teamChannelsApi(request: TeamApiRequest): TeamChannelsApi {
 
 const decodeRoutine = guardedDecoder(isRoutine, "routine");
 const decodeRoutineRun = guardedDecoder(isRoutineRun, "routine run");
+const decodeRoutines = guardedListDecoder(isRoutine, "routine list");
+const decodeRoutineRuns = guardedListDecoder(isRoutineRun, "routine run list");
 
-/** Changes an agent routine, such as its instruction. Every host serves this frozen v1 route. */
-export const updateAgentRoutine = Effect.fn("TeamClient.updateAgentRoutine")(function* (
-  request: TeamApiRequest,
-  input: UpdateRoutineInput,
-): Effect.fn.Return<Routine, TeamRequestError> {
-  return yield* teamCall(() =>
-    request(
-      "PATCH",
-      TEAM_API_ROUTES.agent.routine(input.agentId, input.routineId),
-      decodeRoutine,
-      decodeTeamProtocolV2Json(input),
-    ),
-  );
-});
+/** The agent routine calls of the desktop IPC surface, which a remote desktop sends to the host the same way. */
+export type TeamAgentRoutinesApi = Pick<
+  OpenBotDesktopApi["agent"],
+  "listRoutines" | "createRoutine" | "updateRoutine" | "deleteRoutine" | "testRoutine" | "listRoutineRuns"
+>;
 
-/** Runs an agent routine now. Every host serves this frozen v1 route. */
-export const testAgentRoutine = Effect.fn("TeamClient.testAgentRoutine")(function* (
-  request: TeamApiRequest,
-  { agentId, routineId }: TestRoutineInput,
-): Effect.fn.Return<RoutineRun, TeamRequestError> {
-  return yield* teamCall(() =>
-    request("POST", TEAM_API_ROUTES.agent.routineTest(agentId, routineId), decodeRoutineRun),
-  );
-});
+/** The frozen v1 agent routine routes. Every host serves them. */
+export function teamAgentRoutinesApi(request: TeamApiRequest): TeamAgentRoutinesApi {
+  return {
+    listRoutines: (agentId) => request("GET", TEAM_API_ROUTES.agent.routines(agentId), decodeRoutines),
+    createRoutine: (input) =>
+      request("POST", TEAM_API_ROUTES.agent.routines(input.agentId), decodeRoutine, decodeTeamProtocolV2Json(input)),
+    updateRoutine: (input) =>
+      request(
+        "PATCH",
+        TEAM_API_ROUTES.agent.routine(input.agentId, input.routineId),
+        decodeRoutine,
+        decodeTeamProtocolV2Json(input),
+      ),
+    deleteRoutine: ({ agentId, routineId }) =>
+      request("DELETE", TEAM_API_ROUTES.agent.routine(agentId, routineId), ignoreResponse),
+    testRoutine: ({ agentId, routineId }) =>
+      request("POST", TEAM_API_ROUTES.agent.routineTest(agentId, routineId), decodeRoutineRun),
+    listRoutineRuns: ({ agentId, routineId, limit }) =>
+      request("GET", `${TEAM_API_ROUTES.agent.routineRuns(agentId, routineId)}?limit=${limit}`, decodeRoutineRuns),
+  };
+}
 
 /** The routine canvas calls of the desktop IPC surface. Send them only to a host that serves `routine-flows-v1`. */
 export type TeamRoutineFlowsApi = OpenBotDesktopApi["routineFlows"];

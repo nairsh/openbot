@@ -1553,6 +1553,8 @@ export function createConversationViewScope(props: ConversationProps) {
     noteReaderIntent(event.deltaY < 0);
   }
   function readerKeyDown(event: KeyboardEvent) {
+    // A control that used the key, such as the rows of a trace dialog, did not scroll the chat.
+    if (event.defaultPrevented) return;
     if (event.key === "ArrowUp" || event.key === "PageUp" || event.key === "Home") noteReaderIntent(true);
     else if (event.key === "ArrowDown" || event.key === "PageDown" || event.key === "End") noteReaderIntent(false);
     else if (event.key === " ") noteReaderIntent(event.shiftKey);

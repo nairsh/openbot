@@ -8,6 +8,7 @@ import {
   MotionTooltip,
   Settings,
   Store,
+  Waypoints,
   Workflow,
 } from "@openbot/ui";
 import { AccountUsageDetails } from "@openbot/ui/features/account/AccountUsageDetails";
@@ -72,7 +73,7 @@ function UsageRings(props: { row: AccountUsageProviderRow; onOpen: (button: HTML
         .map((window) => t("account.usage.row.window", { window: window.label, percent: window.remainingPercent }))
         .join(", "),
     });
-  const windows = () => [...props.row.windows].reverse().slice(0, 2);
+  const windows = () => [...props.row.ringWindows].reverse().slice(0, 2);
   const outerRadius = (RING.size - RING.stroke) / 2;
   return (
     <RailButton
@@ -124,8 +125,46 @@ function UsageRings(props: { row: AccountUsageProviderRow; onOpen: (button: HTML
   );
 }
 
+/** The answer of one custom agent to its usage prompt. OpenBot cannot read a percent from it. */
+export interface CustomAgentUsageRailRow {
+  id: string;
+  name: string;
+  text: string;
+}
+
+/**
+ * The plan usage of one custom agent: the agent logo, with no ring. The hover card shows the answer
+ * as the agent wrote it.
+ */
+function CustomAgentUsageButton(props: { row: CustomAgentUsageRailRow; onOpen: (button: HTMLElement) => void }) {
+  const { t } = useText();
+  return (
+    <RailButton
+      label={t("app.rail.customAgentUsage", { name: props.row.name })}
+      card={() => (
+        <div class="window-rail-agent-usage">
+          <h2 class="account-usage-popover-title">{props.row.name}</h2>
+          <p class="window-rail-agent-usage-text">{props.row.text}</p>
+        </div>
+      )}
+      class="window-rail-usage"
+      onClick={props.onOpen}
+    >
+      <ProviderLogo provider="acp" class="window-rail-usage-logo window-rail-agent-usage-logo" />
+    </RailButton>
+  );
+}
+
 /** The rail pages. Agents and Routines show the same page with a different sidebar list. */
-export type PageRailPage = "agents" | "routines" | "tasks" | "schedule" | "usage" | "marketplace" | "settings";
+export type PageRailPage =
+  | "agents"
+  | "routines"
+  | "workflows"
+  | "tasks"
+  | "schedule"
+  | "usage"
+  | "marketplace"
+  | "settings";
 
 export interface PageRailProps {
   hidden: boolean;
@@ -133,9 +172,13 @@ export interface PageRailProps {
   current: PageRailPage | null;
   /** The plan limits of each provider account. Each one with a reported window shows as rings. */
   usageRows: readonly AccountUsageProviderRow[];
+  /** The answers of the custom agents on this computer that have a usage prompt. Absent on the web. */
+  customAgentUsage?: readonly CustomAgentUsageRailRow[] | undefined;
   onAgents: () => void;
   /** Absent when the server has no routines. */
   onRoutines?: (() => void) | undefined;
+  /** Absent when the server has no workflows. */
+  onWorkflows?: (() => void) | undefined;
   /** Absent where the server keeps no tasks. */
   onTasks?: ((button: HTMLElement) => void) | undefined;
   /** Absent where there is no schedule page. */
@@ -203,6 +246,17 @@ export function PageRail(props: PageRailProps) {
             </RailButton>
           )}
         </Show>
+        <Show when={props.onWorkflows}>
+          {(onWorkflows) => (
+            <RailButton
+              label={t("app.rail.workflows")}
+              current={props.current === "workflows"}
+              onClick={() => onWorkflows()()}
+            >
+              <Waypoints aria-hidden="true" />
+            </RailButton>
+          )}
+        </Show>
         <Show when={props.onTasks}>
           {(onTasks) => (
             <RailButton
@@ -236,6 +290,9 @@ export function PageRail(props: PageRailProps) {
           keyed={accountUsageRowKey}
         >
           {(row) => <UsageRings row={row()} onOpen={props.onUsage} />}
+        </For>
+        <For each={props.customAgentUsage ?? []} keyed={(row) => row.id}>
+          {(row) => <CustomAgentUsageButton row={row()} onOpen={props.onUsage} />}
         </For>
         <Show when={props.onMarketplace}>
           {(onMarketplace) => (

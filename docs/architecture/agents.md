@@ -171,6 +171,60 @@ on a joined host.
   service, so the tool router reads it through a getter. The canvas chat panel sends the user's request
   to the open agent's own conversation and shows the answer of the turn that read it.
 
+## Workflows
+
+A workflow is a graph of steps that the user draws on the canvas of the Workflows page (the
+`Waypoints` button of the page rail). It is not part of one agent: a graph can name several agents,
+models, conditions, approvals and outputs. The host keeps the workflows. A joined desktop and the
+web client use them through the optional `workflows-v1` capability (see
+[Workflows](servers.md#workflows)). The agent event `workflows-changed` names the workflow that
+changed, on this computer and on a joined host.
+
+- `packages/ui/src/features/workflows/` is the canvas. It reads no application context: it takes
+  the document, catalogs, run state and callbacks as props. Edits stay local for fast drags and
+  undo, and the canvas gives the new document after each history step.
+  `src/renderer/src/features/workflows/` holds `WorkflowsPage.tsx`, `workflows-port.ts` (the port
+  over `window.openbot.workflows`) and `workflows-controller.ts`. The controller is the same for the
+  page and the stories. It saves the graph 400 ms after the last edit, one save at a time on its
+  base revision. A failed save keeps the edit for the next save. A change from another device, a
+  conflict or a restore loads the graph again, and undo on the canvas gets the edits back.
+- `src/backend/workflows/` owns the tables of migration 46: workflows, nodes, edges, versions,
+  triggers, webhook triggers and receipts, runs, steps and output posts. The rows are written
+  directly, not through `dispatch`, as for routine flows. `workflow-graph.ts` checks the graph rules
+  (branch edges only from a condition, port types, limits). A graph can have loops. A save with an old revision
+  answers the current graph as a conflict. The store keeps at most 50 versions: one when the newest
+  is older than 5 minutes, one on a restore, and one when a run starts on a graph revision that has
+  no version yet.
+- `Workflows` (`workflows.ts`) is an Effect service on its own managed runtime. A run copies the
+  graph. Each pass ends the steps that ended and starts each node whose inputs are in
+  (`workflow-walk.ts`). Passes run one at a time; a pass runs after a turn or queue event, after
+  each user action, and at startup. A node runs again when a node before it has a newer step, as
+  after a retry. A retry uses the node's current settings, so a fix made after the failure applies;
+  it uses the run's copy when the node is gone or is now another kind. An edge back to an earlier node (`workflowLoopEdges` in the contracts) is a loop:
+  when its source is done and newer, the earlier node runs again with that answer as one more
+  input. A loop has no pass limit. It ends when a condition takes the other branch, a step fails or
+  is rejected, or the user stops the run. The canvas marks a loop with no condition as endless.
+- An agent step is a routine handoff (`AgentService.enqueueRoutineHandoff`, with the workflow as the
+  routine) and ends when its delivery ends. Its tokens count under the agent. A model step and a
+  condition run in a process without tools; a condition must answer yes or no, and only the edges of
+  that branch stay active. That process (`warm-generations.ts`) stays for 5 idle minutes, so the
+  next step does not start the provider again. Each step still starts a new ephemeral thread, so no
+  step sees the text of another. The process stops when the provider's main client stops or
+  changes, after a failed step, and at shutdown. The tokens of these steps count under one reserved
+  usage row, `WORKFLOWS_USAGE_ID`, beside the agents. An
+  approval waits for the user; a rejection stops the run. An output shows a desktop notification or
+  posts to a messaging place.
+- `WorkflowTriggers` (`workflow-triggers.ts`) gives schedule triggers to the routine timer as an
+  extra due source. An occurrence is skipped while the workflow has an open run, and missed
+  occurrences become one run. A webhook trigger has a route of its own owner kind (`workflow`); see
+  [Route lifecycle](events.md#route-lifecycle).
+- A restart keeps approvals and agent steps, because their state is in the database and the
+  mailbox. The first pass fails a model step that was running, and ends a run that was stopping. An
+  agent step fails with `agentMissing` when its agent is deleted. A post that did not start is sent; a
+  post that was on its way fails as uncertain, and the user retries the step.
+- Image, asset, file output and message trigger nodes are kept in the graph but do not run yet; a
+  run that reaches one fails with `nodeUnsupported`.
+
 ## Hidden agents
 
 A user hides an agent from its sidebar menu in place of a delete. The agent keeps its thread, files,

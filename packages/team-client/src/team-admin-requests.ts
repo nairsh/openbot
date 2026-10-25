@@ -24,10 +24,11 @@ import { DISCORD_ACCESS_ROUTES } from "@openbot/contracts/team-protocol/discord-
 import { HOST_MEMBER_UPDATE_ROUTES } from "@openbot/contracts/team-protocol/host-member-update-v1";
 import { HOST_RELEASE_ROUTES } from "@openbot/contracts/team-protocol/host-release-v1";
 import { HOST_TIMEZONE_ROUTES } from "@openbot/contracts/team-protocol/host-timezone-v1";
+import { PROMPT_CACHE_TTL_ROUTES } from "@openbot/contracts/team-protocol/prompt-cache-ttl-v1";
 import type { PROVIDERS_V5_ROUTES } from "@openbot/contracts/team-protocol/providers-v5";
 import { PROVIDERS_V8_ROUTES } from "@openbot/contracts/team-protocol/providers-v8";
 // Admin requests to one host: agent settings and skills, shared tables, agent share links, the server name and logo,
-// the server timezone, the agent memory limit, the Discord roles that can use OpenBot, the app update, MCP servers, storage, hosted sites and providers.
+// the server timezone, the agent memory limit, the prompt cache time, the Discord roles that can use OpenBot, the app update, MCP servers, storage, hosted sites and providers.
 //
 // The desktop sends the same routes from the main process. The web client and the mobile app send
 // them through their own transport, so the path, body and decoding of each request are here once.
@@ -77,6 +78,7 @@ import {
   decodeMcpSignInStates,
   decodeMcpSignInStatus,
   decodeMcpTestResult,
+  decodePromptCacheTtlSetting,
   decodeProviderApiKeyStatus,
   decodeProviderCodeLoginStart,
   decodeProviderHostSignInStatus,
@@ -120,6 +122,8 @@ import {
   type MessagingOverview,
   type OnePasswordConnectorStatus,
   type OnePasswordHostConnectInput,
+  type PromptCacheTtl,
+  type PromptCacheTtlSetting,
   type ProviderCodeLoginStart,
   type ProviderHostSignInStatus,
   type ProviderRuntimeSnapshot,
@@ -586,6 +590,19 @@ export function setHostAgentAccess(
     })),
   };
   return adminCall(() => request("POST", AGENT_ACCESS_ROUTES.set, decodeAgentAccessSnapshot, body));
+}
+
+export function getHostPromptCacheTtl(
+  request: TeamApiRequest,
+): Effect.Effect<PromptCacheTtlSetting, TeamAdminRequestError> {
+  return adminCall(() => request("POST", PROMPT_CACHE_TTL_ROUTES.settings, decodePromptCacheTtlSetting, {}));
+}
+
+export function setHostPromptCacheTtl(
+  request: TeamApiRequest,
+  ttl: PromptCacheTtl,
+): Effect.Effect<PromptCacheTtlSetting, TeamAdminRequestError> {
+  return adminCall(() => request("POST", PROMPT_CACHE_TTL_ROUTES.update, decodePromptCacheTtlSetting, { ttl }));
 }
 
 /** The one MCP read route, and the only one the host answers to a GET. */

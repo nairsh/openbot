@@ -287,8 +287,26 @@ The plan sets the number of active members, owner included: Starter 3, Standard 
 with `getServerEntitlement` when a member joins or is reactivated, and refuses a member over the limit
 (`409 member_limit_reached`). This also applies to a self-hosted host that has a plan.
 
-- A lower limit after a plan change or a plan end removes no one. Active members keep their seats.
-  A new join or a reactivation waits for a free seat.
+- A row in the D1 table `server_member_limits` replaces the plan's limit for one server, such as an
+  enterprise customer's, from 1 to 100. The row names the account that owns the server and applies
+  only while that account owns it, as a plan does. The key is the server ID, so the row stays when
+  the owner deletes the host and registers it again; it stops when the account is deleted. No route
+  writes it; add, change or delete it by hand (`openbot-auth-test` for the test Worker):
+
+  ```sh
+  bunx wrangler d1 execute openbot-auth --cwd apps/auth-api --remote --command \
+    "INSERT INTO server_member_limits(server_id, owner_user_id, member_limit, created_at, updated_at)
+     SELECT host_id, owner_user_id, 50, unixepoch() * 1000, unixepoch() * 1000
+       FROM remote_hosts WHERE host_id = '<server id>'
+     ON CONFLICT(server_id) DO UPDATE SET owner_user_id = excluded.owner_user_id,
+       member_limit = excluded.member_limit, updated_at = excluded.updated_at"
+  ```
+
+  For a hosted server that has not published its host, read the owner from `hosted_servers`. Delete
+  the row to go back to the plan's limit. Clients see the new limit when they read the host list
+  again.
+- A lower limit after a plan change, a plan end or a custom limit removes no one. Active members
+  keep their seats. A new join or a reactivation waits for a free seat.
 - The host list (`GET /v2/remote/hosts/`) gives `memberLimit` for each host. The desktop, web and
   mobile member screens show it. They use 3 when an older Worker sends no limit.
 - After each subscription sync, the Worker sends `account-servers-changed` to each active member,

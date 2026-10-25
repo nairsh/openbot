@@ -72,8 +72,18 @@ describe("agent wait migration", () => {
         projection_agent_tasks: [],
         projection_messaging_allowed_roles: [],
         browser_profiles: [],
+        workflow_edges: [],
+        workflow_nodes: [],
+        workflow_output_deliveries: [],
+        workflow_runs: [],
+        workflow_steps: [],
+        workflow_trigger_webhooks: [],
+        workflow_triggers: [],
+        workflow_versions: [],
+        workflow_webhook_receipts: [],
+        workflows: [],
       });
-      expect(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 45 });
+      expect(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 46 });
       expect(db.prepare("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
       expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
       expect(db.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
@@ -102,15 +112,25 @@ describe("agent wait migration", () => {
       projection_agent_tasks: [],
       projection_messaging_allowed_roles: [],
       browser_profiles: [],
+      workflow_edges: [],
+      workflow_nodes: [],
+      workflow_output_deliveries: [],
+      workflow_runs: [],
+      workflow_steps: [],
+      workflow_trigger_webhooks: [],
+      workflow_triggers: [],
+      workflow_versions: [],
+      workflow_webhook_receipts: [],
+      workflows: [],
     });
   });
 
   it("rejects newer and incomplete migration histories before it creates the table", () => {
     const db = databaseAtWithSeed(33);
     const before = contents(db);
-    db.exec("INSERT INTO schema_migrations VALUES(46,'now')");
+    db.exec("INSERT INTO schema_migrations VALUES(47,'now')");
     expect(() => migrateOpenBotDatabase(db)).toThrow("newer than this application supports");
-    db.exec("DELETE FROM schema_migrations WHERE version=46; DELETE FROM schema_migrations WHERE version=20");
+    db.exec("DELETE FROM schema_migrations WHERE version=47; DELETE FROM schema_migrations WHERE version=20");
     expect(() => migrateOpenBotDatabase(db)).toThrow("missing version 20");
     expect(contents(db)).toEqual(before);
     expect(waitTables(db)).toEqual([]);

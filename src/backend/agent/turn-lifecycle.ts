@@ -10,9 +10,11 @@ import {
   CONVERSATION_PLAN_ITEM_TYPE,
   CONVERSATION_SUBAGENTS_ITEM_TYPE,
   type ConversationMemoryChange,
+  type ConversationMessage,
   type ConversationPlan,
   type ConversationSnapshot,
   type ConversationSubagent,
+  type ConversationTurnTrace,
   clampConversationSubagents,
   conversationPlanText,
   conversationSubagentsText,
@@ -66,17 +68,23 @@ import {
 import { ThreadFileHistory } from "./thread-file-history";
 import {
   isNonActionableCodexWarning,
+  isToolItem,
   refusedSessionFailure,
   type ToolUsageSignal,
+  toolFailed,
   toolProgressText,
+  toolTraceDetail,
   toolUsage,
   toThreadItem,
 } from "./thread-items";
+import { TurnTraces, traceMessage } from "./turn-traces";
 import { collectProviderUsage } from "./usage-collection";
 import { USAGE_LIMIT_METHOD, type UsageLimitGate } from "./usage-limit-gate";
 
 const logger = createOpenBotLogger("turn-lifecycle");
 const ENDED_TURN_LIMIT = 256;
+/** How long before a turn's start its usage records can be, as in host analytics. */
+const TURN_USAGE_MARGIN_MS = 60 * 60 * 1_000;
 /**
  * The provider errors that move an agent set to switch without asking to its next backup model. Each
  * one can pass on another provider, account or model; a request the model refuses fails on each.
@@ -205,6 +213,8 @@ export class TurnLifecycle {
   readonly #failedTurns = new Map<string, string>();
   readonly #observedCompactions = new Map<string, string>();
   readonly #itemTurns = new Map<string, string>();
+  /** The real start and end of each step of a running turn, for the trace of the finished turn. */
+  readonly #traces = new TurnTraces();
   #scope = Scope.makeUnsafe();
   readonly #turnAssociations = new Map<string, Deferred.Deferred<void, TurnOperationFailed>>();
   /**
@@ -337,6 +347,7 @@ export class TurnLifecycle {
     this.#refusedRetries.clear();
     this.#lastEventAt.clear();
     this.#itemTurns.clear();
+    this.#traces.clear();
     this.#observedCompactions.clear();
   }).bind(this);
 
@@ -367,6 +378,8 @@ export class TurnLifecycle {
           .findDeliveriesByTurn(turn.agentId, turnId)
           .some(({ delivery }) => delivery.status === "starting" || delivery.status === "running")
       ) {
+        // The turn does not end here, so it keeps no trace.
+        this.#traces.drop(turnId);
         // The client is gone, so no browser tool of this turn can run. Other agents keep their controls.
         this.#browser.endControl(this.#conversation.publicThreadId(turn.agentId, turn.threadId), turnId);
         // The turn does not end here, so a provider error held for a failover shows now.
@@ -480,6 +493,7 @@ export class TurnLifecycle {
           produced: false,
           acted: false,
         });
+        this.#traces.begin(turnId, new Date().toISOString());
         const publicThreadId = this.#conversation.publicThreadId(agentId, threadId);
         const snapshot = this.#conversation.ensureSnapshot(agentId, publicThreadId);
         snapshot.activeTurnId = turnId;
@@ -557,6 +571,15 @@ export class TurnLifecycle {
           turnId,
           notification.method === "item/agentMessage/delta" && delta.trim() !== "" && message.itemType !== "commentary",
           delta.trim() !== "",
+        );
+        // A delta can come before its `item/started`, so it can start the step.
+        this.#traces.observe(
+          turnId,
+          itemId,
+          notification.method.startsWith("item/reasoning/") || message.itemType === "commentary"
+            ? "reasoning"
+            : "message",
+          { completed: false },
         );
         if (notification.method.startsWith("item/reasoning/")) {
           if (message.itemType !== "commentary") {
@@ -705,13 +728,15 @@ export class TurnLifecycle {
         // usage can leave it out of the banner. Gemini's 429 reads as a spent quota, and it failed
         // with nothing on screen; Gemini keeps the banner, because an API key sign-in, a runtime
         // before 1.4.1 and a Claude or GPT model have no reading. Cursor keeps it too: an on-demand
-        // budget and a team limit are not in its reading. A plan window holds the queue until its
-        // reset for every provider.
+        // budget and a team limit are not in its reading. OpenCode keeps it because only a Go key
+        // has a reading, and the free models failed with nothing on screen. A plan window holds the
+        // queue until its reset for every provider.
         if (
           error?.codexErrorInfo === "usageLimitExceeded" ||
           (isUsageLimitDiagnostic(message) &&
             ((source.provider !== "antigravity" &&
               source.provider !== "cursor" &&
+              source.provider !== "opencode" &&
               agentProviderDescriptor(source.provider).reportsUsage) ||
               isPlanLimitDiagnostic(message))) ||
           (errorTurnId !== null && this.#limitedTurns.has(errorTurnId))
@@ -808,6 +833,8 @@ export class TurnLifecycle {
       this.#runningTurns.delete(turnId);
       this.#markEnded(turnId);
       this.#completingTurns.add(turnId);
+      // A turn that runs again below starts a new trace, so each path takes this one.
+      const trace = this.#traces.take(turnId, new Date().toISOString());
       const noUpdateCalled = this.#noUpdateTurns.delete(turnId);
       const reportedFailure = this.#reportedFailures.get(turnId);
       this.#reportedFailures.delete(turnId);
@@ -1007,6 +1034,7 @@ export class TurnLifecycle {
           this.#hooks.emit({ type: "agents-changed", agents: this.#hooks.listAgents() });
         }
       }
+      if (trace) this.#attachTrace(snapshot.messages, agentId, turnId, trace);
       addMemoryChangesMessage(snapshot, turnId, memoryChanges, (text) => this.#hooks.redactMcp(text));
       this.#conversation.emitConversation(snapshot, "turn.completed", { turnId, status: outcome });
       if (deliveries.length > 0) {
@@ -1067,6 +1095,7 @@ export class TurnLifecycle {
     this.#runningTurns.delete(turnId);
     this.#reportedFailures.delete(turnId);
     this.#markEnded(turnId);
+    const trace = this.#traces.take(turnId, new Date().toISOString());
     const deliveries = yield* turnStep(() => this.#mailbox.findDeliveriesByTurn(agentId, turnId)).pipe(
       Effect.catchCause((cause) => report(cause).pipe(Effect.as([]))),
     );
@@ -1107,6 +1136,8 @@ export class TurnLifecycle {
         this.#mailboxSync.syncDeliveryMessage(closed, delivery.id);
         changedIds.add(delivery.id);
       }
+      const traced = trace && this.#attachTrace(closed.messages, agentId, turnId, trace);
+      if (traced) changedIds.add(traced.id);
       if (closed.activeTurnId === turnId) closed.activeTurnId = null;
       closed.revision = this.#store.database.persistConversationChanges({
         agentId,
@@ -1285,6 +1316,7 @@ export class TurnLifecycle {
     if (usage) this.#hooks.emitToolUsage({ ...usage, agentId, turnId });
     if (yield* this.#images.handleItem(agentId, threadId, turnId, item, completed)) return;
     const toolProgress = toolProgressText(item, completed);
+    this.#observeTraceStep(turnId, item, completed, toolProgress);
     if (toolProgress) {
       this.#emitTurnProgress(agentId, this.#conversation.publicThreadId(agentId, threadId), turnId, toolProgress);
       return;
@@ -1371,6 +1403,45 @@ export class TurnLifecycle {
     snapshot.messages.splice(index, 1);
     this.#itemTurns.delete(`${turnId}:plan`);
     this.#conversation.emitConversation(snapshot);
+  }
+
+  /** Records a step for the trace: a tool step, a thought or an answer. Other items have no step. */
+  #observeTraceStep(turnId: string, item: ThreadItem, completed: boolean, toolProgress: string | null): void {
+    if (!isString(item.id)) return;
+    if (isToolItem(item)) {
+      const failed = completed && toolFailed(item);
+      this.#traces.observe(turnId, item.id, "tool", {
+        completed,
+        failed,
+        text: toolProgress,
+        ...toolTraceDetail(item),
+      });
+    } else if (item.type === "agentMessage")
+      this.#traces.observe(turnId, item.id, item.phase === "commentary" ? "reasoning" : "message", { completed });
+  }
+
+  /**
+   * Puts the trace of an ended turn on the message that holds it (`traceMessage`), with the tokens
+   * and cost that the provider reported for the turn so far. A usage read that fails leaves them out;
+   * it does not stop the end of the turn. Returns the message, or undefined when the turn has none.
+   */
+  #attachTrace(
+    messages: ConversationMessage[],
+    agentId: string,
+    turnId: string,
+    trace: ConversationTurnTrace,
+  ): ConversationMessage | undefined {
+    const message = traceMessage(messages, turnId);
+    if (!message) return undefined;
+    let usage: { tokens: number; costUsd: number | null } | null = null;
+    try {
+      const since = new Date(Date.parse(trace.startedAt) - TURN_USAGE_MARGIN_MS).toISOString();
+      usage = this.#store.database.usage.readTurnTotals(agentId, turnId, since);
+    } catch (error) {
+      logger.warn("The usage of a turn could not be read for its trace.", { error });
+    }
+    message.trace = usage ? { ...trace, tokens: usage.tokens, costUsd: usage.costUsd } : trace;
+    return message;
   }
 
   #emitTurnProgress(agentId: string, threadId: string, turnId: string, text: string): void {

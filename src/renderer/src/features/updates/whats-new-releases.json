@@ -1,5 +1,51 @@
 [
   {
+    "version": "0.50.0",
+    "date": "2026-10-25",
+    "notices": ["Sign in to Google MCP servers, such as Gmail, Calendar or Drive, again after you upgrade."],
+    "groups": [
+      {
+        "type": "added",
+        "items": [
+          "Draw a workflow on the Workflows page in the page rail. Connect agent, model, condition, approval and output steps, and run it on a schedule or from a webhook.",
+          "Save logins, payment cards and contact info in Server settings → Vault. Agents use them, but never see a password or a card number.",
+          "Open a trace of an agent's turn from its steps row. Each thought, tool call and subagent is a bar on one timeline, with the cost of the turn.",
+          "Set the defaults of the agents on this computer in Settings → Agents.",
+          "Open an agent's chat in a window of its own with \"Open in new window\" in its sidebar menu.",
+          "Add an Anthropic API key on the Claude page in Server settings → Providers, and bill selected agents to it.",
+          "Add more than one Google account to Gemini with Add account on the Gemini row.",
+          "Steer a Grok agent while it works: a message in Steer mode goes into its running turn.",
+          "Connect Cloudflare from the Apps catalog.",
+          "Choose Simplified Chinese or Korean in Settings → General → Language.",
+          "A storage card in the sidebar shows when the disk of the server is almost full.",
+          "Click a message between agents in the chat to read its text."
+        ]
+      },
+      {
+        "type": "changed",
+        "items": [
+          "Claude agents keep the prompt cache for 1 hour by default. Change it on the Claude page in Server settings → Providers.",
+          "Agents follow the persona, reply style and delegation rules in your own CLAUDE.md or AGENTS.md.",
+          "When the provider sends nothing for a minute, the activity line says that it waits. A notice shows when the computer has no internet.",
+          "\"Steer agents while they work\" moved to Settings → Agents.",
+          "On a very wide window, the chat stays in a column in the center."
+        ]
+      },
+      {
+        "type": "fixed",
+        "items": [
+          "A sign-in to a Google MCP server keeps working after the first hour.",
+          "Claude, ChatGPT and Muse agents use less of their plan in channels and after a sidebar change.",
+          "An agent set to switch to a backup model now switches when its provider is overloaded or down.",
+          "Gemini usage follows the limit of the model that an agent uses, and counts all tokens.",
+          "A long channel keeps working when its history summary is too long.",
+          "An OpenCode agent with more than one chat keeps its OpenBot tools.",
+          "When two or more notifications are open, you can reach each of them."
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.49.0",
     "date": "2026-10-24",
     "notices": ["On macOS, sign in to Gemini again after you upgrade."],

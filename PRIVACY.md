@@ -141,7 +141,7 @@ It also records the topic and result of a contact form send, and whether a retur
 completed or was cancelled, for a plan, a license or the billing portal. The contact form message,
 name and email are not sent to analytics.
 The production desktop app records application, sign-in, onboarding, agent, message, turn, prompt,
-approval, queue, routine, team, browser, search, Remote Desktop, update, marketplace, memory,
+approval, queue, routine, workflow, team, browser, search, Remote Desktop, update, marketplace, memory,
 provider, voice transcription, Voice pane, spoken reply, voice model download, spoken reply setting,
 reaction, Hosted Site, hosted server offer, hosted server plans, plan and member limits, license,
 contact sales, provider usage limit, agent template, phone connection, connector, Computer Use
@@ -247,9 +247,12 @@ The local host also records how the agents are used:
 - **Routine runs.** The host sends the outcome of a routine run, whether it was scheduled or manual,
   and its schedule type (for example daily or weekly). The routine name and instruction are not
   sent.
-- **Setup.** At most once a day, the host sends counts of agents, enabled routines, custom MCP
-  servers, local skills and community skills; the slugs of enabled catalog plugins and of curated
-  skills and agents; the providers in use; and whether Computer Use is enabled.
+- **Workflow runs.** When a workflow run ends, the host sends its outcome, how it started (for
+  example manual, schedule or webhook), its duration, and the count of steps that ran, by kind
+  (agent, model, approval, output). The workflow name, the step text and the IDs are not sent.
+- **Setup.** At most once a day, the host sends counts of agents, enabled routines, workflows,
+  custom MCP servers, local skills and community skills; the slugs of enabled catalog plugins and of
+  curated skills and agents; the providers in use; and whether Computer Use is enabled.
 - **Resource use.** At most once a day, the host sends a summary of the previous day: the memory and
   CPU use of OpenBot's process groups (main, windows, browser tabs, GPU, the database and voice
   processes) and of each provider's CLI and its child processes, by provider id; the main process
@@ -306,11 +309,12 @@ The service stores:
 - the first website visit of an account, when a browser sends it: the source category, platform
   name, first website page, day, allowlisted campaign tags, whether it came from a sign-in or a
   checkout, and the save time. Deleting the account removes it.
-- webhook routes: for each webhook routine of a host, the opaque route ID, the host ID, the owner
-  account ID, the link time, and the revocation time. When the routine stops using a route, or the
-  host is deleted, the service sets the revocation time and the route stops working. The service
+- webhook routes: for each webhook routine and each workflow webhook trigger of a host, the opaque
+  route ID, the host ID, the owner account ID, the link time, and the revocation time. When the
+  routine or workflow stops using a route, or the host is deleted, the service sets the revocation
+  time and the route stops working. The service
   keeps the row with these fields permanently, so that the old public URL never belongs to another
-  host. It does not store the routine, the secret, or request bodies.
+  host. It does not store the routine, the workflow, the secret, or request bodies.
 - published agent templates: the agent name, title, instructions, avatar, routine names, schedules
   and instructions, marketplace skill references, the `SKILL.md` text of local skills, the local
   agent ID, a share card image made from these fields, and creation and update times. Anyone
@@ -586,6 +590,24 @@ is not included in analytics; provider output uses the application's secret reda
   service account token for that server in Server settings › Connectors. The token goes once, over the
   encrypted connection, to the server, which keeps it in the same file on its own disk. The
   computer that sent it does not keep it, and no answer from the server carries it.
+- The Vault (Server settings › Vault) is kept in
+  `~/Library/Application Support/OpenBot/openbot-vault-v1.json`, encrypted by the operating system's
+  secret storage. It holds the logins, payment cards (number, expiry, security code, name) and
+  contact info that the user saves. On a computer with no secret storage, such as Linux with no
+  keyring, the Vault saves nothing. The file never leaves this computer, and joined servers and team
+  members cannot read it. An agent gets the login sites and usernames, the card names with their last
+  four digits and expiry, and the contact info; it never gets a password, a card number, a security
+  code or login notes. An agent can add and change contact info, change the username of a login (not
+  its site) and the name, expiry and billing address of a card, and delete items, with no approval: the
+  chat shows each change, and an item that an agent adds keeps the agent's name. A password that the
+  user types into the secure sign-in card goes to the Vault only while Save to Vault is checked. The
+  first card fill on a site waits for the server owner's approval; team members and messaging
+  services cannot give it. The card then keeps that site and the origins of its card frames, and
+  later fills there need no approval; the user can remove a site in the card. The
+  browser types those values into the page, where the page's own scripts can read them, as they read
+  what a person types. Until that page navigates, the agent cannot take a screenshot, evaluate
+  script or record in that tab, and its snapshots hide the card fields. Passwords and card numbers
+  are redacted from logs, exports and diagnostics. A CSV import is read on this computer only.
 - `~/Library/Application Support/OpenBot/logs/trace.ndjson` is a local trace of IPC calls,
   provider turns, main-process failures, and the steps of each connection to a joined server. Each
   line holds a time, the IPC channel name, the turn origin, the failure origin (`uncaughtException`
@@ -779,6 +801,39 @@ routine's model provider, as other routine input does.
 
 Change a routine to a schedule, or delete it, to stop its URL. Deleting a routine deletes its
 receipts.
+
+## Workflows
+
+A workflow is a graph of steps that the user draws on a canvas. The host stores each workflow, its
+graph, up to 50 earlier versions of the graph, its runs, and the input and output text of each step
+in its local SQLite database. A run also keeps a copy of the graph and, for a webhook run, the
+request body. Runs stay until the workflow is deleted. Nothing about a workflow goes to the account
+service, except the webhook route metadata above.
+
+When analytics is on, product analytics gets the kind of each workflow action (for example create,
+run, approve or restore), the kind of the step, the result, the duration and a coarse failure code,
+and the outcome, duration and step counts of each run. It never gets a workflow name, step text,
+graph, or ID.
+
+- **Agent steps** send their input to the agent as a routine message. The agent's model provider
+  gets it, as with other routine input.
+- **Model and condition steps** send their input to the provider and model that the step names,
+  without tools.
+- **Outputs to a messaging place** post the workflow name and the text through that messaging
+  connection.
+- **Notifications** show the workflow name and at most 200 characters of text, with secrets
+  removed, only when notification previews are on.
+- **Webhook triggers** work like webhook routines: the same route metadata, Signal path, encrypted
+  signing secret, and 7-day receipts without the request body. The host refuses a body of more than
+  64,000 characters. The body, marked as data, is the trigger's output and goes to the next steps.
+  Remove the trigger, or delete the workflow, to stop its URL.
+
+Members of a joined server can read, change, and run a workflow when they can see and use each
+agent in it (`workflows-v1`). The graph and the step text then go to their computer. Only owners
+and administrators see a webhook URL or make a new signing secret.
+
+Deleting an agent keeps the workflows and their step history without the agent. Deleting a
+workflow deletes its versions, runs, steps, and receipts.
 
 ## Slack connections
 

@@ -21,7 +21,7 @@ import {
   type McpToolRuntimeSource,
   usableMcpServers,
 } from "./mcp-provider-shapes";
-import { mcpSecretValues, redactMcpValues } from "./mcp-redaction";
+import { mcpSecretValues, redactMcpRecord, redactMcpValues } from "./mcp-redaction";
 import { PendingServerRequests } from "./pending-server-requests";
 import { createPiInceptionExtension } from "./pi-inception";
 import { createPiMcpExtension, type PiMcpExtension } from "./pi-mcp";
@@ -157,13 +157,12 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
     this.#requests.reject(id, error);
   }
 
-  #redact = (text: string): string => {
+  #redact = (text: string): string => redactMcpValues(redactText(text), this.#secretValues());
+
+  #secretValues(): string[] {
     const values = [...this.#secrets, ...mcpSecretValues(this.options.mcpServers?.() ?? [])];
-    return redactMcpValues(
-      redactText(text),
-      values.flatMap((value) => [value, JSON.stringify(value).slice(1, -1)]),
-    );
-  };
+    return values.flatMap((value) => [value, JSON.stringify(value).slice(1, -1)]);
+  }
 
   readonly stop = Effect.fn("PiAgentClient.stop")(function* (this: PiAgentClient) {
     this.#running = false;
@@ -600,7 +599,7 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
 
   #notify(method: string, thread: PiThread, params: DynamicRecord): void {
     // Usage contains only validated numeric counters. Generic secret-name matching masks `*Tokens`.
-    const safe = method === "openbot/usage" ? params : JSON.parse(this.#redact(JSON.stringify(params)));
+    const safe = method === "openbot/usage" ? params : redactMcpRecord(params, this.#secretValues());
     this.emit("notification", {
       method,
       params: {
@@ -815,8 +814,9 @@ export class PiAgentClient extends EventEmitter<ClientEvents> implements AgentCl
   });
 
   #safeItems(items: ThreadItem[]): ThreadItem[] {
+    const values = this.#secretValues();
     return items.flatMap((item) => {
-      const value = JSON.parse(this.#redact(JSON.stringify(item)));
+      const value = redactMcpRecord(item, values);
       return isRecord(value) && isString(value.type) ? [{ ...value, type: value.type }] : [];
     });
   }

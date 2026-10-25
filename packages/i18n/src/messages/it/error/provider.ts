@@ -197,6 +197,8 @@ export const messages = {
     "Il provider del modello di OpenCode ha segnalato una richiesta di caricamento non valida. Scegli un altro modello e continua. Controlla le routine salvate prima di ricrearle.\n{detail}",
   "error.provider.opencodeUnreadableContent":
     "Questo modello non può leggere un file o un'immagine in questa chat. Scegli un modello che legge i file, poi invia di nuovo il messaggio.",
+  "error.provider.opencodeFreeLimit":
+    "I modelli gratuiti di OpenCode hanno raggiunto il limite di utilizzo. Tutti i modelli gratuiti condividono questo limite. Per continuare, incolla una chiave OpenCode Go nelle impostazioni di OpenCode, oppure scegli un modello di un altro provider.",
   "error.provider.opencodeProviderFailed":
     "Il provider del modello è andato in errore dal suo lato. La tua connessione non c'entra. Riprova più tardi o scegli un altro modello.\n{detail}",
   "error.provider.opencodeNetwork":
@@ -274,6 +276,8 @@ export const messages = {
     "L'ID di un agente deve contenere lettere minuscole, cifre o `-`, e non può essere l'ID di un provider integrato.",
   "error.provider.customAgentEnvInvalid":
     "Il nome di una variabile deve contenere lettere, cifre o `_` e non può iniziare con una cifra. Usa ogni nome una sola volta, al massimo 16 nomi.",
+  "error.provider.customAgentUsagePromptInvalid":
+    "Un comando di utilizzo deve essere una sola riga di massimo 256 caratteri.",
   "error.provider.customAgentCommandInvalid":
     "Il comando deve essere un percorso completo, un percorso che inizia con ~/, oppure il nome di un comando senza spazi.",
   "error.provider.customAgentArgsInvalid": "Un argomento non può contenere un a capo. Usa al massimo 32 argomenti.",
@@ -310,6 +314,8 @@ export const messages = {
   "error.provider.accountNotFound": "Questo account {provider} non è su questo computer. Aggiorna e riprova.",
   "error.provider.accountAlreadyAdded": "Questo account {provider} è già connesso.",
   "error.provider.accountDefault": "Il primo account {provider} non può essere rimosso.",
+  "error.provider.accountUsesKey":
+    "Questo account {provider} usa la chiave API salvata e non ha un accesso. Cambia la chiave in Impostazioni server → Provider.",
   "error.provider.accountInUse": "Un agente che usa questo account è al lavoro. Riprova quando l'agente si ferma.",
   "error.provider.accountsReadOnly":
     "Gli account salvati dei provider non sono leggibili. Aggiorna OpenBot prima di modificarli.",

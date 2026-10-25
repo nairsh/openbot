@@ -29,7 +29,7 @@ import {
 import { createSignal, onSettled, Show } from "solid-js";
 import { useText } from "../../text";
 
-/** The text of each provider whose key this dialog saves. Muse and Gemini also sign in without a key. */
+/** The text of each provider whose key this dialog saves. Muse, Gemini and Claude also sign in without a key. */
 const KEY_TEXT = {
   opencode: {
     name: "OpenCode Go",
@@ -49,6 +49,12 @@ const KEY_TEXT = {
     description: "provider.geminiKey.description",
     label: "provider.geminiKey.label",
   },
+  claude: {
+    name: "Claude",
+    title: "provider.claudeKey.title",
+    description: "provider.claudeKey.description",
+    label: "provider.claudeKey.label",
+  },
   inception: {
     name: "Inception",
     title: "provider.inceptionKey.title",
@@ -67,6 +73,11 @@ export function isKeyDialogProvider(provider: AgentProviderId): provider is KeyD
 
 /** The provider-key half of the desktop API, narrowed so a test can pass four functions. */
 export interface ProviderKeyApi {
+  /**
+   * Whether the host gives a saved Claude key to the Claude CLI: this computer, or a joined server
+   * with `claude-api-key-v1`. An older host stores the key and never reads it.
+   */
+  readsClaudeKey?: boolean | undefined;
   getProviderApiKeyState: (provider: AgentProviderId) => Promise<ProviderApiKeyState>;
   setProviderApiKey: (input: { provider: AgentProviderId; key: string }) => Promise<unknown>;
   clearProviderApiKey: (provider: AgentProviderId) => Promise<unknown>;
@@ -217,13 +228,14 @@ export function OpenCodeKeyDialog(props: OpenCodeKeyDialogProps) {
                 <Button type="button" variant="ghost" disabled={busy()} onClick={props.onClose}>
                   {t("common.cancel")}
                 </Button>
-                {/* Gemini's reconnect is a Google sign-in, which a saved key overrides. The row's
-                    Connect offers it once the key is removed. Inception has nothing to reconnect
-                    with until a key is saved. */}
+                {/* Gemini's and Claude's reconnect is an account sign-in, which a saved key
+                    overrides. The row's Connect offers it once the key is removed. Inception has
+                    nothing to reconnect with until a key is saved. */}
                 <Show
                   when={
                     props.onReconnect &&
                     provider() !== "antigravity" &&
+                    provider() !== "claude" &&
                     !(provider() === "inception" && stored() === "missing")
                   }
                 >
