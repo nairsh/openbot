@@ -11,7 +11,7 @@ import {
   MessageHeader,
 } from "@openbot/ui";
 import type { JSX } from "@solidjs/web";
-import { createMemo, For, Show } from "solid-js";
+import { createMemo, For, onSettled, Show } from "solid-js";
 import { avatarHeadColor } from "../../bloub-avatar";
 import type { AgentMessage, AgentProfile } from "../../data";
 import { useText } from "../../text";
@@ -98,6 +98,12 @@ export function ChatMessageRow(props: ChatMessageRowProps): JSX.Element {
   const person = () => own() || member();
   // A memo, because `Bubble` reads the variant more than once and it splits the whole body.
   const variant = createMemo(() => conversationBubbleVariant(props.message));
+  // A reaction that comes after the row is drawn pops in. The reactions that the row is drawn with,
+  // also when a long chat draws a row again, stay still.
+  let drawn = false;
+  onSettled(() => {
+    drawn = true;
+  });
   const seed = () => props.author.agent?.avatarSeed ?? props.author.avatarSeed;
   // A colour literal in an inline style is refused by `check:ui`, and rightly: this is the agent's
   // own head colour, read through the same helper the action markers use, so a name matches the
@@ -235,6 +241,7 @@ export function ChatMessageRow(props: ChatMessageRowProps): JSX.Element {
             <Show when={(props.reactions?.length ?? 0) > 0}>
               <BubbleReactions
                 class="message-reaction-anchor"
+                data-arrived={drawn ? "" : undefined}
                 align={person() ? "start" : "end"}
                 overflowCount={props.reactionOverflowCount}
                 role="group"
@@ -249,6 +256,7 @@ export function ChatMessageRow(props: ChatMessageRowProps): JSX.Element {
                       fallback={
                         <span
                           class="message-reaction-pill message-reaction-pill-readonly"
+                          data-arrived={drawn ? "" : undefined}
                           role="img"
                           aria-label={t("chat.row.agentReaction", {
                             name:
@@ -266,6 +274,7 @@ export function ChatMessageRow(props: ChatMessageRowProps): JSX.Element {
                         variant="ghost"
                         type="button"
                         class="message-reaction-pill"
+                        data-arrived={drawn ? "" : undefined}
                         aria-label={t("chat.row.removeReaction", { emoji: reaction.emoji })}
                         onClick={() => props.onRemoveReaction?.()}
                       >

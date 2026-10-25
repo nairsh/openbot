@@ -47,7 +47,19 @@ import { ReplyQuote } from "@openbot/ui/features/conversation/ReplyQuote";
 import { SpeakingBar } from "@openbot/ui/features/conversation/SpeakingBar";
 import { VoiceRecordingMorph, voiceButtonLabel } from "@openbot/ui/features/conversation/VoiceRecordingMorph";
 import { useText } from "@openbot/ui/text";
-import { createEffect, createMemo, createSignal, createStore, For, Loading, lazy, onCleanup, Show } from "solid-js";
+import { prefersReducedMotion } from "@openbot/ui/utils";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  createStore,
+  For,
+  Loading,
+  lazy,
+  onCleanup,
+  onSettled,
+  Show,
+} from "solid-js";
 import { reportErrorBanner, reportNotification } from "../../error-reports";
 import { deviceSendShortcut, sendShortcutAriaKey, sendShortcutHintKey } from "../../send-shortcut-preference";
 import { speechReading } from "../speech/speech-playback";
@@ -179,6 +191,45 @@ export function ConversationComposer() {
       if (surface.scrollHeight > 36) setTextWrapped(true);
     },
   );
+  /*
+   * The composer eases to its new height when its text gains or loses a line, or when it changes
+   * layout. The editor root takes only the height of its text, so its size tells when the box moves;
+   * the box itself is not observed, because the motion changes its size on each frame.
+   */
+  let composerHeight = 0;
+  let heightMotion: Animation | undefined;
+  const easeComposerHeight = () => {
+    const box = composerElement;
+    if (!box) return;
+    const shown = heightMotion ? box.getBoundingClientRect().height : composerHeight;
+    heightMotion?.cancel();
+    heightMotion = undefined;
+    const natural = box.getBoundingClientRect().height;
+    composerHeight = natural;
+    if (shown === 0 || Math.abs(natural - shown) < 1 || !("animate" in box) || prefersReducedMotion()) return;
+    heightMotion = box.animate(
+      [
+        { height: `${shown}px`, overflow: "hidden" },
+        { height: `${natural}px`, overflow: "hidden" },
+      ],
+      { duration: 200, easing: "cubic-bezier(0.16, 1, 0.3, 1)" },
+    );
+    heightMotion.onfinish = () => {
+      heightMotion = undefined;
+    };
+  };
+  onSettled(() => {
+    const editor = composerElement?.querySelector(".composer-editor-root");
+    if (!editor) return;
+    const observer = new ResizeObserver(easeComposerHeight);
+    observer.observe(editor);
+    return () => {
+      observer.disconnect();
+      heightMotion?.cancel();
+    };
+  });
+  // An attachment row comes and goes without a change of the editor's height.
+  createEffect(() => unreferencedDraftAttachments().length, easeComposerHeight);
   const waitItems = createMemo(() => openWaitItems(props.waits ?? [], props.queue));
   const waitsVisible = () => waitItems().length > 0 && Boolean(props.onCancelWait) && !pickerOpen();
   const slotOpen = () => queueVisible() || awaitingVisible() || waitsVisible();
