@@ -123,10 +123,9 @@ import {
   type TeamApiRequest,
   type TeamChannelsApi,
   type TeamRoutineFlowsApi,
+  teamAgentRoutinesApi,
   teamChannelsApi,
   teamRoutineFlowsApi,
-  testAgentRoutine,
-  updateAgentRoutine,
   updateQueuedMessage,
   uploadAttachmentDraft,
 } from "@openbot/team-client/team-api-requests";
@@ -595,6 +594,7 @@ export function createWebWorkspaceRuntime(
     return teamApi(method, path, decode, body);
   }
   const routineFlows = teamRoutineFlowsApi(routineFlowsRequest);
+  const agentRoutines = teamAgentRoutinesApi(teamApi);
   const browserView = createRemoteBrowserView(
     (data) => peer.sendHostStreamData(data),
     request,
@@ -1027,10 +1027,8 @@ export function createWebWorkspaceRuntime(
       return decodeWorkspaceDirectory(await request("POST", WORKSPACE_DIRECTORY_ROUTES.list, { agentId, path }));
     },
     routineFlows,
-    updateRoutine: (input) =>
-      runTeamEffect(updateAgentRoutine(teamApi, input).pipe(Effect.mapError((error) => error.cause))),
-    testRoutine: (input) =>
-      runTeamEffect(testAgentRoutine(teamApi, input).pipe(Effect.mapError((error) => error.cause))),
+    updateRoutine: agentRoutines.updateRoutine,
+    testRoutine: agentRoutines.testRoutine,
     listHiddenAgents: () => runTeamEffect(listHiddenAgents(teamApi).pipe(Effect.mapError((error) => error.cause))),
     setAgentHidden: (input) =>
       runTeamEffect(setAgentHidden(teamApi, input).pipe(Effect.mapError((error) => error.cause))),

@@ -91,7 +91,9 @@ import { skillIpcHandlers } from "./ipc/skill-handlers";
 import { storageIpcHandlers } from "./ipc/storage-handlers";
 import { teamIpcHandlers } from "./ipc/team-handlers";
 import { updateIpcHandlers } from "./ipc/update-handlers";
+import { vaultIpcHandlers } from "./ipc/vault-handlers";
 import { voiceIpcHandlers } from "./ipc/voice-handlers";
+import { workflowIpcHandlers } from "./ipc/workflow-handlers";
 import { KeepAwake } from "./keep-awake";
 import { installLinuxDesktopEntry } from "./linux-desktop-entry";
 import { configureLinuxGpu } from "./linux-gpu-mode";
@@ -340,6 +342,7 @@ const windowHolder = createMainWindowHolder();
 // Destructured so every `service.on("event", forwardX)` registration below reads as it always has.
 const {
   forwardAgentEvent,
+  forwardWorkflowNotice,
   forwardBrowserDisplayState,
   forwardUpdateStatus,
   forwardUpdatePreference,
@@ -350,6 +353,7 @@ const {
   forwardGitHubConnectorStatus,
   forwardOnePasswordConnectorStatus,
   forwardBitwardenConnectorStatus,
+  forwardVaultState,
   forwardHostStatus,
   forwardRemoteDesktopSessions,
   forwardServers,
@@ -535,6 +539,7 @@ function registerIpcHandlers({
   agentAccess,
   teamStore,
   serverTimezone,
+  promptCacheTtl,
   remoteSessionReuse,
   remoteNetworkRoute,
   remoteSessionCache,
@@ -550,6 +555,7 @@ function registerIpcHandlers({
   githubConnector,
   onePasswordConnector,
   bitwardenConnector,
+  vault,
   billing,
   license,
   hostedServers,
@@ -575,6 +581,7 @@ function registerIpcHandlers({
   trace,
   resourceMonitor,
   routineFlows,
+  workflows,
   routineResults,
 }: ApplicationServices): void {
   // Every renderer-to-main endpoint is bound by one of these, one file per domain under ./ipc.
@@ -637,6 +644,7 @@ function registerIpcHandlers({
     ...githubConnectorIpcHandlers({ githubConnector, remoteServers, openExternal: (url) => shell.openExternal(url) }),
     ...onePasswordConnectorIpcHandlers({ onePasswordConnector, remoteServers }),
     ...bitwardenConnectorIpcHandlers({ bitwardenConnector, remoteServers }),
+    ...vaultIpcHandlers({ vault, getMainWindow: getDialogParent, translate: language.translate }),
     ...billingIpcHandlers({ billing }),
     ...licenseIpcHandlers({ license }),
     ...routineFeedIpcHandlers({ routineFeed }),
@@ -687,6 +695,7 @@ function registerIpcHandlers({
     ...sharedTableIpcHandlers({ service, remoteServers }),
     ...routineIpcHandlers({ service, remoteServers }),
     ...routineFlowIpcHandlers({ routineFlows, remoteServers }),
+    ...workflowIpcHandlers({ workflows, events, remoteServers }),
     ...routineResultIpcHandlers({ routineResults }),
     ...channelMemoryIpcHandlers({ service, remoteServers }),
     ...channelRoutineIpcHandlers({ service, remoteServers }),
@@ -704,6 +713,7 @@ function registerIpcHandlers({
       remoteServers,
       serverTimezone,
       agentMemoryLimit,
+      promptCacheTtl,
       agentAccess,
       localServerId: () => teamStore.getIdentity()?.serverId,
       localAgentIds: () => service.listAgents().map((agent) => agent.id),
@@ -1077,6 +1087,7 @@ if (!hasSingleInstanceLock) {
         forwardVoiceModelStatus,
         forwardVoiceStreamTranscript,
         forwardSpeechModelStatus,
+        forwardWorkflowNotice,
         prepareForUpdateInstall,
         quitting: () => quitStarted,
       });
@@ -1126,6 +1137,8 @@ if (!hasSingleInstanceLock) {
         switch (event.type) {
           case "routines-changed":
           case "channel-routines-changed":
+          // A save or a delete can remove a webhook trigger, and a new secret can add a route.
+          case "workflows-changed":
             built.eventsRuntime.syncRoutes({ all: false });
             return;
           case "agents-changed": {
@@ -1169,6 +1182,7 @@ if (!hasSingleInstanceLock) {
       // Internal usage signals for analytics only. They are not agent events, so the renderer and
       // Team API clients never receive them.
       service.on("toolUsage", (usage) => built.analytics.handleToolUsage(usage));
+      service.on("workflowRun", (end) => built.analytics.handleWorkflowRun(end));
       built.browser.onSiteVisited((visit) => built.analytics.handleSiteVisit(visit));
       sidebarLayout.on("changed", (layout) => forwardAgentEvent("local", { type: "sidebar-layout-changed", layout }));
       built.approvalAutomation.subscribe((preference) => {
@@ -1189,6 +1203,7 @@ if (!hasSingleInstanceLock) {
       built.githubConnector.onChanged(forwardGitHubConnectorStatus);
       built.onePasswordConnector.onChanged(forwardOnePasswordConnectorStatus);
       built.bitwardenConnector.onChanged(forwardBitwardenConnectorStatus);
+      built.vault.onChanged(forwardVaultState);
       remoteServers.on("changed", forwardServers);
       remoteServers.on("agent", (serverId, event, bufferedLive) => {
         forwardAgentEvent(serverId, event, bufferedLive);

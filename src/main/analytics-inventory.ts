@@ -41,6 +41,7 @@ const BUILTIN_SERVER_NAMES = new Set<string>([...RESERVED_MCP_SERVER_NAMES, COMP
 export interface AnalyticsInventorySources {
   agents: () => AgentSummary[];
   routines: (agentId: string) => Routine[];
+  workflowCount: () => number;
   skills: SkillMarketplaceService["listInstalledForChatTags"];
   mcpServers: () => McpServerConfig[];
   pluginSlug: (config: McpServerConfig) => string | null;
@@ -85,6 +86,7 @@ export const collectAnalyticsInventory = Effect.fn("Analytics.collectInventory")
   return {
     agentCount: agents.length,
     enabledRoutineCount,
+    workflowCount: sources.workflowCount(),
     customMcpServerCount,
     plugins: [...plugins],
     curatedSkills: [...curatedSkills],

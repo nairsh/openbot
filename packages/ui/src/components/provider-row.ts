@@ -192,17 +192,21 @@ export function createProviderRow(option: () => ProviderPickerOption, host: Prov
     !connectOptional() &&
     (option().id === "opencode" || option().id === "muse"
       ? runtimeAction() === undefined || runtimeAction() === "connect" || runtimeAction() === "restart"
-      : option().id === "claude" && !runtimeStatus() && state() === "sign-in-required" && connectKind() === null);
+      : option().id === "claude" &&
+        !runtimeStatus() &&
+        state() === "sign-in-required" &&
+        connectKind() === null &&
+        !apiKeyOffered());
   /**
    * Gemini's Connect and Reconnect are the Google sign-in, and a saved key wins over it, so the key
    * stays reachable in every state, Connected included: a refused key must stay replaceable and
    * removable. A released host stores a Gemini key but never reads it, so only this computer offers it.
+   * Claude's key works the same way. Its row has a key status only where the host reads the key.
    */
   const apiKeyOffered = () =>
     Boolean(host.onSignInProvider) &&
-    browserConnect() &&
-    option().id === "antigravity" &&
-    runtimeStatus()?.phase === "ready";
+    ((option().id === "antigravity" && browserConnect() && runtimeStatus()?.phase === "ready") ||
+      (option().id === "claude" && option().keyStatus !== undefined && runtimeReady() && state() !== "not-installed"));
   /** OpenCode runs free models while no key is saved. */
   const freeKey = () =>
     option().id === "opencode" && (option().keyStatus === "missing" || option().keyStatus === "unreadable");

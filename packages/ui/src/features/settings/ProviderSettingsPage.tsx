@@ -10,6 +10,8 @@ import {
   type CustomProviderSummary,
   DEFAULT_PROVIDER_ACCOUNT_ID,
   MAX_PROVIDER_ACCOUNTS,
+  PROMPT_CACHE_TTLS,
+  type PromptCacheTtl,
   type ProviderAccountState,
   type ProviderUsageResetOutcome,
   type ProviderUsageResets,
@@ -34,6 +36,7 @@ import {
   ItemGroup,
   ItemMedia,
   ItemTitle,
+  KeyRound,
   Link,
   LogIn,
   Pencil,
@@ -60,7 +63,7 @@ import type { JSX } from "@solidjs/web";
 import { createEffect, createMemo, createSignal, createStore, For, onCleanup, Show } from "solid-js";
 import { ProviderAccountRenameField } from "../../components/ProviderAccountList";
 import type { ProviderPickerOption } from "../../components/ProviderPicker";
-import { type ProviderPickerAccount, providerAccountName } from "../../components/provider-accounts";
+import { isApiKeyAccount, type ProviderPickerAccount, providerAccountName } from "../../components/provider-accounts";
 import {
   createProviderRow,
   PROVIDER_ACTION_LABEL,
@@ -86,6 +89,15 @@ export interface ProviderSettingsDetail {
 
 /** The custom endpoints are one choice of the default select. */
 export type ProviderDefaultChoice = AgentProviderId | "custom";
+
+/** How long Claude keeps the prompt cache of the host's agents. `value` is null until the host answers. */
+export interface ProviderPromptCache {
+  value: PromptCacheTtl | null;
+  pending: boolean;
+  /** A load or a save that failed. */
+  error: string | null;
+  onChange: (ttl: PromptCacheTtl) => void;
+}
 
 export interface ProviderSettingsPageProps extends ProviderRowHost {
   options: ProviderPickerOption[];
@@ -117,6 +129,8 @@ export interface ProviderSettingsPageProps extends ProviderRowHost {
   onRemoveCustomProvider?: ((provider: CustomProviderSummary) => void) | undefined;
   removingCustomProvider?: string | null | undefined;
   onDetailChange?: ((detail: ProviderSettingsDetail | null) => void) | undefined;
+  /** On the Claude page. Only for a host with `prompt-cache-ttl-v1` that this account administers. */
+  promptCache?: ProviderPromptCache | undefined;
   /** Below the list: what the host found, and the other agents the user can add. */
   footer?: JSX.Element;
 }
@@ -493,6 +507,9 @@ function ProviderPage(props: PageProps) {
           <ApiKeySection {...props} row={row} />
         </Show>
         <RuntimeSection {...props} row={row} />
+        <Show when={props.option.id === "claude" && props.promptCache}>
+          {(cache) => <PromptCacheSection cache={cache()} disabled={props.disabled} menuMount={props.menuMount} />}
+        </Show>
       </Show>
       <UseSection {...props} row={row} />
     </>
@@ -728,13 +745,15 @@ function AccountRow(
   const [renaming, setRenaming] = createSignal(false);
   const name = () => providerAccountName(t, props.accounts, props.account.id);
   const own = () => props.account.id === DEFAULT_PROVIDER_ACCOUNT_ID;
+  /** The saved key's account: the key dialog changes or removes it, and it has no sign-in or plan usage. */
+  const apiKey = () => isApiKeyAccount(props.account.id);
   // A state that a newer host added shows as a failure.
   const state = (): ProviderAccountState =>
     Object.hasOwn(ACCOUNT_STATE_TEXT, props.account.state) ? props.account.state : "error";
   const needsSignIn = () => state() === "signed-out" || state() === "error";
   /** The own account signs in again with the provider's Reconnect, so only the others have their own. */
-  const signInAgain = () => !own() && needsSignIn();
-  const connecting = () => !own() && state() === "connecting";
+  const signInAgain = () => !own() && !apiKey() && needsSignIn();
+  const connecting = () => !own() && !apiKey() && state() === "connecting";
   /** A Reconnect of the provider waits for the browser. */
   const ownSigningIn = () => own() && props.row.signingIn();
   const agents = () => props.account.usedBy ?? [];
@@ -830,7 +849,7 @@ function AccountRow(
                 <Pencil aria-hidden="true" />
                 {t("common.rename")}
               </DropdownMenu.Item>
-              <Show when={state() === "connected" && props.resetsLeft > 0}>
+              <Show when={state() === "connected" && !apiKey() && props.resetsLeft > 0}>
                 <DropdownMenu.Item onSelect={() => props.onResetUsage()}>
                   <Gauge aria-hidden="true" />
                   {t("provider.account.resetUsage")}
@@ -847,7 +866,13 @@ function AccountRow(
               <Show when={own()}>
                 <AlternativeItem row={props.row} />
               </Show>
-              <Show when={!own()}>
+              <Show when={apiKey()}>
+                <DropdownMenu.Item onSelect={() => void props.onSignInProvider?.(props.option.id)}>
+                  <KeyRound aria-hidden="true" />
+                  {t("provider.settings.changeKey")}
+                </DropdownMenu.Item>
+              </Show>
+              <Show when={!own() && !apiKey()}>
                 <DropdownMenu.Separator />
                 <DropdownMenu.Item onSelect={() => props.onRemove()}>
                   <Trash2 aria-hidden="true" />
@@ -1075,7 +1100,9 @@ function ApiKeySection(props: SectionProps) {
                 ? t("provider.settings.keyOptional")
                 : props.option.id === "antigravity" && saved()
                   ? t("provider.settings.geminiKeyInUse")
-                  : t("provider.settings.keyAlternative", { name: props.option.name })}
+                  : props.option.id === "claude" && saved()
+                    ? t("provider.settings.claudeKeyInUse")
+                    : t("provider.settings.keyAlternative", { name: props.option.name })}
             </ItemDescription>
           </ItemContent>
           <ItemActions>
@@ -1256,6 +1283,67 @@ function RuntimeSection(props: SectionProps) {
         </ItemGroup>
       </SettingsSection>
     </Show>
+  );
+}
+
+/* ---------------------------------------------- Prompt cache */
+
+/** Claude only: the other providers take no cache time. A change applies to the next Claude process. */
+function PromptCacheSection(props: {
+  cache: ProviderPromptCache;
+  disabled: boolean | undefined;
+  menuMount: HTMLElement | undefined;
+}) {
+  const { t } = useText();
+  const label = (ttl: PromptCacheTtl) =>
+    ttl === "1h" ? t("provider.settings.promptCacheHour") : t("provider.settings.promptCacheDefault");
+  return (
+    <SettingsSection title={t("provider.settings.cache")}>
+      <ItemGroup class="settings-modal-card">
+        <Item class="settings-modal-row">
+          <ItemContent>
+            <ItemTitle id="provider-settings-prompt-cache-label">{t("provider.settings.promptCache")}</ItemTitle>
+            <Show
+              when={props.cache.error}
+              fallback={<ItemDescription>{t("provider.settings.promptCacheDescription")}</ItemDescription>}
+            >
+              {(message) => (
+                <ItemDescription class="provider-settings-error" role="alert">
+                  {message()}
+                </ItemDescription>
+              )}
+            </Show>
+          </ItemContent>
+          <Show when={props.cache.value}>
+            {(value) => (
+              <ItemActions>
+                <Select<PromptCacheTtl>
+                  options={[...PROMPT_CACHE_TTLS]}
+                  value={value()}
+                  disabled={Boolean(props.disabled || props.cache.pending)}
+                  placement="bottom-end"
+                  // The select also reports the value that it shows, which is not a choice of the user.
+                  onChange={(ttl) => {
+                    if (ttl && ttl !== props.cache.value) props.cache.onChange(ttl);
+                  }}
+                  itemComponent={(item) => <SelectItem item={item.item}>{label(item.item.rawValue)}</SelectItem>}
+                >
+                  <SelectTrigger size="sm" aria-labelledby="provider-settings-prompt-cache-label">
+                    <SelectValue<PromptCacheTtl>>
+                      {(state) => {
+                        const selected = state.selectedOption();
+                        return selected ? label(selected) : "";
+                      }}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent mount={props.menuMount} />
+                </Select>
+              </ItemActions>
+            )}
+          </Show>
+        </Item>
+      </ItemGroup>
+    </SettingsSection>
   );
 }
 

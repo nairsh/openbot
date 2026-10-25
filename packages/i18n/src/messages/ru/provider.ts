@@ -157,6 +157,10 @@ export const messages = {
   "provider.geminiKey.description":
     "Сохраните ключ API Gemini на этом компьютере. Сохранённый ключ используется вместо аккаунта Google. Чтобы войти через Google, удалите ключ и нажмите «Подключить» в строке Gemini.",
   "provider.geminiKey.label": "Ключ API Gemini",
+  "provider.claudeKey.title": "Ключ API Anthropic",
+  "provider.claudeKey.description":
+    "Сохраните API-ключ Anthropic на хосте. Anthropic выставляет счёт за каждый запрос на ключ. Чтобы использовать его для агента, выберите аккаунт «API-ключ» в меню моделей агента. Если в Claude не выполнен вход, все агенты используют ключ.",
+  "provider.claudeKey.label": "Ключ API Anthropic",
   "provider.inceptionKey.title": "Ключ API Inception",
   "provider.inceptionKey.description":
     "Сохраните ключ API Inception на этом компьютере, чтобы использовать модели Mercury. OpenBot запускает их в загруженном Pi CLI.",
@@ -183,6 +187,7 @@ export const messages = {
     other: "{count} аккаунта",
   },
   "provider.account.numbered": "Аккаунт {number}",
+  "provider.account.apiKey": "API-ключ",
   "provider.account.listLabel": "Аккаунты {name}",
   "provider.account.usedBy": "Используют: {agents}",
   "provider.account.failed": "Ошибка входа",
@@ -208,4 +213,10 @@ export const messages = {
   "provider.account.resetUsageNoCredit": "У {name} не осталось кредитов сброса использования.",
   "provider.account.resetUsageAlreadyRedeemed": "Этот кредит сброса {name} уже использован.",
   "provider.account.resetUsageFailed": "Не удалось сбросить использование {name}.",
+  "provider.settings.cache": "Кэш",
+  "provider.settings.promptCache": "Кэш промптов",
+  "provider.settings.promptCacheDescription": "Как долго Claude хранит контекст агента в кэше между ходами.",
+  "provider.settings.promptCacheHour": "1 час",
+  "provider.settings.promptCacheDefault": "По умолчанию Claude Code",
+  "provider.settings.promptCacheLoadFailed": "Не удалось загрузить время кэша промптов этого сервера.",
 } as const satisfies PartialTranslation<typeof source>;

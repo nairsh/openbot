@@ -2061,21 +2061,6 @@ textarea {
   object-fit: cover;
 }
 
-.person-avatar > i {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 8px;
-  height: 8px;
-  border: 2px solid var(--openbot-bg-sidebar);
-  border-radius: var(--openbot-radius-pill);
-  background: var(--openbot-bg-control-hover);
-}
-
-.person-avatar.online > i {
-  background: var(--openbot-success);
-}
-
 .person-avatar.large {
   width: 48px;
   height: 48px;
@@ -3358,10 +3343,6 @@ textarea {
   border-color: var(--openbot-border);
   background: var(--openbot-bg-surface);
   color: var(--openbot-text-secondary);
-}
-
-.person-avatar.online > i {
-  background: var(--openbot-success);
 }
 
 .sidebar-icon-button:hover,

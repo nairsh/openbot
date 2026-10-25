@@ -104,7 +104,11 @@ interface ProviderAdminRemoteServers {
 interface ProviderAdminIpcDependencies {
   service: Pick<
     AgentService,
-    "startProviderCodeLogin" | "submitProviderCodeLogin" | "cancelProviderCodeLogin" | "changeProviderCredential"
+    | "startProviderCodeLogin"
+    | "submitProviderCodeLogin"
+    | "cancelProviderCodeLogin"
+    | "changeProviderCredential"
+    | "clearProviderCredential"
   >;
   credentials: Pick<ProviderCredentialStore, "status" | "set" | "clear">;
   runtimes: Pick<ProviderRuntimeManager, "getStatus" | "download" | "cancel" | "checkForUpdates">;
@@ -401,7 +405,7 @@ export function providerAdminIpcHandlers({
       clearApiKey: scopedHandler(parseProviderId, {
         local: (provider) =>
           runCauseEffect(
-            service.changeProviderCredential(provider, () =>
+            service.clearProviderCredential(provider, () =>
               credentials
                 .clear(provider)
                 .pipe(

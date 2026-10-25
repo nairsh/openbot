@@ -32,7 +32,7 @@ import { conversationPort, type SharedTableCalls } from "./conversation-port";
 import type { ConversationRuntime } from "./conversation-runtime";
 import { agentMemoriesPort } from "./memories-port";
 import type { EventRoutinesApi } from "./routine-webhooks-api";
-import { agentRoutinesPort, eventRoutinesPort, type RoutinesPort } from "./routines-port";
+import { type AgentRoutinesApi, agentRoutinesPort, eventRoutinesPort, type RoutinesPort } from "./routines-port";
 import { SharedTablesModal } from "./SharedTablesModal";
 
 interface AgentSettingsPanelProps
@@ -67,6 +67,8 @@ interface AgentSettingsPanelProps
   agents?: readonly AgentProfile[] | undefined;
   /** Event routine calls for a host that advertises `events-v1`; absent keeps the released schedule API. */
   eventRoutines?: EventRoutinesApi | undefined;
+  /** The released schedule API of a client without the desktop port. Absent, preload sends it. */
+  routines?: AgentRoutinesApi | undefined;
   onCreateSkill?: (() => void) | undefined;
   onTrySkill?: ((skill: SkillDetail) => void) | undefined;
   /** Reads a file in the agent workspace, on the computer that runs the agent. */
@@ -168,6 +170,7 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
       props.localHost === true && agentAutomationAllowed(props.agent, props.agentDefaults ?? DEFAULT_AGENT_DEFAULTS),
       // Set only for the host on this computer, the one place the policy is kept.
       props.localHost === true,
+      props.routines,
     ),
   );
   const routinesPort = createMemo(() => {

@@ -22,6 +22,9 @@ export const messages = defineMessages("status.agent", {
   "status.agent.screenCaptureWindow": "Capture the window {name} and send the image to the agent's model.",
   "status.agent.screenCaptureRegion":
     "Capture the screen area at {x}, {y}, {width} × {height} points and send the image to the agent's model.",
+  "status.agent.vaultCardFill":
+    "Fill the saved card {card} on {site}. After you approve, agents can fill this card on this site with no approval. Remove the site in Server settings > Vault.",
+  "status.agent.vaultCardFillFrames": "The card fields are in frames from {origins}.",
   "status.agent.screenCaptureProgress": "Asking to capture the screen…",
   "status.agent.screenCaptureReviewing": "Reviewing the screen capture…",
   "status.agent.memoriesSearching": "Searching its memories…",
@@ -41,4 +44,7 @@ export const messages = defineMessages("status.agent", {
   "status.agent.mcpServerDisable": "Turn off the MCP server {name} for every agent on this server.",
   "status.agent.mcpServerRemove": "Remove the MCP server {name} and its sign-in from every agent on this server.",
   "status.agent.mcpSignInRequested": "The MCP server {name} needs a sign-in. Sign in from Server settings, MCP.",
+  "status.agent.vaultAdded": "Saved to Vault: {name}",
+  "status.agent.vaultUpdated": "Changed in Vault: {name}",
+  "status.agent.vaultDeleted": "Deleted from Vault: {name}",
 });

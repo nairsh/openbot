@@ -51,9 +51,13 @@
   transition: rotate var(--openbot-duration-fast) var(--openbot-ease-out);
 }
 
-.agent-steps-toggle[aria-expanded="true"] .agent-steps-chevron,
-.agent-steps-header[aria-expanded="true"] .agent-steps-chevron {
+.agent-steps-toggle[aria-expanded="true"] .agent-steps-chevron {
   rotate: 180deg;
+}
+
+/* The row's chevron points right, as the subagents header's does, and down when its list is open. */
+.agent-steps-header[aria-expanded="true"] .agent-steps-chevron {
+  rotate: 90deg;
 }
 
 .agent-steps {
@@ -62,26 +66,28 @@
   margin-bottom: var(--openbot-space-1);
 }
 
+/* The row looks like the header of the subagents above it. */
 .agent-steps .agent-steps-header {
   display: flex;
   height: auto;
   min-width: 0;
   max-width: 100%;
   align-items: center;
-  gap: var(--openbot-space-1-5);
+  gap: var(--openbot-space-2);
+  margin-left: calc(-1 * var(--openbot-space-1-5));
   border-radius: var(--openbot-radius-sm);
   padding: var(--openbot-space-0-5) var(--openbot-space-1-5);
-  color: var(--openbot-text-muted);
-  font-size: var(--openbot-text-sm);
+  color: inherit;
+  font-size: var(--openbot-text-md);
   font-weight: var(--openbot-weight-regular);
-  line-height: var(--openbot-leading-sm);
+  line-height: var(--openbot-leading-md);
   text-align: left;
 }
 
 /* The open list is not a lit toggle, so the header has no fill. */
 .agent-steps .agent-steps-header[aria-expanded="true"]:not(:hover) {
   background: transparent;
-  color: var(--openbot-text-muted);
+  color: inherit;
 }
 
 .agent-step-icon {
@@ -93,8 +99,15 @@
 
 .agent-steps-summary {
   overflow: hidden;
+  font-weight: var(--openbot-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.agent-steps-failed {
+  flex: 0 0 auto;
+  color: var(--openbot-danger-text);
+  font-variant-numeric: tabular-nums;
 }
 
 .agent-steps-panel {
@@ -157,6 +170,23 @@
   line-height: var(--openbot-leading-sm);
   overflow-wrap: anywhere;
   animation: message-in var(--openbot-duration-normal) var(--openbot-ease-out) both;
+}
+
+/* The step that the user picked in the trace lights up, then fades back. A colour change is not
+ * motion, so it stays with reduced motion. */
+.agent-step[data-focused] {
+  border-radius: var(--openbot-radius-xs);
+  animation: agent-step-picked calc(var(--openbot-duration-overlay) * 6) var(--openbot-ease-out) both;
+}
+
+@keyframes agent-step-picked {
+  from {
+    background: var(--openbot-hover);
+  }
+
+  to {
+    background: transparent;
+  }
 }
 
 .agent-step .agent-step-icon {

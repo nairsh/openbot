@@ -36,10 +36,6 @@
   padding-right: var(--openbot-space-6);
 }
 
-.composer-wrap:has(.composer-attachment) .awaiting-replies:last-child {
-  margin-bottom: 0;
-}
-
 .awaiting-replies-item {
   align-items: center;
 }

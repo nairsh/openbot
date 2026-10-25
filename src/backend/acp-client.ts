@@ -352,10 +352,12 @@ export interface AcpProviderOptions {
   /**
    * Reads the account's plan usage. `privatePrompt` sends one prompt in a session that no thread
    * owns and returns the answer text, for an agent that reports usage through a slash command.
+   * `model` is the model whose limit the caller checks, or null for the account's own reading.
    */
   readRateLimits?(
     connection: ClientSideConnection,
     privatePrompt: (text: string) => Effect.Effect<string, ProviderClientOperationError>,
+    model: string | null,
   ): Effect.Effect<AccountRateLimitsReadResult, ProviderClientOperationError>;
   /**
    * Gives the running turn a message that the agent reads at its next step. ACP has no steer
@@ -732,13 +734,40 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     );
   });
 
+  /**
+   * The answer to a usage prompt that the user saved on a custom agent, such as `/usage`, read in the
+   * private session, so no thread or transcript sees it. Null while the agent is not signed in or
+   * gives no text. The values the agent was started with, and known secret shapes, are redacted.
+   */
+  readonly readUsageText = Effect.fn("AcpAgentClient.readUsageText")(function* (
+    this: AcpAgentClient,
+    _model: string,
+    prompt: string,
+  ): Effect.fn.Return<string | null, ProviderClientOperationError> {
+    if (!this.running) return yield* providerFailure(new Error("ACP client is not running."));
+    yield* this.#ensureInitializedEffect();
+    if (!this.#signedIn) return null;
+    // The time limit starts when the lock is held, so a prompt that waits for another one keeps its time.
+    const answer = yield* this.#privatePromptLock.withPermit(
+      this.#privatePromptOnce(prompt).pipe(
+        Effect.timeoutOrElse({
+          duration: this.#requestTimeoutMs,
+          orElse: () =>
+            Effect.fail(providerFailure(new TimeoutError(`${this.#label} request timed out: usage prompt`))),
+        }),
+      ),
+    );
+    return this.#redact(answer).trim() || null;
+  });
+
   #privatePrompt(text: string): Effect.Effect<string, ProviderClientOperationError> {
     return this.#privatePromptLock.withPermit(this.#privatePromptOnce(text));
   }
 
   /**
-   * A prompt that times out drops the session, because the agent may still be answering it. An error
-   * answer keeps it: a new session would leave one more conversation database on disk.
+   * A prompt that times out is cancelled and drops the session, because the agent may still be
+   * answering it. An error answer keeps it: a new session would leave one more conversation database
+   * on disk.
    */
   readonly #privatePromptOnce = Effect.fn("AcpAgentClient.privatePrompt")(function* (
     this: AcpAgentClient,
@@ -757,9 +786,12 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     return yield* providerCall(() => connection.prompt({ sessionId, prompt: [{ type: "text", text }] })).pipe(
       Effect.map(() => answer.join("")),
       Effect.onExit((exit) =>
-        Effect.sync(() => {
+        Effect.gen({ self: this }, function* () {
           this.#privateAnswer = null;
-          if (Exit.hasInterrupts(exit)) this.#privateSession = null;
+          if (!Exit.hasInterrupts(exit)) return;
+          this.#privateSession = null;
+          // `session/cancel` is a notification, so this does not wait for the agent.
+          yield* providerCall(() => connection.cancel({ sessionId })).pipe(Effect.ignore);
         }),
       ),
     );
@@ -830,7 +862,11 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
         {
           const readRateLimits = this.options.readRateLimits;
           const response = readRateLimits
-            ? yield* readRateLimits(this.#requireConnection(), (text) => this.#privatePrompt(text)).pipe(
+            ? yield* readRateLimits(
+                this.#requireConnection(),
+                (text) => this.#privatePrompt(text),
+                getString(params, "model"),
+              ).pipe(
                 Effect.timeoutOrElse({
                   duration: timeoutMs ?? this.#requestTimeoutMs,
                   orElse: () =>
@@ -1052,7 +1088,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
       connection.initialize({
         protocolVersion: 1,
         clientCapabilities: OPENBOT_ACP_CLIENT_CAPABILITIES,
-        clientInfo: OPENBOT_ACP_CLIENT_INFO,
+        clientInfo: this.#flavor.clientInfo ?? OPENBOT_ACP_CLIENT_INFO,
       }),
     ).pipe(
       Effect.timeoutOrElse({
@@ -1213,6 +1249,7 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
           dynamicTools,
           () => threadRef?.activeTurn?.id ?? null,
           (call, signal) => this.#callDynamicTool(call, signal),
+          this.#flavor.mcpServersPerDirectory ? cwd : undefined,
         )
         .pipe(toProviderClientOperationError),
       (mcp) =>

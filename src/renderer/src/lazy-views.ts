@@ -59,6 +59,9 @@ export const SettingsModal = lazy(() =>
 export const MarketplaceModal = lazy(() =>
   import("./features/settings/MarketplaceModal").then((module) => ({ default: module.MarketplaceModal })),
 );
+export const WorkflowsPage = lazy(() =>
+  import("./features/workflows/WorkflowsPage").then((module) => ({ default: module.WorkflowsPage })),
+);
 export const ScheduleView = lazy(() =>
   import("./features/schedule/SchedulePanel").then((module) => ({ default: module.ScheduleView })),
 );

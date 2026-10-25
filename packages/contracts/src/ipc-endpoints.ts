@@ -190,7 +190,7 @@ import type {
   UpdateAgentBrowserProfileInput,
   UpdateBrowserProfileInput,
 } from "./ipc-browser-profiles";
-import type { RespondToBrowserSecretInput } from "./ipc-browser-secret";
+import type { LocalBrowserSecretResponse } from "./ipc-browser-secret";
 import type {
   ChannelMemory,
   CreateChannelMemoryInput,
@@ -230,6 +230,7 @@ import type {
   CustomAgentCheckResult,
   CustomAgentResult,
   CustomAgentSummary,
+  CustomAgentUsage,
   DeleteCustomAgentInput,
   DetectedAcpAgent,
   SaveCustomAgentInput,
@@ -343,6 +344,7 @@ import type {
   OnePasswordConnectorStatus,
   OnePasswordHostConnectInput,
 } from "./ipc-onepassword-connector";
+import type { PromptCacheTtl, PromptCacheTtlSetting } from "./ipc-prompt-cache";
 import type {
   DetectedModelServer,
   DiscoverModelsInput,
@@ -465,6 +467,7 @@ import type {
   UpdateHostIdentityInput,
   UpdateTeamMemberInput,
 } from "./ipc-team-host";
+import type { VaultImportResult, VaultSaveInput, VaultSecretRequest, VaultState } from "./ipc-vault";
 import type {
   SpeechAudio,
   SpeechInput,
@@ -480,6 +483,27 @@ import type {
   VoiceTranscriptionInput,
   VoiceTranscriptionResult,
 } from "./ipc-voice";
+import type {
+  CreateWorkflowInput,
+  DecideWorkflowStepInput,
+  RenameWorkflowInput,
+  RetryWorkflowStepInput,
+  RunWorkflowStepInput,
+  SaveWorkflowGraphInput,
+  StartWorkflowRunInput,
+  WorkflowDetail,
+  WorkflowGraph,
+  WorkflowRunDetail,
+  WorkflowRunPage,
+  WorkflowRunsInput,
+  WorkflowSaveResult,
+  WorkflowStep,
+  WorkflowSummary,
+  WorkflowTriggerInput,
+  WorkflowVersion,
+  WorkflowVersionInput,
+  WorkflowWebhookSecret,
+} from "./ipc-workflows";
 import type { LicenseCheckoutRequest, LicenseRenewalRequest, LicenseState, LicenseUsersRequest } from "./license";
 import type { AccountSession, MobileConnectedDevice, MobileConnectLink, MobileConnectTicket } from "./mobile-connect";
 
@@ -862,6 +886,8 @@ export const IPC_ENDPOINTS = {
     save: request<SaveCustomAgentInput, CustomAgentResult>()("custom-agents:save"),
     delete: request<DeleteCustomAgentInput, CustomAgentResult>()("custom-agents:delete"),
     check: request<CheckCustomAgentInput, CustomAgentCheckResult>()("custom-agents:check"),
+    // The answers of the agents that have a usage prompt. An agent with no answer is not listed.
+    usage: request<undefined, CustomAgentUsage[]>()("custom-agents:usage"),
   },
   // The providers of the computer that runs the agents. `providers`, `providerRuntimes` and
   // `customProviders` reach this computer only; these take the server, so a remote admin reaches the
@@ -1019,6 +1045,10 @@ export const IPC_ENDPOINTS = {
     // How many memories each agent of the server can keep, and the values its host permits.
     getAgentMemoryLimit: scopedQuery<HostAgentMemoryLimit, "required">()("host-admin:get-agent-memory-limit"),
     setAgentMemoryLimit: scopedRequest<number, HostAgentMemoryLimit, "required">()("host-admin:set-agent-memory-limit"),
+    getPromptCacheTtl: scopedQuery<PromptCacheTtlSetting, "required">()("host-admin:get-prompt-cache-ttl"),
+    setPromptCacheTtl: scopedRequest<PromptCacheTtl, PromptCacheTtlSetting, "required">()(
+      "host-admin:set-prompt-cache-ttl",
+    ),
     // The roles of the server and the level each gives for each agent. A member reads only `mine`.
     getAgentAccess: scopedQuery<AgentAccessSnapshot, "required">()("host-admin:get-agent-access"),
     setAgentAccess: scopedRequest<AgentAccessChange, AgentAccessSnapshot, "required">()("host-admin:set-agent-access"),
@@ -1057,6 +1087,18 @@ export const IPC_ENDPOINTS = {
       "bitwarden-connector:host-connect",
     ),
     hostDisconnect: scopedQuery<BitwardenConnectorStatus, "required">()("bitwarden-connector:host-disconnect"),
+  },
+  // The Vault of this computer. Lists carry no password, card number or security code: `reveal`
+  // returns one when the user asks, and `copy` writes one to the clipboard in main.
+  vault: {
+    list: request<undefined, VaultState>()("vault:list"),
+    save: request<VaultSaveInput, VaultState>()("vault:save"),
+    delete: request<string, VaultState>()("vault:delete"),
+    reveal: request<VaultSecretRequest, string>()("vault:reveal"),
+    copy: request<VaultSecretRequest, void>()("vault:copy"),
+    importCsv: request<undefined, VaultImportResult>()("vault:import-csv"),
+    reset: request<undefined, VaultState>()("vault:reset"),
+    changed: event<VaultState>()("vault:changed"),
   },
   // The 1Password connection of this computer. The token goes from the renderer to main once, in
   // `connectWithToken`; every answer is the status only. The `host*` endpoints do the same for a
@@ -1267,7 +1309,7 @@ export const IPC_ENDPOINTS = {
     compactContext: scopedRequest<string, void>()("agent:compact-context"),
     respondToPrompt: scopedRequest<RespondToPromptInput, void>()("agent:respond-to-prompt"),
     respondToApproval: scopedRequest<RespondToApprovalInput, void>()("agent:respond-to-approval"),
-    respondToBrowserSecret: scopedRequest<RespondToBrowserSecretInput, void>()("agent:respond-to-browser-secret"),
+    respondToBrowserSecret: scopedRequest<LocalBrowserSecretResponse, void>()("agent:respond-to-browser-secret"),
     respondToBrowserTakeover: scopedRequest<RespondToBrowserTakeoverInput, void>()("agent:respond-to-browser-takeover"),
     scopedEvent: event<ScopedAgentEvent>()("agent:event"),
   },
@@ -1329,6 +1371,34 @@ export const IPC_ENDPOINTS = {
     connect: scopedRequest<ConnectRoutineFlowInput, RoutineFlowLink>()("routine-flows:connect"),
     disconnect: scopedRequest<DisconnectRoutineFlowInput, void>()("routine-flows:disconnect"),
     updateLink: scopedRequest<UpdateRoutineFlowLinkInput, RoutineFlowLink>()("routine-flows:update-link"),
+  },
+  /**
+   * Workflows: graphs of steps drawn on a canvas, their versions and their runs. The agent event
+   * `workflows-changed` says which workflow changed. A joined server answers through `workflows-v1`
+   * when it supports it.
+   */
+  workflows: {
+    list: scopedQuery<WorkflowSummary[]>()("workflows:list"),
+    get: scopedRequest<string, WorkflowDetail>()("workflows:get"),
+    create: scopedRequest<CreateWorkflowInput, WorkflowDetail>()("workflows:create"),
+    rename: scopedRequest<RenameWorkflowInput, WorkflowSummary>()("workflows:rename"),
+    delete: scopedRequest<string, void>()("workflows:delete"),
+    saveGraph: scopedRequest<SaveWorkflowGraphInput, WorkflowSaveResult>()("workflows:save-graph"),
+    versions: scopedRequest<string, WorkflowVersion[]>()("workflows:versions"),
+    versionGraph: scopedRequest<WorkflowVersionInput, WorkflowGraph>()("workflows:version-graph"),
+    restoreVersion: scopedRequest<WorkflowVersionInput, WorkflowDetail>()("workflows:restore-version"),
+    startRun: scopedRequest<StartWorkflowRunInput, WorkflowRunDetail>()("workflows:start-run"),
+    runStep: scopedRequest<RunWorkflowStepInput, WorkflowStep>()("workflows:run-step"),
+    stopStep: scopedRequest<string, void>()("workflows:stop-step"),
+    stopRun: scopedRequest<string, void>()("workflows:stop-run"),
+    retryStep: scopedRequest<RetryWorkflowStepInput, WorkflowStep>()("workflows:retry-step"),
+    decide: scopedRequest<DecideWorkflowStepInput, void>()("workflows:decide"),
+    runs: scopedRequest<WorkflowRunsInput, WorkflowRunPage>()("workflows:runs"),
+    run: scopedRequest<string, WorkflowRunDetail>()("workflows:run"),
+    /** Makes a new signing secret for a webhook trigger; the first one also makes its address. */
+    rotateWebhookSecret: scopedRequest<WorkflowTriggerInput, WorkflowWebhookSecret>()(
+      "workflows:rotate-webhook-secret",
+    ),
   },
   /**
    * Routine results: an agent routine's answer sent on to a messaging place. Only this computer's host
@@ -1660,9 +1730,11 @@ export const IPC_GROUP_PATHS = {
   githubConnector: "githubConnector",
   onePasswordConnector: "onePasswordConnector",
   bitwardenConnector: "bitwardenConnector",
+  vault: "vault",
   hostedSites: "hostedSites",
   routineFeed: "routineFeed",
   routineFlows: "routineFlows",
+  workflows: "workflows",
   routineResults: "routineResults",
   billing: "billing",
   license: "license",

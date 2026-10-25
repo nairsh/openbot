@@ -90,6 +90,7 @@ export const messages = {
   "error.team.hostTimezoneUnsupported": "Это подключение не поддерживает часовой пояс сервера.",
   "error.team.routineResultsUnsupported": "Это подключение не поддерживает места отправки рутин.",
   "error.team.agentMemoryLimitUnsupported": "Это подключение не поддерживает лимит памяти агентов.",
+  "error.team.promptCacheTtlUnsupported": "Это подключение не поддерживает время кэша промптов.",
   "error.team.attachmentNameRequired": "Нужно безопасное имя вложения.",
   "error.team.attachmentNotFound": "Вложение не найдено.",
   "error.team.sharedFileTooLarge": "Общий файл превышает лимит 100 МБ.",

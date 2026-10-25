@@ -201,7 +201,7 @@ export async function routeProviders(
           body,
         );
         await runCauseEffect(
-          service.changeProviderCredential(id, () =>
+          service.clearProviderCredential(id, () =>
             credentials
               .clear(id)
               .pipe(

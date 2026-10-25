@@ -195,6 +195,8 @@ export const messages = {
     "Dostawca modelu OpenCode zgłosił nieprawidłowe żądanie przesłania. Wybierz inny model i kontynuuj. Sprawdź zapisane rutyny, zanim utworzysz je ponownie.\n{detail}",
   "error.provider.opencodeUnreadableContent":
     "Ten model nie może odczytać pliku lub obrazu w tym czacie. Wybierz model, który odczytuje pliki, a potem wyślij wiadomość ponownie.",
+  "error.provider.opencodeFreeLimit":
+    "Darmowe modele OpenCode osiągnęły limit użycia. Wszystkie darmowe modele mają wspólny limit. Aby kontynuować, wklej klucz OpenCode Go w ustawieniach OpenCode albo wybierz model innego dostawcy.",
   "error.provider.opencodeProviderFailed":
     "Wystąpił błąd po stronie dostawcy modelu. Twoje połączenie nie jest przyczyną. Spróbuj ponownie później lub wybierz inny model.\n{detail}",
   "error.provider.opencodeNetwork":
@@ -271,6 +273,8 @@ export const messages = {
     "ID agenta może zawierać tylko małe litery, cyfry lub `-` i nie może być ID wbudowanego dostawcy.",
   "error.provider.customAgentEnvInvalid":
     "Nazwa zmiennej może zawierać litery, cyfry lub `_` i nie może zaczynać się od cyfry. Użyj każdej nazwy raz, maksymalnie 16 nazw.",
+  "error.provider.customAgentUsagePromptInvalid":
+    "Polecenie użycia musi być jednym wierszem o długości maksymalnie 256 znaków.",
   "error.provider.customAgentCommandInvalid":
     "Polecenie musi być pełną ścieżką, ścieżką zaczynającą się od ~/ albo nazwą polecenia bez spacji.",
   "error.provider.customAgentArgsInvalid":
@@ -309,6 +313,8 @@ export const messages = {
   "error.provider.accountNotFound": "Tego konta {provider} nie ma na tym komputerze. Odśwież i spróbuj ponownie.",
   "error.provider.accountAlreadyAdded": "To konto {provider} jest już połączone.",
   "error.provider.accountDefault": "Nie można usunąć pierwszego konta {provider}.",
+  "error.provider.accountUsesKey":
+    "To konto {provider} używa zapisanego klucza API i nie ma logowania. Zmień klucz w Ustawienia serwera → Dostawcy.",
   "error.provider.accountInUse": "Agent korzystający z tego konta pracuje. Spróbuj ponownie, gdy agent się zatrzyma.",
   "error.provider.accountsReadOnly":
     "Nie można odczytać zapisanych kont dostawców. Zaktualizuj OpenBot, zanim je zmienisz.",

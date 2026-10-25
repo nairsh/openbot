@@ -1,5 +1,5 @@
 import type { AgentModelId } from "./ipc-agent-identity";
-import type { AgentAuthState } from "./ipc-agent-status";
+import type { AccountUsageLimit, AgentAuthState } from "./ipc-agent-status";
 import type { ExternalDestination } from "./ipc-app-auth";
 import { isOneOf, isString } from "./runtime-values";
 
@@ -30,6 +30,7 @@ export const AGENT_PROVIDERS = [
   "pi",
   "muse",
   "inception",
+  "direct",
   "acp",
 ] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDERS)[number];
@@ -375,6 +376,28 @@ const AGENT_PROVIDER_DESCRIPTOR_TABLE = {
     reportsUsage: false,
     approvalsInFullAccess: true,
   },
+  // The user's own OpenAI-compatible endpoints, run in the Pi CLI that OpenBot downloads for Pi, with
+  // only the tools a coding agent needs. The endpoints are the ones saved under Custom endpoints.
+  direct: {
+    id: "direct",
+    displayName: "Direct",
+    cliName: "Pi CLI",
+    onboardingDescription: "Your own OpenAI-compatible endpoints in a light built-in agent",
+    signInMessage: "Add a custom endpoint to continue.",
+    installGuideLink: null,
+    defaultModel: "",
+    legacyModelPrefix: null,
+    authKind: "direct",
+    pickerOrder: 10,
+    localCodeSignIn: null,
+    signInPageEnd: "callback",
+    skillFolders: [".agents/skills"],
+    workspaceEnforcement: "confined-process",
+    steer: "native",
+    concurrentTurns: true,
+    reportsUsage: true,
+    approvalsInFullAccess: true,
+  },
   // One provider for every Agent Client Protocol agent the user adds by command. The model id names
   // the agent (`<customAgentId>/<agentModel>`), so one provider row serves them all and the shipped
   // provider CHECK lists grow by one word only once.
@@ -453,7 +476,8 @@ export function isManagedRuntimeProvider(provider: AgentProviderId): provider is
 
 /**
  * The providers that only newer Team API protocols carry: Gemini and custom ACP agents from protocol
- * 5, Cursor and Cline from protocol 6, Pi and Muse from protocol 7. No protocol carries Inception yet.
+ * 5, Cursor and Cline from protocol 6, Pi and Muse from protocol 7. No protocol carries Inception or
+ * Direct yet.
  * A joined server's settings list one only when the host's status names it.
  */
 export const LOCAL_ONLY_PROVIDERS = [
@@ -463,6 +487,7 @@ export const LOCAL_ONLY_PROVIDERS = [
   "pi",
   "muse",
   "inception",
+  "direct",
   "acp",
 ] as const satisfies readonly AgentProviderId[];
 
@@ -567,11 +592,52 @@ export function isFreeOpencodeModel(id: string, name: string): boolean {
 /**
  * Whether the provider's account quota limits this model. OpenCode reports only the Go quota, and
  * OpenCode also runs free, custom and own-sign-in models that the Go quota does not limit.
- * Antigravity reports only the Gemini quota; its Claude and GPT models share another limit. Gemini
- * model ids can be code names, so only a Claude or GPT id is left out.
+ * Antigravity's own reading is a Gemini quota group; its Claude and GPT models share another group,
+ * which only the named groups (`usageGroupForModel`) show. Gemini model ids can be code names, so only
+ * a Claude or GPT id is left out.
  */
 export function accountUsageCoversModel(provider: AgentProviderId, model: string | null | undefined): boolean {
   if (provider === "opencode") return Boolean(model?.toLowerCase().startsWith("opencode-go/"));
   if (provider === "antigravity") return !/^(?:claude|gpt)/iu.test(model ?? "");
   return true;
+}
+
+/**
+ * The windows that limit the model: the quota group that lists it when the reading lists the models
+ * of its groups, or else the reading itself. Undefined when no group lists the model.
+ */
+export function usageQuotaForModel(
+  limit: AccountUsageLimit,
+  model: string | null | undefined,
+): Pick<AccountUsageLimit, "primary" | "secondary"> | undefined {
+  return model && limit.groups?.some((group) => group.models.length > 0)
+    ? usageGroupForModel(limit.groups, model)
+    : limit;
+}
+
+/**
+ * The quota group that lists the model. Antigravity lists families ("Gemini Flash", "Gemini 4 Argon")
+ * and the model ID adds a version and an effort (`gemini-3.8-flash-high`), so each word of a listed
+ * name must be a word of the ID. The longest such name wins: "Gemini Flash Lite" before "Gemini Flash".
+ */
+export function usageGroupForModel<Group extends { models: readonly string[] }>(
+  groups: readonly Group[],
+  model: string,
+): Group | undefined {
+  const id = new Set(modelWords(model));
+  let best: { group: Group; length: number } | undefined;
+  for (const group of groups)
+    for (const listed of group.models) {
+      const words = modelWords(listed);
+      if (words.length > (best?.length ?? 0) && words.every((word) => id.has(word)))
+        best = { group, length: words.length };
+    }
+  return best?.group;
+}
+
+function modelWords(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9.]+/u)
+    .filter(Boolean);
 }

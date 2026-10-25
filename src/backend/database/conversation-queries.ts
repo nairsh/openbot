@@ -129,6 +129,23 @@ export class ConversationQueries {
     return row ? optionalStringColumn(row, "active_turn_id") : null;
   }
 
+  /**
+   * The turns that the store still shows as running, by thread. A running turn that is not the
+   * thread's active turn has no writer left: its end was never stored. Restart recovery reads this
+   * once to close such rows (#2214); `projection_turns` has no thread index, so one scan serves
+   * every thread.
+   */
+  readRunningTurnIds(): Map<string, string[]> {
+    const turns = new Map<string, string[]>();
+    for (const row of databaseRows(
+      this.#core.connection.prepare("SELECT thread_id, turn_id FROM projection_turns WHERE status = 'running'").all(),
+    )) {
+      const threadId = requiredStringColumn(row, "thread_id");
+      turns.set(threadId, [...(turns.get(threadId) ?? []), requiredStringColumn(row, "turn_id")]);
+    }
+    return turns;
+  }
+
   readConversationRevision(agentId: string, threadId: string | null): number {
     if (!threadId) return 0;
     const row = databaseRow(

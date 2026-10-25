@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { AGENT_MEMORY_CONTEXT_BUDGET_BYTES, essentialMemoryBytes } from "@openbot/contracts/agent-memory-context";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import type {
@@ -23,6 +24,7 @@ import type { AgentStore } from "../agent-store";
 import { normalizeMemoryText } from "../memory-store";
 import { type DynamicToolCallParams, isRecord } from "../protocol";
 import type { ConversationRuntime } from "./conversation-runtime";
+import { memoriesInTurns } from "./developer-instructions";
 import { listMemoriesInput, searchMemoriesInput, setMemoryInclusionInput } from "./memory-tool-inputs";
 import { type OpenBotToolResponse, openBotToolFailure, openBotToolResult } from "./routine-tools";
 
@@ -453,7 +455,7 @@ export class AgentMemories {
       committed.push(...this.#committedChanges(mutation, previousMemory, previousIds));
       changes.set(mutation.agentId, committed);
     }
-    for (const agentId of affectedAgents) this.stateChanged(agentId);
+    for (const agentId of affectedAgents) this.#savedByAgent(agentId);
     return changes;
   }
 
@@ -581,6 +583,39 @@ export class AgentMemories {
 
   clearPending(): void {
     this.#pending.clear();
+  }
+
+  /**
+   * Saves the facts of a memory flush as automatic, searchable memories. A fact that a memory holds
+   * already is skipped, and the flush stops at the storage limit: it never removes a memory to make
+   * room. Returns how many it saved.
+   */
+  saveFlushed(agentId: string, texts: readonly string[]): number {
+    this.#conversation.requireKnownAgent(agentId);
+    const sourceTurnId = `memory-flush:${randomUUID()}`;
+    let saved = 0;
+    for (const text of texts) {
+      const normalized = normalizeMemoryText(text);
+      const memories = this.#memories.list(agentId);
+      if (memories.length >= this.#memories.limit()) break;
+      if (!normalized || memories.some((memory) => memory.text === normalized)) continue;
+      if (this.#memories.saveAutomatic({ agentId, text: normalized, sourceTurnId })) saved += 1;
+    }
+    if (saved > 0) this.#savedByAgent(agentId);
+    return saved;
+  }
+
+  /**
+   * The agent saved or changed its own memories. A client that gets the memories with the turns
+   * reads the change at its next turn. The others keep the memories of their session until it loads
+   * again, at a new session or after a compaction: loading it now would change the instructions at
+   * the start of its prompt and make the provider read the whole session again without its cache.
+   * The agent knows what it saved, because it saved it in this session.
+   */
+  #savedByAgent(agentId: string): void {
+    const agent = this.#conversation.requireKnownAgent(agentId);
+    this.#conversation.unloadAgentThreads(agent.id, (client) => memoriesInTurns(client.provider));
+    this.#emit({ type: "memories-changed", agentId });
   }
 
   /**

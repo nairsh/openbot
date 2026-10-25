@@ -25,15 +25,16 @@ import {
   isAgentModelOption,
   parseAgentAnalyticsInput,
   parseAskSideQuestion,
-  parseBrowserSecretResponse,
   parseChannelCommand,
   parseChannelRead,
   parseGenerateAgentProfile,
   parseHostAnalyticsInput,
+  parseLocalBrowserSecretResponse,
   parseResetAgentSessionSetting,
   parseSaveAgentProfile,
   parseSetAgentHiddenInput,
   parseSetAgentSessionSetting,
+  remoteBrowserSecretResponse,
 } from "@openbot/contracts/ipc";
 import { isDynamicRecord } from "@openbot/contracts/runtime-values";
 import { TEAM_API_ROUTES } from "@openbot/contracts/team-api-routes";
@@ -765,11 +766,14 @@ export function agentIpcHandlers({
             }),
           ),
       }),
-      respondToBrowserSecret: scopedHandler(parseBrowserSecretResponse, {
+      respondToBrowserSecret: scopedHandler(parseLocalBrowserSecretResponse, {
         local: (parsed) => runCauseEffect(service.respondToBrowserSecret(parsed)),
         remote: (parsed, serverId) =>
           runCauseEffect(
-            remoteServers.request(serverId, BROWSER_SECRET_RESPONSE_PATH, decodeVoid, { method: "POST", body: parsed }),
+            remoteServers.request(serverId, BROWSER_SECRET_RESPONSE_PATH, decodeVoid, {
+              method: "POST",
+              body: remoteBrowserSecretResponse(parsed),
+            }),
           ),
       }),
       respondToBrowserTakeover: scopedHandler(parseBrowserTakeoverResponse, {

@@ -23,7 +23,7 @@ import {
   uninstallAgentSkill,
   unpublishAgentTemplate,
 } from "@openbot/team-client/team-admin-requests";
-import { listInstalledSkills, type TeamApiRequest } from "@openbot/team-client/team-api-requests";
+import { listInstalledSkills, type TeamApiRequest, teamAgentRoutinesApi } from "@openbot/team-client/team-api-requests";
 import { currentText } from "@openbot/ui/text";
 import { Effect } from "effect";
 import { onCleanup } from "solid-js";
@@ -273,6 +273,16 @@ export function createWebConversationRuntime(
       }
     },
     cancelImportFiles,
+    // `request()` names the connected host at call time, so a host switch reaches the new host.
+    routines: adminRequest
+      ? {
+          ...teamAgentRoutinesApi((...args) => adminRequest()(...args)),
+          onEvent: (listener) =>
+            onHostEvent?.((event) => {
+              if (event.type === "routines-changed") listener(event);
+            }) ?? (() => {}),
+        }
+      : undefined,
     admin: adminRequest
       ? webHostAdmin(
           adminRequest,

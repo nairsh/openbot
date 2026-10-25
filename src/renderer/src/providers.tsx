@@ -4,6 +4,7 @@ import {
   agentProviderDescriptor,
   LOCAL_SERVER_ID,
 } from "@openbot/contracts/ipc";
+import { CLAUDE_API_KEY_CAPABILITY } from "@openbot/contracts/team-protocol/claude-api-key-v1";
 import {
   PROVIDER_ACCOUNT_RELAY_CAPABILITY,
   PROVIDER_ACCOUNT_RELAY_PROVIDERS,
@@ -72,12 +73,15 @@ const Providers = createSimpleContext({
         managesRuntimes: () => activeServer()?.kind === "local" || providerAdminServerId() !== undefined,
       },
     );
+    // A boolean, so that a server-list update that keeps the capability does not rebuild the keys.
+    const hostReadsClaudeKey = createMemo(() => serverSupportsCapability(activeServer(), CLAUDE_API_KEY_CAPABILITY));
     /** The provider keys of the computer the providers run on. A saved key is recorded, never its value. */
     const providerKeys = createMemo(() => {
       const serverId = providerAdminServerId();
       const api = serverId ? hostProviderKeyApi(providerAdmin, serverId) : providerKeyApi;
       return {
         ...api,
+        readsClaudeKey: !serverId || hostReadsClaudeKey(),
         setProviderApiKey: async (input: { provider: AgentProviderId; key: string }) => {
           const analytics = desktopAnalytics.scope();
           const tracked = { provider: input.provider, action: "api_key_saved", method: "api_key" } as const;

@@ -269,6 +269,7 @@ function ServerProvidersStory(props: {
             onOpenScreenRecordingSettings={fn(async () => undefined)}
             onRecheckScreenRecording={fn(async () => undefined)}
             initialSection="providers"
+            hostPromptCacheTtl={{}}
             onSwitchToManageProviders={props.inactive ? fn() : undefined}
             providers={
               props.inactive

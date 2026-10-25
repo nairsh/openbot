@@ -244,6 +244,16 @@ export class AgentRoster {
           `agent:${agentId}`,
         );
         db.prepare("DELETE FROM routine_flow_steps WHERE agent_id = ?").run(agentId);
+        // Workflows keep their nodes and step history without the agent. The workflows it was in get a
+        // new revision, so an open editor reloads instead of saving the agent back.
+        db.prepare(
+          `UPDATE workflows SET graph_revision = graph_revision + 1
+           WHERE workflow_id IN (SELECT workflow_id FROM workflow_nodes WHERE agent_id = ?)`,
+        ).run(agentId);
+        db.prepare(
+          "UPDATE workflow_nodes SET agent_id = NULL, fields_json = json_remove(fields_json, '$.agentId') WHERE agent_id = ?",
+        ).run(agentId);
+        db.prepare("UPDATE workflow_steps SET agent_id = NULL WHERE agent_id = ?").run(agentId);
         db.prepare("DELETE FROM agent_waits WHERE agent_id = ?").run(agentId);
         db.prepare("DELETE FROM projection_reactions WHERE agent_id = ?").run(agentId);
         db.prepare("DELETE FROM projection_deliveries WHERE recipient_agent_id = ?").run(agentId);

@@ -4,7 +4,7 @@ import type {
   BrowserPreview,
   BrowserTab,
   BrowserTakeoverRequest,
-  RespondToBrowserSecretInput,
+  LocalBrowserSecretResponse,
 } from "@openbot/contracts/ipc";
 import { classifyFailure } from "@openbot/telemetry";
 import {
@@ -269,7 +269,9 @@ interface BrowserTakeoverCardProps {
   signInBlocked?: { server: string; signingIn: boolean } | undefined;
   browserSecret?: {
     loadPreview?: (tabId: string) => Promise<BrowserPreview>;
-    onRespond: (input: RespondToBrowserSecretInput) => Promise<void>;
+    /** Offer "Save to Vault" for a password: only on the local server. */
+    vaultSave?: boolean | undefined;
+    onRespond: (input: LocalBrowserSecretResponse) => Promise<void>;
   };
 }
 
@@ -286,6 +288,7 @@ export function BrowserTakeoverCard(props: BrowserTakeoverCardProps) {
             request={request()}
             onOpen={props.onOpen}
             loadPreview={actions.loadPreview}
+            vaultSave={actions.vaultSave}
             onRespond={actions.onRespond}
           />
         );

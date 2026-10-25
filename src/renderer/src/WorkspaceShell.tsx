@@ -17,6 +17,7 @@ import { useConversation } from "./features/conversation/conversation-context";
 import { useDirectMessages } from "./features/conversation/direct-messages-context";
 import { WorkspaceConversation } from "./features/conversation/WorkspaceConversation";
 import { WorkspaceDirectConversation } from "./features/conversation/WorkspaceDirectConversation";
+import { useCustomAgentUsagePolling } from "./features/custom-agents/custom-agent-usage-polling";
 import { WorkspaceServerOnboarding } from "./features/onboarding/WorkspaceServerOnboarding";
 import { useRemoteDesktop } from "./features/remote-desktop/remote-desktop-context";
 import { WorkspaceRoutineFlows } from "./features/routine-flows/WorkspaceRoutineFlows";
@@ -72,6 +73,7 @@ export function WorkspaceShell(props: { account: () => CentralAuthUser }) {
   const windowPage = useWindowPage();
   const usage = useUsage();
   useAccountUsagePolling();
+  useCustomAgentUsagePolling();
   const layout = useLayout();
   const {
     activeServer,

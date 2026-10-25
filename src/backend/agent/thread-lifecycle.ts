@@ -49,7 +49,13 @@ import { readCodexMcpConfig } from "./codex-mcp-config";
 import type { ContextCompaction } from "./context-compaction";
 import type { ConversationRuntime } from "./conversation-runtime";
 import { agentNamesById } from "./delivery-content";
-import { developerInstructions, memoryContext, type SectionTeammates } from "./developer-instructions";
+import {
+  developerInstructions,
+  memoriesInTurns,
+  memoryContext,
+  type SectionTeammates,
+  type VaultContents,
+} from "./developer-instructions";
 import {
   appendRoutineDigest,
   readHandoffHistory,
@@ -131,6 +137,8 @@ export interface ThreadLifecycleOptions {
   agentEnvironment?: (inherited?: NodeJS.ProcessEnv) => Readonly<Record<string, string>>;
   /** Whether a password vault is connected, read at each start and resume of a session. */
   passwordVaultConnected?: () => boolean;
+  /** What the Vault holds, read at each start and resume of a session. */
+  vaultItems?: () => VaultContents;
   /** OpenBot runs on a server. The prompt then names the sign-in on the user's computer. */
   serverHost?: boolean;
   /** The other agents in an agent's sidebar section, read at each start and resume of a session. */
@@ -163,6 +171,7 @@ export class ThreadLifecycle {
   ) => Effect.Effect<string | null, McpOperationError>;
   readonly #agentEnvironment: () => Readonly<Record<string, string>>;
   readonly #passwordVaultConnected: () => boolean;
+  readonly #vaultItems: () => VaultContents;
   readonly #serverHost: boolean;
   readonly #sectionTeammates: (agentId: string) => SectionTeammates | null;
   readonly #pendingHandoffs = new Map<string, string>();
@@ -190,6 +199,7 @@ export class ThreadLifecycle {
     this.#mcpProxyFingerprint = options.mcpProxyFingerprint ?? (() => Effect.succeed(null));
     this.#agentEnvironment = options.agentEnvironment ?? (() => ({}));
     this.#passwordVaultConnected = options.passwordVaultConnected ?? (() => false);
+    this.#vaultItems = options.vaultItems ?? (() => ({ available: false, cards: false, contacts: false }));
     this.#serverHost = options.serverHost ?? false;
     this.#sectionTeammates = options.sectionTeammates ?? (() => null);
   }
@@ -920,7 +930,8 @@ export class ThreadLifecycle {
 
   /**
    * The developer instructions of a session start or resume, with what is connected now. Claude
-   * gets the memories apart, and its client sends them with the turns: see `memoriesInTurns`.
+   * gets the memories and the section-mates apart, and its client sends them with the turns: see
+   * `memoriesInTurns`. A change in the system prompt writes the full conversation to the cache again.
    */
   #instructions(
     agent: AgentSummary,
@@ -932,10 +943,12 @@ export class ThreadLifecycle {
     const options = {
       computerUseInOwnChat,
       passwordVault: this.#passwordVaultConnected(),
+      vaultItems: this.#vaultItems(),
       serverHost: this.#serverHost,
       memoryLimit: this.#memories.limit(),
       storedMemoryCount: this.#memories.listFor(agent.id).length,
-      memoriesInTurns: client.provider === "claude",
+      memoriesInTurns: memoriesInTurns(client.provider),
+      teammatesInTurns: memoriesInTurns(client.provider),
       sectionTeammates: section,
     };
     const instructions = developerInstructions(
@@ -947,7 +960,11 @@ export class ThreadLifecycle {
       options,
     );
     return options.memoriesInTurns
-      ? { developerInstructions: instructions, memoryContext: memoryContext(memories, options) }
+      ? {
+          developerInstructions: instructions,
+          memoryContext: memoryContext(memories, options),
+          sectionTeammates: section,
+        }
       : { developerInstructions: instructions };
   }
 

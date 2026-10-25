@@ -18,6 +18,7 @@ import {
   type AgentMemorySelection,
   type AgentMemorySelectionState,
   type AgentProviderId,
+  type AgentRuntimeSnapshot,
   type AgentStatus,
   type AgentSubmission,
   type AgentTask,
@@ -48,7 +49,9 @@ import {
   CONVERSATION_MEMORY_CHANGES_ITEM_TYPE,
   type ComputerUseState,
   type ConversationMessage,
+  type ConversationReadState,
   type ConversationSnapshot,
+  type ConversationTurnTrace,
   type CustomAgentSummary,
   type CustomProviderSummary,
   composedCustomModelId,
@@ -62,6 +65,7 @@ import {
   DEFAULT_APPROVAL_AUTOMATION_PREFERENCE,
   DEFAULT_BUSY_MESSAGE_MODE,
   DEFAULT_DYNAMIC_ISLAND_PREFERENCE,
+  DEFAULT_PROMPT_CACHE_TTL,
   DEFAULT_PROVIDER_ACCOUNT_ID,
   DEFAULT_PROVIDER_DETECTION_SETTINGS,
   DEFAULT_REMOTE_NETWORK_ROUTE,
@@ -79,6 +83,7 @@ import {
   hostAgentMemoryLimit,
   isAgentMemoryLimit,
   isAgentSummary,
+  isPromptCacheTtl,
   isReleasedRoutineSchedule,
   type MacPermissionId,
   nextBrowserProfileHue,
@@ -87,6 +92,7 @@ import {
   type OpenBotDesktopApi,
   type OpenSharedFileInput,
   type OpenWorkspaceFileInput,
+  type PromptCacheTtlSetting,
   type ProviderAccountStatus,
   type ProviderDetectionSettings,
   parseAgentAccessChange,
@@ -129,6 +135,7 @@ import {
 import { filePreviewForPath } from "../../stories/file-previews";
 import { INSTANCE_TRANSFER_PREVIEW } from "../../stories/instance-transfer-fixtures";
 import { toggleChannelMember } from "../features/channels/channels-draft";
+import { readStateForMessages } from "../features/conversation/conversation-read-state";
 import {
   STORY_AGENT_TEMPLATE_DETAIL,
   STORY_AGENT_TEMPLATE_PUBLICATION,
@@ -159,7 +166,7 @@ import { createMockAuth, type MockAuthOptions } from "./mock-auth";
 import { createMockBilling, previewBillingServers } from "./mock-billing";
 import { createMockBitwardenConnector } from "./mock-bitwarden-connector";
 import { createMockBrowser, type MockBrowserOptions } from "./mock-browser";
-import { createMockChannels } from "./mock-channels";
+import { createMockChannels, type MockChannelSeed } from "./mock-channels";
 import { createMockEvents } from "./mock-events";
 import { createMockGitHubConnector } from "./mock-github-connector";
 import { createMockHostTimezone } from "./mock-host-timezone";
@@ -178,7 +185,9 @@ import { createMockSkills, type MockSkillsOptions } from "./mock-skills";
 import { createMockStorage } from "./mock-storage";
 import { clone, type Listener, type MockRuntime, matchesQuery } from "./mock-support";
 import { createMockTeam, type MockTeamOptions } from "./mock-team";
+import { createMockVault } from "./mock-vault";
 import { createMockVoice, type MockVoiceOptions } from "./mock-voice";
+import { type MockWorkflowSeed, mockWorkflows } from "./mock-workflows";
 
 export interface MockOpenBotOptions
   extends MockProviderRuntimeOptions,
@@ -212,7 +221,67 @@ export interface MockOpenBotOptions
   routineRuns?: Record<string, RoutineRun[]>;
   routineFlowLinks?: RoutineFlowLink[];
   routineFlowSteps?: RoutineFlowStep[];
+  workflows?: MockWorkflowSeed[];
   customProviders?: CustomProviderSummary[];
+  /** The read state of each agent's chat, keyed by agent id. An agent with none shows no unread count. */
+  conversationReads?: Record<string, ConversationReadState>;
+  /** What `agent.getRuntimeSnapshot` returns when the preview starts. */
+  runtimeSnapshot?: AgentRuntimeSnapshot;
+  /** Adds the Storybook agent and provider of another host to `STORY_FOREIGN_SERVER_ID`. Defaults to true. */
+  storyForeignAgent?: boolean;
+  /** The channels, and their history, when the preview starts. */
+  channels?: MockChannelSeed[];
+  /** The sidebar sections and assignments when the preview starts. */
+  sidebarLayout?: SidebarLayoutSnapshot;
+}
+
+/** A message that the preview sent. A listener that returns true answers it, and the mock adds no reply. */
+export interface MockSentMessage {
+  agentId: string;
+  text: string;
+  turnId: string;
+  delivery: QueueDelivery;
+}
+
+/**
+ * The trace of a finished mock turn that ends at `endedAt`, as a host records it: a thought, three
+ * tool steps with the progress text that `turn-progress` sent (the web search failed), and the answer.
+ */
+function mockTurnTrace(turnId: string, endedAt: Date): ConversationTurnTrace {
+  const end = endedAt.getTime();
+  const at = (offsetMs: number) => new Date(end - 6_400 + offsetMs).toISOString();
+  return {
+    startedAt: at(0),
+    endedAt: endedAt.toISOString(),
+    steps: [
+      { id: `${turnId}:thought`, kind: "reasoning", startedAt: at(180), endedAt: at(1_420) },
+      {
+        id: `${turnId}:read`,
+        kind: "tool",
+        text: "Gathering the relevant information…",
+        startedAt: at(1_500),
+        endedAt: at(2_260),
+      },
+      {
+        id: `${turnId}:search`,
+        kind: "tool",
+        text: "Searching for current information…",
+        startedAt: at(2_340),
+        endedAt: at(3_910),
+        failed: true,
+      },
+      {
+        id: `${turnId}:edit`,
+        kind: "tool",
+        text: "Making the requested changes…",
+        startedAt: at(4_020),
+        endedAt: at(5_480),
+      },
+      { id: `${turnId}:answer`, kind: "message", startedAt: at(5_560), endedAt: at(6_400) },
+    ],
+    tokens: 18_342,
+    costUsd: 0.0427,
+  };
 }
 
 /** Custom models compose as `<provider>/<model>`; preview builds `listModels()` from these. */
@@ -246,6 +315,10 @@ export interface MockOpenBotControls {
     event: Omit<Extract<AgentEvent, { type: "conversation-delta" }>, "type" | "revision">,
   ) => void;
   setQueueSnapshot: (agentId: string, deliveries: QueueDelivery[]) => QueueSnapshot;
+  /** Stores the snapshot that `agent.getRuntimeSnapshot` returns and sends it as a `runtime-snapshot` event. */
+  setRuntimeSnapshot: (snapshot: AgentRuntimeSnapshot) => void;
+  onMessageSent: (listener: (message: MockSentMessage) => boolean) => () => void;
+  onPromptResponse: (listener: (input: RespondToPromptInput) => void) => () => void;
   emitAuthState: (state: CentralAuthState) => void;
   emitPresence: (snapshot: TeamPresenceSnapshot) => void;
   emitDirectMessage: (event: DirectMessageRealtimeEvent) => void;
@@ -314,6 +387,7 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
   let busyMessageMode: BusyMessageModePreference = { mode: DEFAULT_BUSY_MESSAGE_MODE };
   let agentDefaults: AgentDefaults = { ...DEFAULT_AGENT_DEFAULTS };
   let agentMemoryLimit: AgentMemoryLimitPreference = { limit: DEFAULT_AGENT_MEMORY_LIMIT };
+  let promptCacheTtl: PromptCacheTtlSetting = { ...DEFAULT_PROMPT_CACHE_TTL };
   let agentAccess: AgentAccessChange = { revision: 0, everyone: {}, roles: [] };
   const agentMemoryLimitListeners = new Set<(preference: AgentMemoryLimitPreference) => void>();
   let remoteSessionReuse: RemoteSessionReusePreference = { ...DEFAULT_REMOTE_SESSION_REUSE_PREFERENCE };
@@ -445,13 +519,15 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
     redirectUrl: "http://127.0.0.1:28417/mcp-auth",
     app: mcpSignInApps[mcpServerId] ?? null,
   });
-  let sidebarLayout: SidebarLayoutSnapshot = {
-    revision: 0,
-    sections: [],
-    order: [SIDEBAR_PEOPLE_SECTION_ID, SIDEBAR_UNASSIGNED_SECTION_ID],
-    agentAssignments: {},
-    agentOrder: [],
-  };
+  let sidebarLayout: SidebarLayoutSnapshot = clone(
+    options.sidebarLayout ?? {
+      revision: 0,
+      sections: [],
+      order: [SIDEBAR_PEOPLE_SECTION_ID, SIDEBAR_UNASSIGNED_SECTION_ID],
+      agentAssignments: {},
+      agentOrder: [],
+    },
+  );
   const models = clone(options.models ?? STORY_MODELS);
   const snapshots = clone(options.snapshots ?? STORY_SNAPSHOTS);
   let updateStatus = clone(options.updateStatus ?? STORY_UPDATE_STATUS);
@@ -508,6 +584,11 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
   const updateListeners = new Set<Listener<UpdateStatus>>();
   const attachmentListeners = new Set<Listener<AttachmentImportEvent>>();
   const latestConversationListeners = new Set<Listener<string>>();
+  const messageSentListeners = new Set<(message: MockSentMessage) => boolean>();
+  const promptResponseListeners = new Set<Listener<RespondToPromptInput>>();
+  const conversationReads = new Map(Object.entries(clone(options.conversationReads ?? {})));
+  let runtimeSnapshot = options.runtimeSnapshot ? clone(options.runtimeSnapshot) : null;
+  const storyForeignServerId = options.storyForeignAgent === false ? null : STORY_FOREIGN_SERVER_ID;
   const timers = new Set<ReturnType<typeof setTimeout>>();
 
   const emit = <T>(listeners: Set<Listener<T>>, value: T) => {
@@ -755,6 +836,13 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
     emitAgentEvent({ ...event, type: "conversation-delta", revision: snapshot.revision });
   }
 
+  /** As on a host: the messages after the last read one that the agent or a teammate wrote. */
+  function conversationReadState(agentId: string): ConversationReadState {
+    const state = conversationReads.get(agentId);
+    if (!state) return { unreadCount: 0, firstUnreadMessageId: null, throughMessageId: null };
+    return readStateForMessages(state, getSnapshot(agentId).messages);
+  }
+
   function setQueueSnapshot(agentId: string, deliveries: QueueDelivery[]): QueueSnapshot {
     const snapshot = { agentId, deliveries: clone(deliveries) };
     queues.set(agentId, snapshot);
@@ -827,6 +915,7 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
   const mockChannels = createMockChannels(
     emitAgentEvent,
     (agentId) => agents.find((entry) => entry.id === agentId)?.name ?? agentId,
+    options.channels,
   );
   const mockProviderRuntimes = createMockProviderRuntimes(options, runtime);
   const mockVoice = createMockVoice(options, runtime);
@@ -1107,6 +1196,9 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
       { routines, routineRuns, links: options.routineFlowLinks, steps: options.routineFlowSteps },
       (agentId) => emitAgentEvent({ type: "routine-flows-changed", agentId }),
     ),
+    workflows: mockWorkflows(options.workflows ?? [], (workflowId) =>
+      emitAgentEvent({ type: "workflows-changed", workflowId }),
+    ),
     routineResults: mockRoutineResults(routines, options, (agentId) =>
       emitAgentEvent({ type: "routines-changed", agentId }),
     ),
@@ -1158,6 +1250,7 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
     githubConnector: createMockGitHubConnector(),
     onePasswordConnector: createMockOnePasswordConnector(),
     bitwardenConnector: createMockBitwardenConnector(),
+    vault: createMockVault(),
     billing: createMockBilling(billingPlans),
     license: createMockLicense(),
     routineFeed: createMockRoutineFeed(),
@@ -1244,6 +1337,7 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
             args: [],
             envNames: [],
             resolvedCommand: "/preview/example-acp",
+            usagePrompt: null,
           });
         return { agents: clone(customAgents), restart: "not-running" };
       },
@@ -1262,6 +1356,7 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
           args: [...input.args],
           envNames: input.env.map((entry) => entry.name),
           resolvedCommand: input.command.startsWith("/") ? input.command : `/usr/local/bin/${input.command}`,
+          usagePrompt: input.usagePrompt,
         };
         customAgents = customAgents.some((agent) => agent.id === input.id)
           ? customAgents.map((agent) => (agent.id === input.id ? summary : agent))
@@ -1281,6 +1376,11 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
         capabilities: ["loadSession"],
         models: ["Default", "Fast"],
       }),
+      // Preview starts no agent, so each usage prompt gets an answer that names it.
+      usage: async () =>
+        customAgents.flatMap((agent) =>
+          agent.usagePrompt ? [{ id: agent.id, text: `Preview answer to ${agent.usagePrompt}` }] : [],
+        ),
     },
     // Preview reaches no local server, so a scan finds nothing and a model list is empty.
     providerDetection: {
@@ -1534,8 +1634,8 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
     },
     agent: {
       getStatus: async (serverId) =>
-        clone(serverId === STORY_FOREIGN_SERVER_ID ? withStoryForeignProvider(agentStatus) : agentStatus),
-      getRuntimeSnapshot: async () => null,
+        clone(serverId === storyForeignServerId ? withStoryForeignProvider(agentStatus) : agentStatus),
+      getRuntimeSnapshot: async () => clone(runtimeSnapshot),
       getHostAnalytics: async (input) => mockHostAnalytics(input, agents),
       getAnalytics: async (input) => {
         const agent = agents.find((entry) => entry.id === input.agentId);
@@ -1556,10 +1656,10 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
           ...[...models, ...customProviders.flatMap(mockCustomProviderModels)].filter(
             (model) => !agentStatus.providers?.some((row) => row.id === model.provider && row.off),
           ),
-          ...(serverId === STORY_FOREIGN_SERVER_ID ? [STORY_FOREIGN_MODEL] : []),
+          ...(serverId === storyForeignServerId ? [STORY_FOREIGN_MODEL] : []),
         ]),
       listAgents: async (serverId) =>
-        clone(serverId === STORY_FOREIGN_SERVER_ID ? [...agents, STORY_FOREIGN_AGENT] : agents),
+        clone(serverId === storyForeignServerId ? [...agents, STORY_FOREIGN_AGENT] : agents),
       listHiddenAgents: async () => hiddenAgents(),
       // As on a host: the agent keeps everything, and a hide or a restore goes to every device.
       setAgentHidden: async ({ agentId, hidden }) => {
@@ -2138,7 +2238,7 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
       routineCalendar: async (input) => mockRoutineCalendar(input, routines, routineRuns),
       readConversation: async (agentId) => ({
         ...clone(getSnapshot(agentId)),
-        readState: { unreadCount: 0, firstUnreadMessageId: null, throughMessageId: null },
+        readState: conversationReadState(agentId),
       }),
       readConversationPage: async (input) => {
         if (!input.anchor || input.anchor.type === "latest") {
@@ -2158,7 +2258,7 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
           messages,
           references: {},
           pageInfo: { hasOlder: start > 0, olderCursor: start > 0 ? (messages[0]?.id ?? null) : null },
-          readState: { unreadCount: 0, firstUnreadMessageId: null, throughMessageId: null },
+          readState: conversationReadState(input.agentId),
         };
       },
       openMessageLink: async () => null,
@@ -2193,12 +2293,13 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
         const end = offset + (input.limit ?? 50);
         return { results: results.slice(offset, end), nextCursor: end < results.length ? String(end) : null };
       },
-      listConversationReads: async () => ({}),
-      markConversationRead: async (input) => ({
-        unreadCount: 0,
-        firstUnreadMessageId: null,
-        throughMessageId: input.throughMessageId,
-      }),
+      listConversationReads: async () =>
+        Object.fromEntries([...conversationReads.keys()].map((agentId) => [agentId, conversationReadState(agentId)])),
+      markConversationRead: async (input) => {
+        const state = { unreadCount: 0, firstUnreadMessageId: null, throughMessageId: input.throughMessageId };
+        if (conversationReads.has(input.agentId)) conversationReads.set(input.agentId, state);
+        return clone(state);
+      },
       chooseAttachments: async (_input) => [],
       onAttachmentImport: (listener) => {
         attachmentListeners.add(listener);
@@ -2270,6 +2371,13 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
           threadId: getSnapshot(input.agentId).threadId ?? `thread-${input.agentId}`,
           turnId,
         });
+        const receipt: QueuedMessageReceipt = {
+          messageId,
+          deliveries: [{ id: deliveryId, recipientAgentId: input.agentId, status: "running", position: null }],
+        };
+        if (input.clientMessageId) sentReceipts.set(input.clientMessageId, receipt);
+        const sent = { agentId: input.agentId, text: input.text, turnId, delivery };
+        if ([...messageSentListeners].some((listener) => listener(clone(sent)))) return receipt;
         emitAgentEvent({
           type: "turn-progress",
           agentId: input.agentId,
@@ -2286,14 +2394,16 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
         });
 
         schedule(() => {
+          const repliedAt = new Date();
           const assistantMessage: ConversationMessage = {
             id: `mock-reply-${messageCounter++}`,
             turnId,
             author: "assistant",
             source: "assistant",
             text: `Mock reply from ${agents.find((agent) => agent.id === input.agentId)?.name ?? "agent"}: I received “${input.text}” and added it to the working context.`,
-            createdAt: new Date().toISOString(),
+            createdAt: repliedAt.toISOString(),
             status: "completed",
+            trace: mockTurnTrace(turnId, repliedAt),
           };
           // A message that asks the agent to remember something commits one memory, as a real turn does.
           const memoryMessage: ConversationMessage[] = /\bremember\b/iu.test(input.text)
@@ -2333,11 +2443,6 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
           // As long as a short real turn, so the preview shows the activity line between the two bubbles.
         }, 1_800);
 
-        const receipt: QueuedMessageReceipt = {
-          messageId,
-          deliveries: [{ id: deliveryId, recipientAgentId: input.agentId, status: "running", position: null }],
-        };
-        if (input.clientMessageId) sentReceipts.set(input.clientMessageId, receipt);
         return receipt;
       },
       setMessageReaction: async (input: SetMessageReactionInput) => {
@@ -2505,7 +2610,9 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
         });
       },
       compactContext: async () => undefined,
-      respondToPrompt: async (_input: RespondToPromptInput) => undefined,
+      respondToPrompt: async (input: RespondToPromptInput) => {
+        emit(promptResponseListeners, input);
+      },
       respondToApproval: async () => undefined,
       respondToBrowserSecret: async (input) => {
         for (const listener of agentListeners)
@@ -2620,6 +2727,13 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
         agentMemoryLimit = { limit };
         for (const listener of agentMemoryLimitListeners) listener(clone(agentMemoryLimit));
         return hostAgentMemoryLimit(agentMemoryLimit);
+      },
+      // Preview has one host, so every server shares one cache time.
+      getPromptCacheTtl: async () => clone(promptCacheTtl),
+      setPromptCacheTtl: async (ttl) => {
+        if (!isPromptCacheTtl(ttl)) throw new Error("Prompt cache time is required.");
+        promptCacheTtl = { ttl };
+        return clone(promptCacheTtl);
       },
       // Preview has one host, and its user owns it, so `mine` gives every agent.
       getAgentAccess: async () => ({
@@ -2756,6 +2870,18 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
     updateDirectConversationSnapshot: mockTeam.updateDirectConversationSnapshot,
     emitConversationDelta,
     setQueueSnapshot,
+    setRuntimeSnapshot: (snapshot) => {
+      runtimeSnapshot = clone(snapshot);
+      emitAgentEvent({ type: "runtime-snapshot", snapshot });
+    },
+    onMessageSent: (listener) => {
+      messageSentListeners.add(listener);
+      return () => messageSentListeners.delete(listener);
+    },
+    onPromptResponse: (listener) => {
+      promptResponseListeners.add(listener);
+      return () => promptResponseListeners.delete(listener);
+    },
     emitAuthState: mockAuth.emitAuthState,
     emitPresence: mockTeam.emitPresence,
     emitDirectMessage: mockTeam.emitDirectMessage,
@@ -2774,6 +2900,8 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
       updateListeners.clear();
       attachmentListeners.clear();
       latestConversationListeners.clear();
+      messageSentListeners.clear();
+      promptResponseListeners.clear();
       void appInfo;
     },
   };

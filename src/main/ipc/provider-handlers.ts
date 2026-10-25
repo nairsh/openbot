@@ -91,7 +91,7 @@ export function providerIpcHandlers({
       ),
       clearProviderApiKey: payloadHandler(parseProviderId, (provider) =>
         runCauseEffect(
-          service.changeProviderCredential(provider, () =>
+          service.clearProviderCredential(provider, () =>
             credentials
               .clear(provider)
               .pipe(

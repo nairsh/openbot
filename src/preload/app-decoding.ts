@@ -35,9 +35,11 @@ import {
   type CentralAuthState,
   type CentralAuthUser,
   type ChatWindowTarget,
+  CUSTOM_AGENT_LIMITS,
   type CustomAgentCheckResult,
   type CustomAgentResult,
   type CustomAgentSummary,
+  type CustomAgentUsage,
   type CustomProviderResult,
   type CustomProviderSummary,
   DEFAULT_AGENT_DEFAULTS,
@@ -64,6 +66,7 @@ import {
   isCustomAgentCheckResult,
   isCustomAgentResult,
   isCustomAgentSummary,
+  isCustomAgentUsage,
   isCustomProviderResult,
   isCustomProviderSummary,
   isDetectedAcpAgent,
@@ -571,6 +574,13 @@ export function decodeCustomAgents(value: unknown): CustomAgentSummary[] {
 
 export function decodeCustomAgentResult(value: unknown): CustomAgentResult {
   if (!isCustomAgentResult(value)) throw new Error("Invalid custom agent response.");
+  return value;
+}
+
+export function decodeCustomAgentUsage(value: unknown): CustomAgentUsage[] {
+  if (!Array.isArray(value) || value.length > CUSTOM_AGENT_LIMITS.agents || !value.every(isCustomAgentUsage)) {
+    throw new Error("Invalid custom agent usage response.");
+  }
   return value;
 }
 

@@ -536,7 +536,10 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
           class="provider-model-popover"
           aria-hidden={open() ? undefined : "true"}
           onKeyDown={(event) => {
-            if (event.key === "Escape") setOpen(false);
+            if (event.key !== "Escape") return;
+            // Handled: a form that closes on Escape, such as the new-agent form, stays open.
+            event.preventDefault();
+            setOpen(false);
           }}
         >
           <ContentExitMotion panel={() => popover} />

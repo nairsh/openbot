@@ -7,7 +7,7 @@ import type { AgentMessage, ChatActionMarkerModel } from "@openbot/ui/data";
 import { ChannelActivityIndicator } from "@openbot/ui/features/channels/ChannelActivityIndicator";
 import { AgentActivityIndicator } from "@openbot/ui/features/conversation/AgentActivity";
 import { AgentChatEmptyState } from "@openbot/ui/features/conversation/AgentChatEmptyState";
-import { AgentStepsDisclosure } from "@openbot/ui/features/conversation/AgentSteps";
+import { AgentStepsDisclosure, type AgentStepsTrace } from "@openbot/ui/features/conversation/AgentSteps";
 import { AgentTaskChips } from "@openbot/ui/features/conversation/AgentTasks";
 import { AttachmentCards } from "@openbot/ui/features/conversation/AttachmentCards";
 import { UsageLimitAskCard } from "@openbot/ui/features/conversation/BackupModels";
@@ -32,7 +32,7 @@ import { useText } from "@openbot/ui/text";
 import { createMemo, createSignal, For, Loading, lazy, onCleanup, Show, untrack } from "solid-js";
 import { useShowAgentSteps } from "../../agent-steps-preference";
 import { planItems, planTitle } from "../../app-message-projection";
-import { deviceSendShortcut } from "../../send-shortcut-preference";
+import { currentDevicePlatform, deviceSendShortcut } from "../../send-shortcut-preference";
 import { remoteRoutineRecovery } from "../servers/server-capabilities";
 import { speechModelReady } from "../speech/speech-model";
 import { recordingGone, speechReading, spokenReply } from "../speech/speech-playback";
@@ -58,7 +58,7 @@ import { RoutineChatCard } from "./RoutineChatCard";
 import { createChatWebhookRoutines, RoutineWebhookChatCard } from "./RoutineWebhookChatCard";
 import { desktopChatEventRoutinesApi } from "./routine-webhooks-api";
 import { PENDING_SEND_ID_PREFIX, pendingSendRetrySafe } from "./stores/pending-send-store";
-import { createTurnSteps } from "./turn-steps";
+import { createTurnSteps, SUBAGENT_SPAN_PREFIX } from "./turn-steps";
 
 /**
  * A message that renders only an action marker, with no bubble of its own. A routine instruction is
@@ -191,7 +191,7 @@ export function ConversationTimeline() {
     shownSubagentId,
     toggleSubagentPanel,
   } = useConversationViewScope();
-  const { t, format } = useText();
+  const { t, format, sourceText } = useText();
   // A named function, not a ternary in the prop: the compiler wraps a ternary prop in a memo, and
   // the avatar reads it in a tracked effect, where a new memo halts the reactive system.
   const waitingProviderName = () => {
@@ -478,6 +478,33 @@ export function ConversationTimeline() {
     activeTurnId: () => props.activeTurnId,
   });
   const showAgentSteps = useShowAgentSteps();
+  const traceKeyboard = currentDevicePlatform() === "darwin" ? "mac" : "pc";
+  /** The trace that the steps row above an answer opens. */
+  const traceAbove = (messageId: string | undefined): AgentStepsTrace => ({
+    spans: () =>
+      turnSteps.traceAbove(messageId, {
+        agent: props.agent?.name ?? t("chat.message.agentFallback"),
+        thinking: t("chat.trace.step.thinking"),
+        answer: t("chat.trace.step.answer"),
+        progress: sourceText,
+        message: (agents) => t("chat.trace.step.message", { agents }),
+        subagent: (title) => t("chat.trace.step.subagent", { title }),
+        reply: t("chat.trace.step.reply"),
+        agentNames: (ids) =>
+          format.list(
+            ids.map(
+              (id) => props.agents.find((candidate) => candidate.id === id)?.name ?? t("chat.message.agentFallback"),
+            ),
+          ),
+      }),
+    keyboard: traceKeyboard,
+    // The chat shows a subagent of the trace in the side panel, as its card in the chat does.
+    canSelectSpan: (id) => id.startsWith(SUBAGENT_SPAN_PREFIX),
+    onSelectSpan: (id) => {
+      const subagentId = id.slice(SUBAGENT_SPAN_PREFIX.length);
+      if (shownSubagentId() !== subagentId) toggleSubagentPanel(subagentId);
+    },
+  });
   const channelWorkingSteps = createMemo(() => (channel ? turnSteps.workingSteps(channel.workingTurns()) : []));
   let cachedPrompt: { key: string; prompt: NonNullable<ConversationProps["prompt"]> } | null = null;
   const keyedPrompt = createMemo(() => {
@@ -1161,7 +1188,8 @@ export function ConversationTimeline() {
                           <AgentStepsDisclosure
                             steps={steps()}
                             defaultOpen={showAgentSteps()}
-                            durationMs={turnSteps.durationAbove(message()?.id)}
+                            trace={traceAbove(message()?.id)}
+                            facts={turnSteps.factsAbove(message()?.id)}
                           />
                         </ChatRowBoundary>
                       )}
@@ -1443,6 +1471,7 @@ export function ConversationTimeline() {
                 signInBlocked={localSignIn.blockedTakeover()}
                 browserSecret={{
                   loadPreview: runtime.browser.capturePreview,
+                  vaultSave: props.server?.kind === "local",
                   onRespond: runtime.agent.respondToBrowserSecret,
                 }}
               />

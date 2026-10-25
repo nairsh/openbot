@@ -6,6 +6,7 @@ import {
   type ProviderRuntimeSnapshot,
   type ProviderRuntimesDesktopApi,
 } from "@openbot/contracts/ipc";
+import { matchingSourceKeys } from "@openbot/i18n";
 import {
   type ProviderUpdate,
   providerUpdateAvailable,
@@ -24,6 +25,32 @@ import {
 } from "./provider-update-toast";
 
 const PROVIDERS = MANAGED_RUNTIME_PROVIDERS;
+
+/** The analytics code of each catalog reason that the runtime manager shows for a failed download. */
+const DOWNLOAD_FAILURE_CODES: Readonly<Record<string, string>> = {
+  "error.provider.diskSpace": "disk_space",
+  "error.provider.downloadHttp": "download_http",
+  "error.provider.downloadIntegrity": "download_integrity",
+  "error.provider.downloadSize": "download_size",
+  "error.provider.claudeArchivePath": "archive_invalid",
+  "error.provider.claudePackageMismatch": "archive_invalid",
+  "error.provider.claudeChecksum": "checksum_failed",
+  "error.provider.runtimeChecksum": "checksum_failed",
+  "error.provider.installRecordMismatch": "checksum_failed",
+  "error.provider.unexpectedVersion": "version_mismatch",
+  "error.provider.cliUpdateFailed": "cli_update_failed",
+  "error.provider.cliActivateFailed": "cli_activate_failed",
+  "error.provider.cliSelectFailed": "cli_select_failed",
+  "error.provider.cliSigningIn": "cli_signing_in",
+  "error.provider.off": "provider_off",
+  "status.provider.downloadStopped": "download_stopped",
+};
+
+/** The status message holds catalog text only, so its key names the reason without a path or a secret. */
+function downloadFailureCode(message: string | null): string {
+  const key = message === null ? undefined : matchingSourceKeys(message)[0];
+  return (key && DOWNLOAD_FAILURE_CODES[key]) ?? "runtime_download_failed";
+}
 
 export interface ProviderCliOwners {
   /** The version of the CLI the user installed for this provider, or `null` for a managed one. */
@@ -173,7 +200,7 @@ export function createProviderRuntimeStore(
           provider,
           action: "download_completed",
           result: "failed",
-          failure_code: "runtime_download_failed",
+          failure_code: downloadFailureCode(snapshot.providers[provider].message),
         });
       }
     }

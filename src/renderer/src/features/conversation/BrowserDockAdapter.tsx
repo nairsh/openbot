@@ -410,6 +410,7 @@ export function BrowserDockAdapter(adapterProps: { tab: BrowserTab | undefined; 
             onCancelEdit={() => void cancelQueuedMessageEdit()}
             onReorder={reorderPresentedQueue}
             onHandoff={onHandoff()}
+            vaultSave={props.server?.kind === "local"}
             onRespondSecret={(input) => conversationRuntime(props).agent.respondToBrowserSecret(input)}
             onAnswerPrompt={answerPrompt}
             onRespondApproval={respondApproval}

@@ -2,7 +2,13 @@ import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { ClientSideConnection, InitializeResponse } from "@agentclientprotocol/sdk";
-import type { AgentAuthState, AgentModelOption, AgentProviderId } from "@openbot/contracts/ipc";
+import {
+  type AgentAuthState,
+  type AgentModelOption,
+  type AgentProviderId,
+  DEFAULT_PROMPT_CACHE_TTL,
+  type PromptCacheTtl,
+} from "@openbot/contracts/ipc";
 import { sourceText } from "@openbot/i18n/source";
 import { Effect } from "effect";
 import { AcpAgentClient, type AcpHistoryPersistence } from "./acp-client";
@@ -364,6 +370,11 @@ export interface ProviderClientContext {
    * custom agent is saved.
    */
   readonly customAgents?: CustomAgentSource;
+  /**
+   * How long this server asks Claude to keep the prompt cache, read at each spawn. Optional for the
+   * same reason as `reportMcpDrops`: without it the CLI uses its own cache time.
+   */
+  readonly promptCacheTtl?: () => PromptCacheTtl;
 }
 
 /** The agent environment with the account's home folder after it, so the account folder wins. */
@@ -373,6 +384,31 @@ function withAccountEnvironment(
   const { agentEnvironment, accountEnvironment } = context;
   if (!accountEnvironment) return agentEnvironment;
   return (inherited) => ({ ...agentEnvironment?.(inherited), ...accountEnvironment });
+}
+
+/**
+ * Claude's agent environment with the prompt cache time of this server. `5m`, the default, leaves the
+ * CLI's own choice. `1h` sets `ENABLE_PROMPT_CACHING_1H`, which the CLI reads last: a `promptCacheTtl`
+ * in the Claude settings or `CLAUDE_CODE_PROMPT_CACHE_TTL` still wins. The CLI reads the flag before
+ * its subscription rules, so subagents, an API key and a subscription on extra usage also get 1 hour.
+ */
+function claudeAgentEnvironment(
+  context: ProviderClientContext,
+): (inherited?: NodeJS.ProcessEnv) => Readonly<Record<string, string>> {
+  const environment = withAccountEnvironment(context);
+  return (inherited) => ({
+    ...((context.promptCacheTtl?.() ?? DEFAULT_PROMPT_CACHE_TTL.ttl) === "1h" ? { ENABLE_PROMPT_CACHING_1H: "1" } : {}),
+    ...environment?.(inherited),
+  });
+}
+
+/**
+ * The saved Anthropic API key, for the provider's own sign-in when it has no claude.ai account. An
+ * account after the first has its own `CLAUDE_CONFIG_DIR`; the account of the key carries the key in
+ * its environment, and no other account gets it.
+ */
+function claudeFallbackApiKey(context: ProviderClientContext): (() => string | null) | undefined {
+  return context.accountEnvironment ? undefined : () => context.apiKey("claude");
 }
 
 /** Nothing stored and no endpoint, for tests and for call sites that predate the credential store. */
@@ -447,9 +483,18 @@ export interface BuiltInProviderDriver {
   validateAccount(account: NonNullable<AccountReadResult["account"]>): void;
 }
 
-/** Pi and Inception run the same Pi client. Inception adds its key, which loads its extension. */
+/**
+ * Pi, Inception and Direct run the same Pi client. Inception adds its key and Direct the saved
+ * custom endpoints, which load their extension.
+ */
+function piModels(provider: "pi" | "inception" | "direct", context: ProviderClientContext) {
+  if (provider === "inception") return { inceptionApiKey: () => context.apiKey("inception") };
+  if (provider === "direct") return { directEndpoints: context.customProviders };
+  return {};
+}
+
 function piClient(
-  provider: "pi" | "inception",
+  provider: "pi" | "inception" | "direct",
   cli: AgentCliInfo,
   timeout: number,
   context: ProviderClientContext,
@@ -468,7 +513,9 @@ function piClient(
         }
       : {}),
     extraEnv: () => ({ ...context.agentEnvironment?.() }),
-    ...(provider === "inception" ? { inceptionApiKey: () => context.apiKey("inception") } : {}),
+    ...piModels(provider, context),
+    // The server's prompt cache time, which the Claude settings set, also asks Pi for its long cache.
+    longPromptCache: () => (context.promptCacheTtl?.() ?? DEFAULT_PROMPT_CACHE_TTL.ttl) === "1h",
     ...(context.providerStateDirectory ? { providerStateDirectory: context.providerStateDirectory } : {}),
     mcpServers: context.mcpServers,
     ...(context.reportMcpDrops ? { reportMcpDrops: context.reportMcpDrops } : {}),
@@ -479,7 +526,7 @@ function piClient(
 }
 
 function piProfileClient(
-  provider: "pi" | "inception",
+  provider: "pi" | "inception" | "direct",
   cli: AgentCliInfo,
   timeout: number,
   context: ProviderClientContext,
@@ -487,7 +534,7 @@ function piProfileClient(
   return new PiAgentClient(cli, {
     requestTimeoutMs: timeout,
     profileGeneration: true,
-    ...(provider === "inception" ? { inceptionApiKey: () => context.apiKey("inception") } : {}),
+    ...piModels(provider, context),
     ...(context.providerStateDirectory ? { providerStateDirectory: context.providerStateDirectory } : {}),
   });
 }
@@ -512,6 +559,17 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
     createClient: (cli, timeout, context, confinement) => piClient("inception", cli, timeout, context, confinement),
     createProfileClient: (cli, timeout, context) => piProfileClient("inception", cli, timeout, context),
     authState: (account) => ({ kind: "inception", email: account?.email ?? null }),
+    validateAccount: () => undefined,
+  },
+  {
+    id: "direct",
+    // The endpoints are saved under Custom endpoints. Pi's own sign-in stays on the Pi row.
+    signIn: { kind: "external" },
+    cliProvider: "pi",
+    resolveCli: resolvePiCli,
+    createClient: (cli, timeout, context, confinement) => piClient("direct", cli, timeout, context, confinement),
+    createProfileClient: (cli, timeout, context) => piProfileClient("direct", cli, timeout, context),
+    authState: (account) => ({ kind: "direct", email: account?.email ?? null }),
     validateAccount: () => undefined,
   },
   {
@@ -611,7 +669,9 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
         context.mcpToolRuntimes,
         context.mcpEndpoint,
         context.providerStateDirectory,
-        withAccountEnvironment(context),
+        claudeAgentEnvironment(context),
+        undefined,
+        claudeFallbackApiKey(context),
       ),
     authState: (account) => ({ kind: "claude", email: account?.email ?? null }),
     validateAccount: () => undefined,
@@ -753,9 +813,9 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
         mcpToolRuntimes: context.mcpToolRuntimes,
         mcpEndpoint: context.mcpEndpoint,
         history: context.history?.("antigravity"),
-        readRateLimits: (_connection, privatePrompt) =>
+        readRateLimits: (_connection, privatePrompt, model) =>
           antigravityAnswersUsageCommand(cli.version)
-            ? privatePrompt(ANTIGRAVITY_USAGE_PROMPT).pipe(Effect.map(antigravityRateLimits))
+            ? privatePrompt(ANTIGRAVITY_USAGE_PROMPT).pipe(Effect.map((answer) => antigravityRateLimits(answer, model)))
             : Effect.succeed({ rateLimits: null, rateLimitsByLimitId: null }),
       }),
     // A profile-generation client asks one question and must not act: no MCP servers, and every

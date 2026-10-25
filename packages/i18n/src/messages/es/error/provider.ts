@@ -199,6 +199,8 @@ export const messages = {
     "El proveedor del modelo de OpenCode informó de una solicitud de carga no válida. Elige otro modelo y continúa. Comprueba las rutinas guardadas antes de crearlas de nuevo.\n{detail}",
   "error.provider.opencodeUnreadableContent":
     "Este modelo no puede leer un archivo o una imagen de este chat. Elige un modelo que pueda leer archivos y vuelve a enviar tu mensaje.",
+  "error.provider.opencodeFreeLimit":
+    "Los modelos gratuitos de OpenCode alcanzaron su límite de uso. Todos los modelos gratuitos comparten este límite. Para continuar, pega una clave de OpenCode Go en los ajustes de OpenCode o elige un modelo de otro proveedor.",
   "error.provider.opencodeProviderFailed":
     "El proveedor del modelo tuvo un fallo interno. Tu conexión no es la causa. Inténtalo más tarde o elige otro modelo.\n{detail}",
   "error.provider.opencodeNetwork":
@@ -275,6 +277,8 @@ export const messages = {
     "Un ID de agente debe contener letras minúsculas, dígitos o `-`, y no puede ser el ID de un proveedor integrado.",
   "error.provider.customAgentEnvInvalid":
     "Un nombre de variable debe contener letras, dígitos o `_`, y no empezar por un dígito. Usa cada nombre una vez, con un máximo de 16 nombres.",
+  "error.provider.customAgentUsagePromptInvalid":
+    "Un comando de uso debe ser una sola línea de 256 caracteres como máximo.",
   "error.provider.customAgentCommandInvalid":
     "El comando debe ser una ruta completa, una ruta que empiece por ~/ o un nombre de comando sin espacios.",
   "error.provider.customAgentArgsInvalid":
@@ -315,6 +319,8 @@ export const messages = {
   "error.provider.accountNotFound": "Esta cuenta de {provider} no está en este equipo. Actualiza e inténtalo de nuevo.",
   "error.provider.accountAlreadyAdded": "Esta cuenta de {provider} ya está conectada.",
   "error.provider.accountDefault": "No se puede eliminar la primera cuenta de {provider}.",
+  "error.provider.accountUsesKey":
+    "Esta cuenta de {provider} usa la clave de API guardada y no tiene inicio de sesión. Cambia la clave en Ajustes del servidor → Proveedores.",
   "error.provider.accountInUse":
     "Un agente que usa esta cuenta está trabajando. Inténtalo de nuevo cuando el agente se detenga.",
   "error.provider.accountsReadOnly":

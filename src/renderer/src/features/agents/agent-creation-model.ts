@@ -2,6 +2,7 @@ import { developmentStartingModel } from "@openbot/contracts/development-default
 import {
   type AgentModelId,
   type AgentProviderId,
+  type AgentReasoningEffort,
   type AppSetupState,
   type ClientAgentModelOption,
   defaultProviderModel,
@@ -17,6 +18,8 @@ export type CreationPreference = Pick<AppSetupState, "preferredProvider" | "pref
 export interface CreationModelChoice {
   provider: AgentProviderId;
   model: AgentModelId;
+  /** Only for the development default, which has its own level. Else the model's default applies. */
+  reasoningEffort?: AgentReasoningEffort | undefined;
 }
 
 /**
@@ -52,7 +55,8 @@ export function resolveCreationModel(
     models: modelOptions,
     providerAvailable: (provider) => development?.providerAvailable(provider) ?? false,
   });
-  if (start) return { provider: start.provider, model: start.model.id };
+  if (start)
+    return { provider: start.provider, model: start.model.id, reasoningEffort: start.model.defaultReasoningEffort };
   const ordered: AgentProviderId[] = preferred
     ? [preferred, ...PICKER_PROVIDERS.filter((provider) => provider !== preferred)]
     : [...PICKER_PROVIDERS];

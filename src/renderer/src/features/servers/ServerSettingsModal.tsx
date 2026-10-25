@@ -27,6 +27,7 @@ import {
   Download,
   Globe2,
   HardDrive,
+  KeyRound,
   Monitor,
   Plug,
   RefreshCw,
@@ -57,6 +58,8 @@ import { ConnectorsPanel, type ConnectorsPanelDetail } from "../connectors/Conne
 import type { ConnectorRegistry } from "../connectors/connector-registry";
 import { type ServerStorageOptions, ServerStoragePanel } from "../files/ServerStoragePanel";
 import { type HostProviderSettings, HostProviderSettingsPanel } from "../settings/ProviderSettingsSection";
+import type { HostPromptCacheTtlOptions, ProviderPromptCacheSource } from "../settings/provider-prompt-cache";
+import { type ServerVaultOptions, ServerVaultPanel } from "../vault/ServerVaultPanel";
 import type { McpServerConfig, McpTestResult } from "./mcp-servers";
 import { ServerDesktopPanel } from "./ServerDesktopPanel";
 import { createServerGeneralSection } from "./ServerGeneralSection";
@@ -69,7 +72,7 @@ import { type ServerRoutineFeedOptions, ServerRoutineFeedPanel } from "./ServerR
 import type { ServerTimezoneOptions } from "./ServerTimezoneSetting";
 import { type ServerTransferOptions, ServerTransferPanel } from "./ServerTransferPanel";
 import { type ServerUpdateOptions, ServerUpdatePanel } from "./ServerUpdatePanel";
-import { serverRoleCanAdminister } from "./server-capabilities";
+import { serverCanAdminister, serverRoleCanAdminister } from "./server-capabilities";
 import type { ServerSettingsSectionHost } from "./server-settings-section";
 
 export interface ServerSettingsModalProps {
@@ -199,6 +202,12 @@ export interface ServerSettingsModalProps {
    */
   hostMemoryLimit?: ServerMemoryLimitOptions | undefined;
   /**
+   * The Claude provider page shows how long Claude keeps the prompt cache only when a caller supplies
+   * this, and only for the local server or a remote host with `prompt-cache-ttl-v1` that this member
+   * administers.
+   */
+  hostPromptCacheTtl?: HostPromptCacheTtlOptions | undefined;
+  /**
    * The Roles section appears only when a caller supplies this, and only for the local server or a
    * remote host with `agent-access-v1` that this member administers.
    */
@@ -213,6 +222,8 @@ export interface ServerSettingsModalProps {
    * a host that serves `browser-profiles-v1` to an owner or admin.
    */
   browserProfiles?: ServerBrowserProfilesOptions | undefined;
+  /** The Vault section appears only for this computer: a joined server keeps its Vault on its host. */
+  vault?: ServerVaultOptions | undefined;
   /** The section to show when the dialog opens. Updates shows General when the server has no Updates section. */
   initialSection?: ServerSettingsSection | null;
   /** Where the settings page shows, or nothing while the page is not on screen. */
@@ -229,6 +240,7 @@ export interface ServerHostedSitesOptions {
 
 export type ServerSettingsSection =
   | "general"
+  | "vault"
   | "members"
   | "roles"
   | "desktop"
@@ -246,6 +258,7 @@ type Section = ServerSettingsSection;
 
 const sections = {
   general: { title: "server.settings.generalTitle", description: "server.settings.generalDescription" },
+  vault: { title: "server.settings.vaultTitle", description: "server.settings.vaultDescription" },
   members: { title: "server.settings.membersTitle", description: "server.settings.membersDescription" },
   roles: { title: "server.settings.rolesTitle", description: "server.settings.rolesDescription" },
   desktop: { title: "server.settings.desktopTitle", description: "server.settings.desktopDescription" },
@@ -299,6 +312,11 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
    */
   const canManageMcp = () => serverRoleCanAdminister(props.server);
   const actionsAvailable = () => local() || props.server.state === "online";
+  function promptCacheSource(): ProviderPromptCacheSource | undefined {
+    const options = props.hostPromptCacheTtl;
+    if (!options || !actionsAvailable() || !serverCanAdminister(props.server, "prompt-cache-ttl-v1")) return undefined;
+    return { ...options, serverId: props.server.id };
+  }
   const availableInitialSection = (): Section | null =>
     props.initialSection === "updates" && !props.hostUpdate ? null : (props.initialSection ?? null);
   const published = () => (local() ? props.hostStatus?.phase === "online" : props.server.state === "online");
@@ -417,6 +435,14 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
     },
   );
 
+  /** Only this computer has a Vault section. */
+  createEffect(
+    () => section() === "vault" && !props.vault,
+    (gone) => {
+      if (gone) setSection("general");
+    },
+  );
+
   /** An opener that names a section of the same server moves to it; the effect above covers a new server. */
   createEffect(
     () => (props.open ? availableInitialSection() : null),
@@ -452,6 +478,7 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
     onChange(value: string) {
       if (
         value === "general" ||
+        value === "vault" ||
         value === "members" ||
         value === "roles" ||
         value === "desktop" ||
@@ -614,6 +641,12 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
               <Settings aria-hidden="true" />
               <span>{t(sections.general.title)}</span>
             </Tabs.Trigger>
+            <Show when={props.vault}>
+              <Tabs.Trigger class="settings-modal-nav-item" value="vault">
+                <KeyRound aria-hidden="true" />
+                <span>{t(sections.vault.title)}</span>
+              </Tabs.Trigger>
+            </Show>
             <Tabs.Trigger class="settings-modal-nav-item" value="members">
               <UsersRound aria-hidden="true" />
               <span>{t(sections.members.title)}</span>
@@ -696,6 +729,13 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
         <Tabs.Content value="general" class="settings-modal-tab-panel server-settings-panel" data-tab="general">
           <general.Panel />
         </Tabs.Content>
+        <Show when={props.vault}>
+          {(vault) => (
+            <Tabs.Content value="vault" class="settings-modal-tab-panel server-settings-panel" data-tab="vault">
+              <ServerVaultPanel {...vault()} menuMount={modalElement()} />
+            </Tabs.Content>
+          )}
+        </Show>
         <Tabs.Content value="members" class="settings-modal-tab-panel server-settings-panel" data-tab="members">
           <members.Panel />
         </Tabs.Content>
@@ -782,6 +822,7 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
                   hostName={local() ? undefined : props.server.name}
                   selectMount={modalElement()}
                   onDetailChange={setProviderDetail}
+                  promptCache={promptCacheSource()}
                 />
               )}
             </Show>
