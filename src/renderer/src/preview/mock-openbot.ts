@@ -47,6 +47,7 @@ import {
   type ClientAgentSummary,
   CONTEXT_RESET_ITEM_TYPE,
   CONVERSATION_MEMORY_CHANGES_ITEM_TYPE,
+  type ComposerSuggestionPreference,
   type ComputerUseState,
   type ConversationMessage,
   type ConversationReadState,
@@ -64,6 +65,7 @@ import {
   DEFAULT_APP_LOGO_COLOR,
   DEFAULT_APPROVAL_AUTOMATION_PREFERENCE,
   DEFAULT_BUSY_MESSAGE_MODE,
+  DEFAULT_COMPOSER_SUGGESTION_PREFERENCE,
   DEFAULT_DYNAMIC_ISLAND_PREFERENCE,
   DEFAULT_PROMPT_CACHE_TTL,
   DEFAULT_PROVIDER_ACCOUNT_ID,
@@ -385,6 +387,7 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
   let analyticsPreference = clone<AnalyticsPreference>(options.analyticsPreference ?? { enabled: true });
   let approvalAutomation = clone<ApprovalAutomationPreference>(DEFAULT_APPROVAL_AUTOMATION_PREFERENCE);
   let busyMessageMode: BusyMessageModePreference = { mode: DEFAULT_BUSY_MESSAGE_MODE };
+  let composerSuggestions: ComposerSuggestionPreference = { ...DEFAULT_COMPOSER_SUGGESTION_PREFERENCE };
   let agentDefaults: AgentDefaults = { ...DEFAULT_AGENT_DEFAULTS };
   let agentMemoryLimit: AgentMemoryLimitPreference = { limit: DEFAULT_AGENT_MEMORY_LIMIT };
   let promptCacheTtl: PromptCacheTtlSetting = { ...DEFAULT_PROMPT_CACHE_TTL };
@@ -967,6 +970,11 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
     setBusyMessageModePreference: async ({ mode }) => {
       busyMessageMode = { mode };
       return clone(busyMessageMode);
+    },
+    getComposerSuggestionPreference: async () => clone(composerSuggestions),
+    setComposerSuggestionPreference: async (preference) => {
+      composerSuggestions = clone(preference);
+      return clone(composerSuggestions);
     },
     getAgentDefaults: async () => clone(agentDefaults),
     setAgentDefaults: async (next) => {

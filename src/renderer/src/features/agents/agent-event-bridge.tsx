@@ -72,6 +72,7 @@ export function AgentEventBridge() {
     setActiveTurns,
     setTurnProgress,
     setTurnStepLines,
+    setComposerSuggestions,
     setFailedTurns,
     setUsageLimits,
     setUsageLimitedModels,
@@ -202,8 +203,14 @@ export function AgentEventBridge() {
         if (platform.landingPreview) return;
         setBrowserControlState(event.state);
         return;
+      case "composer-suggestion":
+        // Only the answer to the turn that ended last: a later turn made it stale.
+        if (completedTurnByAgent.get(event.agentId) !== event.turnId) return;
+        setComposerSuggestions((current) => ({ ...current, [event.agentId]: event.text }));
+        return;
       case "turn-started":
         completedTurnByAgent.delete(event.agentId);
+        setComposerSuggestions((current) => withoutAgent(current, event.agentId));
         setTurnProgress((current) => withoutAgent(current, event.agentId));
         clearRecentReply(event.agentId);
         setFailedTurns((current) => withoutAgent(current, event.agentId));

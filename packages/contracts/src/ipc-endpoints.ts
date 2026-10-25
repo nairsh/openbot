@@ -207,6 +207,7 @@ import type {
   UpdateChannelRoutineInput,
 } from "./ipc-channel-routines";
 import type { Channel, ChannelCommand, ChannelPage, ChannelReadInput, ChannelSummary } from "./ipc-chat-channels";
+import type { ComposerSuggestionPreference } from "./ipc-composer-suggestions";
 import type {
   CancelMessageLinkInput,
   ConversationFileSearchPage,
@@ -603,6 +604,10 @@ export const IPC_ENDPOINTS = {
     getBusyMessageModePreference: request<undefined, BusyMessageModePreference>()("app:get-busy-message-mode"),
     setBusyMessageModePreference: request<BusyMessageModePreference, BusyMessageModePreference>()(
       "app:set-busy-message-mode",
+    ),
+    getComposerSuggestionPreference: request<undefined, ComposerSuggestionPreference>()("app:get-composer-suggestions"),
+    setComposerSuggestionPreference: request<ComposerSuggestionPreference, ComposerSuggestionPreference>()(
+      "app:set-composer-suggestions",
     ),
     getAgentDefaults: request<undefined, AgentDefaults>()("app:get-agent-defaults"),
     setAgentDefaults: request<AgentDefaults, AgentDefaults>()("app:set-agent-defaults"),

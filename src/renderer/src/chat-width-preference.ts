@@ -12,7 +12,7 @@ let unsavedPreference: ChatWidth | undefined;
  * The chat width on this device and browser. It is full unless the user chose otherwise. Reading
  * `window.localStorage` throws when the browser blocks storage, so it is read inside the guard.
  */
-export function readChatWidth(): ChatWidth {
+function readChatWidth(): ChatWidth {
   if (unsavedPreference !== undefined) return unsavedPreference;
   try {
     return window.localStorage.getItem(CHAT_WIDTH_STORAGE_KEY) === "medium" ? "medium" : "full";

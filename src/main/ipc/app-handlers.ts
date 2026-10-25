@@ -24,6 +24,7 @@ import type { AppBehaviorService } from "../app-behavior-service";
 import type { AppearanceService } from "../appearance-service";
 import type { ApprovalAutomation } from "../approval-automation-store";
 import type { BusyMessageModePreferenceStore } from "../busy-message-mode-preference-store";
+import type { ComposerSuggestionPreferenceStore } from "../composer-suggestion-preference-store";
 import type { InterfaceSizeService } from "../interface-size-service";
 import type { LanguageService } from "../language-service";
 import type { LogoColorService } from "../logo-color-service";
@@ -45,6 +46,7 @@ import {
   parseAppLogoColorPreference,
   parseBusyMessageModePreference,
   parseChatWindowTarget,
+  parseComposerSuggestionPreference,
   parseExternalDestination,
   parseRemoteNetworkRoutePreference,
   parseRemoteSessionReusePreference,
@@ -95,6 +97,7 @@ export interface AppIpcDependencies {
   analyticsPreferenceFile: string;
   approvalAutomation: ApprovalAutomation;
   busyMessageMode: BusyMessageModePreferenceStore;
+  composerSuggestions: ComposerSuggestionPreferenceStore;
   agentDefaults: AgentDefaultsPreferenceStore;
   agentMemoryLimit: AgentMemoryLimitSetting;
   remoteSessionReuse: RemoteSessionReusePreferenceStore;
@@ -127,6 +130,7 @@ export function appIpcHandlers({
   analyticsPreferenceFile,
   approvalAutomation,
   busyMessageMode,
+  composerSuggestions,
   agentDefaults,
   agentMemoryLimit,
   remoteSessionReuse,
@@ -184,6 +188,13 @@ export function appIpcHandlers({
       setBusyMessageModePreference: payloadHandler(parseBusyMessageModePreference, (parsed) =>
         runCauseEffect(busyMessageMode.set(parsed)),
       ),
+      getComposerSuggestionPreference: handler(() => composerSuggestions.get()),
+      // The Claude sessions take the new value at their next turn: see `AgentService.composerSuggestionsChanged`.
+      setComposerSuggestionPreference: payloadHandler(parseComposerSuggestionPreference, async (parsed) => {
+        const saved = await runCauseEffect(composerSuggestions.set(parsed));
+        service.composerSuggestionsChanged();
+        return saved;
+      }),
       getAgentDefaults: handler(() => agentDefaults.get()),
       // The agents that follow a changed default get it at once: see `AgentService.agentDefaultsChanged`.
       setAgentDefaults: payloadHandler(parseAgentDefaults, async (parsed) => {

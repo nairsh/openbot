@@ -131,4 +131,6 @@ export const messages = {
   "composer.newChat.action": "Nowy czat",
   "composer.context.compact": "Kompaktuj",
   "composer.context.compactFailed": "Nie udało się skompaktować kontekstu. Spróbuj ponownie.",
+  "composer.suggestion.key": "Tab",
+  "composer.suggestion.description": "Podpowiedź następnej wiadomości: {text}. Naciśnij Tab, aby jej użyć.",
 } as const satisfies PartialTranslation<typeof source>;

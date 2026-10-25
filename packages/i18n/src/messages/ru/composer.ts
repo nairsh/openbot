@@ -132,4 +132,6 @@ export const messages = {
   "composer.newChat.action": "Новый чат",
   "composer.context.compact": "Сжать сейчас",
   "composer.context.compactFailed": "Не удалось сжать контекст. Повторите попытку.",
+  "composer.suggestion.key": "Tab",
+  "composer.suggestion.description": "Подсказка следующего сообщения: {text}. Нажмите Tab, чтобы использовать её.",
 } as const satisfies PartialTranslation<typeof source>;

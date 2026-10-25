@@ -7,6 +7,7 @@ import type { CustomAgentSettingsApi } from "@openbot/ui/features/custom-provide
 import { providerDiagnosticsText } from "@openbot/ui/features/provider-diagnostics/provider-diagnostics";
 import { LeaveServerDialog } from "@openbot/ui/features/servers/LeaveServerDialog";
 import { RestartServerDialog } from "@openbot/ui/features/servers/RestartServerDialog";
+import type { ComposerSuggestionModels } from "@openbot/ui/features/settings/SettingsAgentsTab";
 import type { HostedSiteDeleteResult } from "@openbot/ui/features/settings/stores/hosted-sites-store";
 import { currentText } from "@openbot/ui/text";
 import { createEffect, createMemo, Loading, Show, untrack } from "solid-js";
@@ -14,6 +15,7 @@ import { actionToast } from "./action-toast";
 import { desktopAnalytics } from "./analytics";
 import { appPort } from "./app-port";
 import { useAuth } from "./features/account/account-context";
+import { resolveCreationModel } from "./features/agents/agent-creation-model";
 import { useAgents } from "./features/agents/agents-context";
 import { desktopBrowserProfileCalls } from "./features/browser/browser-profiles-port";
 import { createBrowserProfilesStore } from "./features/browser/stores/browser-profiles-store";
@@ -760,7 +762,25 @@ function AppSettings(props: AccountProps) {
   const auth = useAuth();
   const updates = useUpdates();
   const whatsNew = useWhatsNew();
-  const { servers, setAddServerOpen } = useServers();
+  const { servers, setAddServerOpen, activeServer } = useServers();
+  const { agentStatus, modelOptions, serverSetupChoice, developmentCreation } = useAgents();
+  const { setupState } = useSetup();
+  const localEndpoints = useCustomProviders();
+  const localAgents = useCustomAgents();
+  // Predictions run on this computer, so their model is one of this computer's: none can be listed
+  // while a joined server is on screen, because the model list then is that server's.
+  const composerSuggestionModels = (): ComposerSuggestionModels | undefined => {
+    const options = modelOptions();
+    if (activeServer()?.kind !== "local" || options.length === 0) return undefined;
+    const initial = resolveCreationModel(serverSetupChoice() ?? setupState(), options, developmentCreation());
+    return {
+      modelOptions: options,
+      agentStatus: agentStatus(),
+      initial: initial ? { provider: initial.provider, model: initial.model } : null,
+      customProviders: localEndpoints.customProviders(),
+      customAgents: localAgents.customAgents(),
+    };
+  };
   const {
     appSettingsOpen,
     setAppSettingsOpen,
@@ -783,6 +803,7 @@ function AppSettings(props: AccountProps) {
         page={windowPage.settingsPlacement("personal")}
         value={generalSettings()}
         onValueChange={updateGeneralSettings}
+        composerSuggestionModels={composerSuggestionModels()}
         preferencesLoadFailed={preferencesLoadFailed()}
         onRetryPreferencesLoad={reloadPreferences}
         appInfo={platform.appInfo()}

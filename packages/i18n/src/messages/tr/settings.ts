@@ -61,6 +61,22 @@ export const messages = {
   "settings.busyMessage.title": "Ajanları çalışırken yönlendir",
   "settings.busyMessage.description":
     "Yeni mesajlar kuyruğa değil, ajanın mevcut işine eklenir. ChatGPT ve Claude ile çalışır.",
+  "settings.composerSuggestions.title": "Sonraki mesaj önerileri",
+  "settings.composerSuggestions.description":
+    "Bir ajan yanıt verdikten sonra mesaj kutusu, büyük olasılıkla sonra göndereceğin mesajı gösterir. Kullanmak için Tab tuşuna bas. Mesaj gönderilmez.",
+  "settings.composerSuggestions.mode": "Öneriler",
+  "settings.composerSuggestions.off": "Kapalı",
+  "settings.composerSuggestions.agent": "Ajanın modeli",
+  "settings.composerSuggestions.model": "Seçilen model",
+  "settings.composerSuggestions.offDescription": "Mesaj kutusu öneri göstermez.",
+  "settings.composerSuggestions.agentDescription":
+    "Claude kendi sohbetinde düşük maliyetle öneri yapar. Diğer sağlayıcılar sohbetin sonunu ajanın modeline yeniden gönderir.",
+  "settings.composerSuggestions.modelDescription":
+    "Her ajan sohbetinin sonunu aşağıdaki modele gönderir. Küçük ve hızlı bir model daha az maliyetlidir.",
+  "settings.composerSuggestions.modelLabel": "Model",
+  "settings.composerSuggestions.modelHint": "Öneriler bu sağlayıcıdaki hesabını kullanır.",
+  "settings.composerSuggestions.modelMissing": "Bu model kullanılamıyor. Öneri almak için başka bir model seç.",
+  "settings.composerSuggestions.modelsElsewhere": "Modeli değiştirmek için bu bilgisayarı kenar çubuğunda aç.",
   "settings.keepRemoteSessions.title": "Sunuculara hızlı bağlantı",
   "settings.keepRemoteSessions.description":
     "Katıldığınız sunuculara olan bağlantıyı açılışlar arasında koruyun. OpenBot yaklaşık bir saniye daha hızlı başlar. OpenBot'tan çıktığınızda OpenBot hizmeti bağlantıyı kapatmaz.",

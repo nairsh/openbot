@@ -110,7 +110,9 @@ import {
   agentTaskLimit,
   type BusyMessageMode,
   CONTEXT_RESET_ITEM_TYPE,
+  type ComposerSuggestionPreference,
   DEFAULT_BUSY_MESSAGE_MODE,
+  DEFAULT_COMPOSER_SUGGESTION_PREFERENCE,
   DEFAULT_PROVIDER_ACCOUNT_ID,
   isContextResetMarker,
   MODEL_SWITCH_ITEM_TYPES,
@@ -142,6 +144,11 @@ import {
 import { BootRecovery } from "./agent/boot-recovery";
 import { BrowserUploads } from "./agent/browser-uploads";
 import type { ChatVisualPreviewHost } from "./agent/chat-visual-preview";
+import {
+  COMPOSER_SUGGESTION_CHAT_MESSAGES,
+  ComposerSuggestions,
+  usesNativeSuggestions,
+} from "./agent/composer-suggestions";
 import { ContextCompaction } from "./agent/context-compaction";
 import { ConversationReader } from "./agent/conversation-reader";
 import { ConversationRuntime } from "./agent/conversation-runtime";
@@ -200,7 +207,7 @@ import {
 import { ThreadLifecycle } from "./agent/thread-lifecycle";
 import { toToolOperationFailed } from "./agent/tool-operation";
 import { type AgentBrowserHost, TurnLifecycle } from "./agent/turn-lifecycle";
-import { workflowUsageObserver } from "./agent/usage-collection";
+import { composerSuggestionUsageObserver, workflowUsageObserver } from "./agent/usage-collection";
 import { toUsageReadFailed, UsageLimitGate, type UsageLimitKey } from "./agent/usage-limit-gate";
 import { WarmGenerations } from "./agent/warm-generations";
 import type { WebhookRoutineWriter } from "./agent/webhook-routine-tool";
@@ -318,6 +325,11 @@ export interface AgentServiceOptions {
    * Omitted, such a message waits in the queue, as every one did before the setting existed.
    */
   busyMessageMode?: () => BusyMessageMode;
+  /**
+   * Which model predicts the user's next message after a turn. The main process owns the
+   * preference. Omitted, nothing is predicted, as before the setting existed.
+   */
+  composerSuggestions?: () => ComposerSuggestionPreference;
   /**
    * How many memories one agent can hold. The main process owns the preference. Omitted, the
    * default cap, which was the only cap before the setting existed.
@@ -446,6 +458,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly #routineFlowTools: (() => RoutineFlowTools) | undefined;
   readonly #developmentDefaults: boolean;
   readonly #busyMessageMode: () => BusyMessageMode;
+  readonly #composerSuggestionPreference: () => ComposerSuggestionPreference;
+  readonly #composerSuggestions: ComposerSuggestions;
   /** The last turn of each agent's chat that the user stopped. One per agent, so it needs no clean-up. */
   readonly #stoppedTurns = new Map<string, string>();
   /** The agents that asked for a new chat with `start_new_chat`. A restart forgets the request. */
@@ -475,9 +489,35 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       githubConnector = null,
       hostMemory = null,
       busyMessageMode = () => DEFAULT_BUSY_MESSAGE_MODE,
+      composerSuggestions = () => DEFAULT_COMPOSER_SUGGESTION_PREFERENCE,
     } = options;
     this.#developmentDefaults = developmentDefaults;
     this.#busyMessageMode = busyMessageMode;
+    this.#composerSuggestionPreference = composerSuggestions;
+    this.#composerSuggestions = new ComposerSuggestions({
+      preference: composerSuggestions,
+      agent: (agentId) => this.#store.list().find((agent) => agent.id === agentId),
+      messages: (agent) =>
+        this.#store.database.readConversationPage(
+          agent.id,
+          agent.threadId,
+          { type: "latest" },
+          COMPOSER_SUGGESTION_CHAT_MESSAGES,
+        ).messages,
+      model: (provider, modelId) =>
+        this.#endpoints.available().find((candidate) => candidate.provider === provider && candidate.id === modelId),
+      // The generations of the user's own side questions and profiles come first.
+      busy: () => this.#stopping || this.#profileClients.busy(),
+      generate: (agent, provider, model, prompt) =>
+        this.#warmGenerations.generate(
+          provider,
+          model,
+          prompt,
+          composerSuggestionUsageObserver(this.#store.database.usage, agent, provider, model.id),
+        ),
+      emit: (event) => this.#emit(event),
+      logFailure: (provider, error) => logger.info("Could not predict the next message.", { provider, error }),
+    });
     this.#localSkillTools = localSkillTools;
     this.#routineFlowTools = routineFlowTools;
     this.#store = store;
@@ -924,6 +964,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       // Only a server has a memory reading.
       serverHost: hostMemory !== null,
       sectionTeammates: (agentId) => this.sectionTeammates(agentId),
+      promptSuggestions: (agent) => usesNativeSuggestions(this.#composerSuggestionPreference(), agent.provider),
       hooks: {
         logRecovery: (agentId, provider, outcome) =>
           logger.warn("Recovered an unavailable provider session.", { agentId, provider, outcome }),
@@ -1287,6 +1328,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         },
         taskForThread: (threadId) => this.#tasks.taskForThread(threadId),
         taskFailed: (taskId, message) => this.#tasks.failed(taskId, this.#mcp.redact(message)),
+        promptSuggestion: (agentId, threadId, suggestion) =>
+          this.#composerSuggestions.native(agentId, threadId, suggestion),
       },
     });
     this.#removal = new AgentRemoval({
@@ -2155,6 +2198,19 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       (creationModel(input, this.#endpoints.available(), this.#providers.status().providers) ?? this.#startingChoice())
         ?.provider ?? null
     );
+  }
+
+  /**
+   * The composer suggestion setting changed. A prediction that runs is stopped. Claude predicts in
+   * its own session, so each Claude chat loads again at its next turn, with the new setting.
+   */
+  composerSuggestionsChanged(): void {
+    Effect.runFork(this.#composerSuggestions.stopAll());
+    for (const agent of this.#store.list()) {
+      if (agent.provider !== "claude" || !agent.threadId) continue;
+      const session = this.#store.database.activeProviderSession(agent.threadId, agent.provider);
+      if (session) this.#conversation.reloadThread(session.externalSessionId);
+    }
   }
 
   /** The provider and model setup or Settings recorded. */
@@ -3669,6 +3725,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       concurrency: "unbounded",
       discard: true,
     });
+    yield* this.#composerSuggestions.stopAll();
     yield* this.#warmGenerations.dispose();
     yield* Fiber.join(channelStop);
     // After the clients: a provider that still runs would see its MCP servers fail.
@@ -4490,6 +4547,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
 
   #emit(event: AgentEvent): void {
     recordAgentRestartActivity(event);
+    this.#composerSuggestions.observe(event);
     if (this.channels?.event(event) || this.messaging?.event(event, this.#scope) || this.#tasks?.event(event)) return;
     this.emit("event", event);
   }

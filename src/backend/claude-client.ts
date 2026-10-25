@@ -20,6 +20,7 @@ import { type DynamicRecord, isDynamicRecord, isNumber, isOneOf, isString } from
 import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger } from "@openbot/logging";
 import { Deferred, Effect, Exit, Fiber, Scope } from "effect";
+import { PROMPT_SUGGESTION_METHOD } from "./agent/composer-suggestions";
 import {
   isTurnContextBlock,
   type MemoryContext,
@@ -161,6 +162,11 @@ interface ThreadConfig {
    * the project settings do not load. See `claude-workspace-sandbox.ts`.
    */
   workspaceOnly: boolean;
+  /**
+   * The CLI predicts the user's next message after each turn, from the session's own prompt cache.
+   * Part of the config, so that a change of the setting restarts the query at the next resume.
+   */
+  promptSuggestions: boolean;
 }
 
 interface ActiveTurn {
@@ -259,6 +265,8 @@ interface ClaudeStreamMessage {
   rate_limit_info?: unknown;
   /** `background_tasks_changed`: every live background task. */
   tasks?: unknown;
+  /** `prompt_suggestion`: the user's likely next message, after the `result` of a turn. */
+  suggestion?: unknown;
 }
 
 interface ClaudeQuery extends AsyncIterable<ClaudeStreamMessage> {
@@ -861,6 +869,8 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
           strictMcpConfig: true,
           permissionMode: "default",
           includePartialMessages: true,
+          // Only a saved chat: a routine run or a one-time generation has no composer to fill.
+          promptSuggestions: config.promptSuggestions && config.persistSession && !config.profileGeneration,
           persistSession: config.persistSession,
           additionalDirectories: config.additionalDirectories,
           canUseTool,
@@ -1166,6 +1176,14 @@ export class ClaudeAgentClient extends EventEmitter<ClientEvents> {
     }
     if (message.context_usage && !message.parent_tool_use_id && isRecord(message.context_usage)) {
       this.#emitContextUsage(runtime, message.context_usage.total_tokens, message.context_usage.raw_max_tokens);
+    }
+    if (message.type === "prompt_suggestion") {
+      if (isString(message.suggestion))
+        this.emit("notification", {
+          method: PROMPT_SUGGESTION_METHOD,
+          params: { threadId: runtime.id, suggestion: message.suggestion },
+        });
+      return;
     }
     if (message.type === "rate_limit_event") {
       const info = message.rate_limit_info;
@@ -2033,6 +2051,7 @@ function readThreadConfig(params: unknown): ThreadConfig {
     profileGeneration: isRecord(params) && params.profileGeneration === true,
     computerUse: computerUseParam(params),
     workspaceOnly: isRecord(params) && params.workspaceOnly === true,
+    promptSuggestions: isRecord(params) && params.promptSuggestions === true,
   };
 }
 

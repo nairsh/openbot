@@ -31,6 +31,7 @@ import { createBillingStore } from "@openbot/ui/features/billing/billing-store";
 import { LicenseSection } from "@openbot/ui/features/billing/LicenseSection";
 import { createLicenseStore } from "@openbot/ui/features/billing/license-store";
 import type { GeneralSettingsValue } from "@openbot/ui/features/settings/app-settings";
+import type { ComposerSuggestionModels } from "@openbot/ui/features/settings/SettingsAgentsTab";
 import { SettingsDialogShell, type SettingsPagePlacement } from "@openbot/ui/features/settings/SettingsDialogShell";
 import { SettingsMobileConnectTab } from "@openbot/ui/features/settings/SettingsMobileConnectTab";
 import { SettingsProfileTab } from "@openbot/ui/features/settings/SettingsProfileTab";
@@ -111,6 +112,8 @@ export interface SettingsModalProps {
   openTab?: SettingsTab | undefined;
   /** Where the settings page shows, or nothing while the page is not on screen. */
   page: SettingsPagePlacement | undefined;
+  /** This computer's models, for the model of composer suggestions. Undefined while they cannot be listed. */
+  composerSuggestionModels?: ComposerSuggestionModels | undefined;
 }
 
 /**
@@ -148,6 +151,7 @@ export function SettingsModal(props: SettingsModalProps) {
     visible: () => props.open && activeTab() === "agents",
     value: () => props.value,
     onValueChange: (value) => props.onValueChange(value),
+    suggestionModels: () => props.composerSuggestionModels,
   });
   let handledHostedServerDeleteNonce = 0;
   createEffect(

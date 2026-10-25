@@ -143,6 +143,8 @@ export interface ThreadLifecycleOptions {
   serverHost?: boolean;
   /** The other agents in an agent's sidebar section, read at each start and resume of a session. */
   sectionTeammates?: (agentId: string) => SectionTeammates | null;
+  /** Whether this agent's own chat predicts the user's next message in its session (Claude). */
+  promptSuggestions?: (agent: AgentSummary) => boolean;
 }
 
 /**
@@ -174,6 +176,7 @@ export class ThreadLifecycle {
   readonly #vaultItems: () => VaultContents;
   readonly #serverHost: boolean;
   readonly #sectionTeammates: (agentId: string) => SectionTeammates | null;
+  readonly #promptSuggestions: (agent: AgentSummary) => boolean;
   readonly #pendingHandoffs = new Map<string, string>();
   readonly #pendingRuntimeRefreshes = new Set<string>();
   /**
@@ -202,6 +205,7 @@ export class ThreadLifecycle {
     this.#vaultItems = options.vaultItems ?? (() => ({ available: false, cards: false, contacts: false }));
     this.#serverHost = options.serverHost ?? false;
     this.#sectionTeammates = options.sectionTeammates ?? (() => null);
+    this.#promptSuggestions = options.promptSuggestions ?? (() => false);
   }
 
   /**
@@ -539,6 +543,7 @@ export class ThreadLifecycle {
       sandbox: codexSandboxMode(agent),
       ...this.#workspaceOnlyParam(agent, client),
       ...this.#computerUseParam(agent, client),
+      ...this.#promptSuggestionsParam(owner, client, publicThreadId),
       ...this.#instructions(agent, client, section, this.#computerUseInOwnChat(owner, publicThreadId)),
       serviceName: "openbot",
       dynamicTools: VISIBLE_DYNAMIC_TOOLS,
@@ -894,6 +899,20 @@ export class ThreadLifecycle {
       : {};
   }
 
+  /**
+   * Claude predicts the user's next message in its session. Only the agent's own chat has a composer
+   * to fill: a task, a channel thread and a routine run do not.
+   */
+  #promptSuggestionsParam(
+    owner: AgentSummary,
+    client: AgentClient,
+    publicThreadId: string,
+  ): { promptSuggestions?: true } {
+    return client.provider === "claude" && publicThreadId === owner.threadId && this.#promptSuggestions(owner)
+      ? { promptSuggestions: true }
+      : {};
+  }
+
   /** Claude and the ACP clients read the servers themselves, so they are told to leave Computer Use out. */
   #computerUseParam(agent: AgentSummary, client: AgentClient): { computerUse?: false } {
     return client.provider === "codex" || agentComputerUseEnabled(agent) ? {} : { computerUse: false };
@@ -995,6 +1014,7 @@ export class ThreadLifecycle {
       sandbox: codexSandboxMode(agent),
       ...this.#workspaceOnlyParam(agent, client),
       ...this.#computerUseParam(agent, client),
+      ...this.#promptSuggestionsParam(owner, client, publicThreadId),
       ...this.#instructions(agent, client, this.#sectionTeammates(agent.id), computerUseInOwnChat),
       ...(client.provider === "codex" ? {} : { dynamicTools: VISIBLE_DYNAMIC_TOOLS }),
       ...(yield* this.codexConfigEffect(

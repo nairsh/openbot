@@ -75,6 +75,21 @@ export const messages = {
   "settings.agentDefaults.setAllLabel": "为所有助手设置{setting}",
   "settings.agentDefaults.agentLabel": "{agent}的{setting}",
   "settings.agentDefaults.loadFailed": "无法读取助手。",
+  "settings.composerSuggestions.title": "下一条消息建议",
+  "settings.composerSuggestions.description":
+    "助手回复后，消息框会显示你接下来可能发送的内容。按 Tab 键即可填入，不会发送。",
+  "settings.composerSuggestions.mode": "建议",
+  "settings.composerSuggestions.off": "关闭",
+  "settings.composerSuggestions.agent": "助手的模型",
+  "settings.composerSuggestions.model": "所选模型",
+  "settings.composerSuggestions.offDescription": "消息框不显示建议。",
+  "settings.composerSuggestions.agentDescription":
+    "Claude 在自己的聊天中给出建议，成本很低。其他提供方会把聊天末尾再次发送给助手的模型。",
+  "settings.composerSuggestions.modelDescription": "每个助手都会把聊天末尾发送给下面的模型。小而快的模型成本更低。",
+  "settings.composerSuggestions.modelLabel": "模型",
+  "settings.composerSuggestions.modelHint": "建议会使用你在该提供方的账户。",
+  "settings.composerSuggestions.modelMissing": "此模型不可用。请选择其他模型以获取建议。",
+  "settings.composerSuggestions.modelsElsewhere": "在侧边栏中打开这台电脑即可更改模型。",
   "settings.keepRemoteSessions.title": "快速连接服务器",
   "settings.keepRemoteSessions.description":
     "在两次启动之间保持与已加入服务器的连接，OpenBot 启动约快一秒。退出 OpenBot 时，OpenBot 服务不会关闭该连接。",

@@ -129,4 +129,6 @@ export const messages = {
   "composer.newChat.action": "새 채팅",
   "composer.context.compact": "지금 압축",
   "composer.context.compactFailed": "컨텍스트를 압축할 수 없었어요. 다시 시도해 주세요.",
+  "composer.suggestion.key": "Tab",
+  "composer.suggestion.description": "제안된 다음 메시지: {text}. Tab 키를 눌러 사용하세요.",
 } as const satisfies PartialTranslation<typeof source>;

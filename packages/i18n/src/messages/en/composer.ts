@@ -128,4 +128,6 @@ export const messages = defineMessages("composer", {
   "composer.newChat.action": "New chat",
   "composer.context.compact": "Compact now",
   "composer.context.compactFailed": "Could not compact the context. Try again.",
+  "composer.suggestion.key": "Tab",
+  "composer.suggestion.description": "Suggested next message: {text}. Press Tab to use it.",
 });

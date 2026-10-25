@@ -48,6 +48,7 @@ import {
 import type { AgentMemories } from "./agent-memories";
 import type { AttentionBrowserHost, AttentionRegistry } from "./attention-registry";
 import type { BrowserUploadTarget } from "./browser-uploads";
+import { PROMPT_SUGGESTION_METHOD } from "./composer-suggestions";
 import { type ContextCompaction, compactsOnRequest } from "./context-compaction";
 import type { ConversationRuntime } from "./conversation-runtime";
 import type { DeltaBuffer } from "./delta-buffer";
@@ -168,6 +169,8 @@ export interface TurnHooks {
   closeRoutineSession(externalThreadId: string): Effect.Effect<void>;
   /** Gives the answer of a routine run in its own session to the session of the agent's chat. */
   routineAnswered(agentId: string, deliveryId: string, answer: string): Effect.Effect<void>;
+  /** The provider's own prediction of the user's next message, after a turn of `threadId` (public). */
+  promptSuggestion(agentId: string, threadId: string, suggestion: string): void;
 }
 
 export interface TurnLifecycleOptions {
@@ -684,6 +687,12 @@ export class TurnLifecycle {
       case "thread/archived": {
         if (threadId && this.#conversation.loadedClientFor(threadId) === source)
           this.#conversation.unloadThread(threadId);
+        return;
+      }
+      case PROMPT_SUGGESTION_METHOD: {
+        const suggestion = getString(params, "suggestion");
+        if (!threadId || !agentId || !suggestion || this.#conversation.loadedClientFor(threadId) !== source) return;
+        this.#hooks.promptSuggestion(agentId, this.#conversation.publicThreadId(agentId, threadId), suggestion);
         return;
       }
       case "account/rateLimits/updated": {

@@ -132,6 +132,7 @@ const Settings = createSimpleContext({
     let autoInstallUpdatesChanged = false;
     let notificationPreferenceChanged = false;
     let busyMessageModeChanged = false;
+    let composerSuggestionsChanged = false;
     let agentDefaultsChanged = false;
     let agentMemoryLimitChanged = false;
     let keepRemoteSessionsChanged = false;
@@ -269,6 +270,18 @@ const Settings = createSimpleContext({
           "busyMessageMode",
           settingsPort().setBusyMessageModePreference({ mode: value.busyMessageMode }),
           (preference) => preference.mode,
+        );
+      }
+      if (
+        previous.composerSuggestions.mode !== value.composerSuggestions.mode ||
+        previous.composerSuggestions.provider !== value.composerSuggestions.provider ||
+        previous.composerSuggestions.model !== value.composerSuggestions.model
+      ) {
+        composerSuggestionsChanged = true;
+        persistField(
+          "composerSuggestions",
+          settingsPort().setComposerSuggestionPreference({ ...value.composerSuggestions }),
+          (saved) => saved,
         );
       }
       if (AGENT_DEFAULT_KEYS.some((key) => previous.agentDefaults[key] !== value.agentDefaults[key])) {
@@ -474,6 +487,12 @@ const Settings = createSimpleContext({
           .then((preference) => {
             if (busyMessageModeChanged) return;
             setGeneralSettings((current) => ({ ...current, busyMessageMode: preference.mode }));
+          }),
+        settingsPort()
+          .getComposerSuggestionPreference()
+          .then((preference) => {
+            if (composerSuggestionsChanged) return;
+            setGeneralSettings((current) => ({ ...current, composerSuggestions: preference }));
           }),
         settingsPort()
           .getAgentDefaults()

@@ -17,6 +17,7 @@ import {
 } from "./ipc-approvals";
 import { isIdentifier } from "./ipc-bounded-values";
 import type { BrowserControlState, BrowserTab } from "./ipc-browser";
+import { isComposerSuggestionText } from "./ipc-composer-suggestions";
 import { type AgentPromptQuestion, isAgentPromptQuestion, isConversationMessage } from "./ipc-conversation-messages";
 import {
   type ConversationPage,
@@ -88,6 +89,11 @@ export type AgentEvent =
       revision: number;
     }
   | { type: "turn-progress"; agentId: string; threadId: string; turnId: string; detail: string }
+  /**
+   * Local only: the likely next message of the user after a turn, which the composer offers. The
+   * Team API encoders know no such event, so a joined server never sends one.
+   */
+  | { type: "composer-suggestion"; agentId: string; threadId: string; turnId: string; text: string }
   | { type: "turn-started"; agentId: string; threadId: string; turnId: string; origin?: AgentTurnOrigin }
   | {
       type: "turn-completed";
@@ -251,6 +257,13 @@ export function isAgentEvent(value: unknown): value is AgentEvent {
         isString(value.detail) &&
         value.detail.length > 0 &&
         value.detail.length <= INPUT_LIMITS.promptQuestion
+      );
+    case "composer-suggestion":
+      return (
+        isIdentifier(value.agentId) &&
+        isIdentifier(value.threadId) &&
+        isIdentifier(value.turnId) &&
+        isComposerSuggestionText(value.text)
       );
     case "turn-started":
     case "turn-completed":

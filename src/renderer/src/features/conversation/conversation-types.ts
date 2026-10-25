@@ -209,6 +209,10 @@ export interface ConversationProps {
   olderError?: string | null | undefined;
   activeTurnId: string | null | undefined;
   activityDetail?: string | undefined;
+  /** The likely next message of the user, which the empty composer offers. Tab takes it. */
+  composerSuggestion?: string | undefined;
+  /** The composer suggestion went away: Tab took it, or Escape or typing closed it. */
+  onComposerSuggestionClose?: (() => void) | undefined;
   /** The host's progress lines of the newest turns, by turn, for the steps of each turn. */
   turnStepLines?: TurnStepLines | undefined;
   skillsMarketplaceOpen?: boolean | undefined;

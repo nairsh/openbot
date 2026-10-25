@@ -691,3 +691,31 @@ OpenBot keeps a long chat useful and its provider prompt cache valid with these 
   drops while the cache should still hold it.
 - **Earlier messages.** A summary loses detail; `history_search` and `history_read` find the full
   text of the conversation after its latest reset.
+
+## Composer suggestions
+
+After a turn of an agent's own chat, OpenBot can predict the user's next message. The empty composer
+shows it in place of the placeholder; Tab puts it in the editor and does not send it. Escape or typing
+closes it. The feature is desktop only and local only.
+
+- **Setting.** `ComposerSuggestionPreference` (`off`, `agent`, `model`, plus a provider and a model) is
+  a preference file of this computer, `openbot-composer-suggestions-v1.json`, which
+  `ComposerSuggestionPreferenceStore` owns. No server stores it. The default is `off`. Settings ›
+  Agents shows it; "Chosen model" lists this computer's models only.
+- **Claude, `agent` mode.** `ThreadLifecycle` adds `promptSuggestions: true` to the start and resume
+  parameters of the agent's own chat. `claude-client.ts` passes the SDK option, which reuses the
+  session's prompt cache, and sends each `prompt_suggestion` as `openbot/promptSuggestion`. The flag
+  is part of the thread configuration key, so a change of the setting restarts the query at the next
+  resume; `AgentService.composerSuggestionsChanged` reloads each Claude chat for that.
+- **Other cases.** `ComposerSuggestions` (`agent/composer-suggestions.ts`) runs one generation without
+  tools through `WarmGenerations`, on the end of the stored chat after its latest context reset (24 messages, 12,000 characters), with
+  the agent's model or the chosen model at its lowest reasoning level. It never waits for a busy
+  generation slot, and a turn start interrupts it. A model that the catalog no longer lists predicts
+  nothing; no other model takes its place. The usage goes to the agent under a
+  `composer-suggestion:` session, with no turn activity.
+- **Rules.** Only a completed, non-quiet turn that the user started in the agent's own chat. A task,
+  a channel thread or a routine run gets no suggestion. The answer is one line of at most 300
+  characters; `NONE`, a secret, or the last user message again shows nothing.
+- **Delivery.** The `composer-suggestion` agent event is not saved. The Team API encoders do not know
+  it, so a joined server never sends one. The renderer keeps the newest suggestion per agent in
+  `turns.tsx`, shows it only for the turn that ended last, and drops it at the next turn start.

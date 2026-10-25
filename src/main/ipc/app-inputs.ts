@@ -9,6 +9,7 @@ import type {
   BrowserDockPresentation,
   BusyMessageModePreference,
   ChatWindowTarget,
+  ComposerSuggestionPreference,
   DeleteHostedSiteInput,
   DynamicIslandAction,
   DynamicIslandPreference,
@@ -54,6 +55,7 @@ import {
   isBrowserDockFrame,
   isBrowserDockPresentation,
   isBusyMessageMode,
+  isComposerSuggestionPreference,
   isDynamicIslandAction,
   isDynamicIslandInteractive,
   isDynamicIslandPreference,
@@ -97,6 +99,13 @@ export function parseAnalyticsPreference(input: unknown): SetAnalyticsPreference
 export function parseBusyMessageModePreference(input: unknown): BusyMessageModePreference {
   if (!isDynamicRecord(input) || !isBusyMessageMode(input.mode)) throw new Error("Busy message mode is required.");
   return { mode: input.mode };
+}
+
+export function parseComposerSuggestionPreference(input: unknown): ComposerSuggestionPreference {
+  if (!isDynamicRecord(input)) throw new Error("Composer suggestion preference is required.");
+  const preference = { mode: input.mode, provider: input.provider, model: input.model };
+  if (!isComposerSuggestionPreference(preference)) throw new Error("Composer suggestion preference is invalid.");
+  return preference;
 }
 
 export function parseAgentDefaults(input: unknown): AgentDefaults {

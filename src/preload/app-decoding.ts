@@ -35,6 +35,7 @@ import {
   type CentralAuthState,
   type CentralAuthUser,
   type ChatWindowTarget,
+  type ComposerSuggestionPreference,
   CUSTOM_AGENT_LIMITS,
   type CustomAgentCheckResult,
   type CustomAgentResult,
@@ -63,6 +64,7 @@ import {
   isAppLogoColor,
   isApprovalAutomationPreference,
   isBusyMessageMode,
+  isComposerSuggestionPreference,
   isCustomAgentCheckResult,
   isCustomAgentResult,
   isCustomAgentSummary,
@@ -154,6 +156,13 @@ export const decodeApprovalAutomationPreference: (value: unknown) => ApprovalAut
   isApprovalAutomationPreference,
   "approval automation preference",
 );
+
+export function decodeComposerSuggestionPreference(value: unknown): ComposerSuggestionPreference {
+  const preference = decodeRecord(value, "composer suggestion preference");
+  const decoded = { mode: preference.mode, provider: preference.provider, model: preference.model };
+  if (!isComposerSuggestionPreference(decoded)) throw new Error("Invalid composer suggestion preference.");
+  return decoded;
+}
 
 export function decodeBusyMessageModePreference(value: unknown): BusyMessageModePreference {
   const preference = decodeRecord(value, "busy message mode preference");
