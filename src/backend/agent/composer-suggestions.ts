@@ -156,23 +156,25 @@ export class ComposerSuggestions {
     };
     this.#stop(agent.id);
     const messages = currentContext(this.#options.messages(agent));
-    const predict = this.#options.generate(agent, provider, model, composerSuggestionPrompt(agent, messages)).pipe(
-      Effect.map((answer) => composerSuggestionText(answer, messages)),
-      Effect.tap((text) =>
-        Effect.sync(() => {
-          if (text)
-            this.#options.emit({
-              type: "composer-suggestion",
-              agentId: agent.id,
-              threadId: event.threadId,
-              turnId: event.turnId,
-              text,
-            });
-        }),
-      ),
-      Effect.catchCause((cause) => Effect.sync(() => this.#options.logFailure(provider, cause))),
-      Effect.asVoid,
-    );
+    const predict = this.#options
+      .generate(agent, listed.provider, model, composerSuggestionPrompt(agent, messages))
+      .pipe(
+        Effect.map((answer) => composerSuggestionText(answer, messages)),
+        Effect.tap((text) =>
+          Effect.sync(() => {
+            if (text)
+              this.#options.emit({
+                type: "composer-suggestion",
+                agentId: agent.id,
+                threadId: event.threadId,
+                turnId: event.turnId,
+                text,
+              });
+          }),
+        ),
+        Effect.catchCause((cause) => Effect.sync(() => this.#options.logFailure(provider, cause))),
+        Effect.asVoid,
+      );
     const fiber = Effect.runFork(predict);
     this.#running.set(agent.id, fiber);
     fiber.addObserver(() => {

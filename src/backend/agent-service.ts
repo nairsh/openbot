@@ -504,8 +504,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           { type: "latest" },
           COMPOSER_SUGGESTION_CHAT_MESSAGES,
         ).messages,
-      model: (provider, modelId) =>
-        this.#endpoints.available().find((candidate) => candidate.provider === provider && candidate.id === modelId),
+      model: (provider, modelId) => this.#endpoints.findModel(provider, modelId),
       // The generations of the user's own side questions and profiles come first.
       busy: () => this.#stopping || this.#profileClients.busy(),
       generate: (agent, provider, model, prompt) =>
@@ -2046,13 +2045,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         return yield* new ProfileGenerationFailed({
           cause: new Error(sourceText("error.agent.profileGenerationBusy")),
         });
-      const provider = agent?.provider ?? this.#startingChoice()?.provider ?? this.#providers.preferredProvider();
-      yield* this.#providers.ensureProvider(provider);
-      const models = this.#endpoints.available();
+      const chosen = agent?.provider ?? this.#startingChoice()?.provider ?? this.#providers.preferredProvider();
+      yield* this.#providers.ensureProvider(chosen);
       const model = agent
-        ? models.find((candidate) => candidate.id === agent.model && candidate.provider === provider)
-        : startingModel(provider, models, this.#preference());
+        ? this.#endpoints.findModel(chosen, agent.model)
+        : startingModel(chosen, this.#endpoints.available(), this.#preference());
       if (!model) return yield* new ProfileGenerationFailed({ cause: new Error(sourceText("error.provider.noModel")) });
+      const provider = model.provider;
+      if (provider !== chosen) yield* this.#providers.ensureProvider(provider);
       if (this.#stopping)
         return yield* new ProfileGenerationFailed({ cause: new Error(sourceText("error.backend.shuttingDown")) });
       if (this.#profileClients.busy())
@@ -2079,10 +2079,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       if (this.#stopping) return yield* failed(sourceText("error.backend.shuttingDown"));
       if (this.#profileClients.busy()) return yield* failed(sourceText("error.agent.sideQuestionBusy"));
       yield* this.#providers.ensureProvider(agent.provider);
-      const model = this.#endpoints
-        .available()
-        .find((candidate) => candidate.provider === agent.provider && candidate.id === agent.model);
+      const model = this.#endpoints.findModel(agent.provider, agent.model);
       if (!model) return yield* failed(sourceText("error.provider.noModel"));
+      if (model.provider !== agent.provider) yield* this.#providers.ensureProvider(model.provider);
       if (this.#stopping) return yield* failed(sourceText("error.backend.shuttingDown"));
       if (this.#profileClients.busy()) return yield* failed(sourceText("error.agent.sideQuestionBusy"));
       const messages =
@@ -2093,7 +2092,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           { type: "latest" },
           SIDE_QUESTION_CHAT_MESSAGES,
         ).messages;
-      const client = this.#providers.createProfileClient(agent.provider);
+      const client = this.#providers.createProfileClient(model.provider);
       return yield* this.#profileClients
         .run(client, (cancelled) =>
           generateTextWithoutTools(
@@ -2139,15 +2138,14 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       const failed = (message: string) => new ProfileGenerationFailed({ cause: new Error(message) });
       if (this.#stopping) return yield* failed(sourceText("error.backend.shuttingDown"));
       if (this.#profileClients.busy()) return yield* failed(sourceText("error.workflow.modelBusy"));
-      const provider = input.provider ?? this.#startingChoice()?.provider ?? this.#providers.preferredProvider();
-      yield* this.#providers.ensureProvider(provider);
-      const models = this.#endpoints.available();
+      const chosen = input.provider ?? this.#startingChoice()?.provider ?? this.#providers.preferredProvider();
+      yield* this.#providers.ensureProvider(chosen);
       const model =
-        (input.model === null
-          ? undefined
-          : models.find((candidate) => candidate.provider === provider && candidate.id === input.model)) ??
-        startingModel(provider, models, this.#preference());
+        (input.model === null ? undefined : this.#endpoints.findModel(chosen, input.model)) ??
+        startingModel(chosen, this.#endpoints.available(), this.#preference());
       if (!model) return yield* failed(sourceText("error.provider.noModel"));
+      const provider = model.provider;
+      if (provider !== chosen) yield* this.#providers.ensureProvider(provider);
       if (this.#stopping) return yield* failed(sourceText("error.backend.shuttingDown"));
       if (this.#profileClients.busy()) return yield* failed(sourceText("error.workflow.modelBusy"));
       return yield* this.#warmGenerations
@@ -3024,9 +3022,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     this: AgentService,
     agent: AgentSummary,
   ) {
-    const model = this.#endpoints
-      .available()
-      .find((candidate) => candidate.provider === agent.provider && candidate.id === agent.model);
+    const model = this.#endpoints.findModel(agent.provider, agent.model);
     // A busy generation slot belongs to the user's own side questions and profiles; the flush waits
     // for the next compaction rather than take it.
     if (!model || this.#profileClients.busy()) return;
@@ -3037,7 +3033,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       MEMORY_FLUSH_CHAT_MESSAGES,
     ).messages;
     const memories = this.#memories.listFor(agent.id);
-    const client = this.#providers.createProfileClient(agent.provider);
+    const client = this.#providers.createProfileClient(model.provider);
     const answer = yield* this.#profileClients.run(client, (cancelled) =>
       generateTextWithoutTools(
         client,

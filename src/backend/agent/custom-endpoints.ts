@@ -112,6 +112,22 @@ export class CustomEndpoints {
   }
 
   /**
+   * The listed model for a saved provider and model id. A saved OpenCode choice of an endpoint model
+   * that Direct now lists (`ProviderRuntime.listModels`) gives Direct's model: a workflow step, a
+   * suggestion model or an agent that is still busy on OpenCode keeps its endpoint. The caller runs
+   * the returned model's provider.
+   */
+  findModel(provider: AgentProvider, modelId: string): AgentModelOption | undefined {
+    const models = this.available();
+    return (
+      models.find((model) => model.provider === provider && model.id === modelId) ??
+      (provider === "opencode"
+        ? models.find((model) => model.provider === "direct" && model.id === modelId)
+        : undefined)
+    );
+  }
+
+  /**
    * Whether the model id is one a save still defines. A model of no custom endpoint, and a model of
    * an endpoint nothing removed, are served; a model an endpoint no longer lists is not.
    */
