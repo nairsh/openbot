@@ -752,6 +752,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         onProviderActivated: (provider, configRevision) =>
           Effect.gen({ self: this }, function* () {
             if (provider === "opencode") this.#endpoints.clearReleased(configRevision);
+            if (provider === "opencode" || provider === "direct")
+              yield* this.#endpoints.runExclusive(() => this.#endpoints.moveEndpointAgentsToDirect());
             yield* this.#endpoints.runExclusive(() => this.#endpoints.moveAgentsOffUnlistedModels(provider));
           }),
         onProviderResumed: (provider) => {

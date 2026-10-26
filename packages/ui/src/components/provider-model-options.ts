@@ -163,7 +163,14 @@ export function customProviderIds(providers: readonly CustomProviderSummary[]): 
   return new Set(providers.map((provider) => provider.id));
 }
 
-/** A model of the Custom tab: a custom endpoint's, which OpenCode serves, or a custom agent's. */
+/**
+ * A model of the Custom tab: a custom endpoint's, which Direct (or OpenCode, with Direct off) serves,
+ * or a custom agent's.
+ */
 export function isCustomModel(model: ClientAgentModelOption, customIds: ReadonlySet<string>): boolean {
-  return model.provider === "acp" || (model.provider === "opencode" && isCustomProviderModelId(model.id, customIds));
+  return (
+    model.provider === "acp" ||
+    model.provider === "direct" ||
+    (model.provider === "opencode" && isCustomProviderModelId(model.id, customIds))
+  );
 }
