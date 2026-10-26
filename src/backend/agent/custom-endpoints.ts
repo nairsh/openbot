@@ -3,6 +3,7 @@ import type {
   AgentModelOption,
   AgentReasoningEffort,
   AgentSummary,
+  AgentUsageLimitReturn,
   UpdateAgentInput,
 } from "@openbot/contracts/ipc";
 import {
@@ -23,8 +24,13 @@ import type { ProviderRuntime } from "./provider-runtime";
 import { providerForAgent } from "./thread-items";
 
 export interface CustomEndpointsHooks {
-  /** The facade's agent update without the chain: every caller here already holds it. */
-  applyAgentUpdate(input: UpdateAgentInput): Effect.Effect<AgentSummary, EndpointChangeFailed>;
+  /**
+   * The facade's agent update without the chain: every caller here already holds it. A
+   * `usageLimitReturn` replaces the way back; without one, a provider change ends it.
+   */
+  applyAgentUpdate(
+    input: UpdateAgentInput & { usageLimitReturn?: AgentUsageLimitReturn },
+  ): Effect.Effect<AgentSummary, EndpointChangeFailed>;
   /** Tells the renderer to read the catalogue again. */
   modelsChanged(): void;
   stopProfileClients(): Effect.Effect<void>;
@@ -512,8 +518,8 @@ export class CustomEndpoints {
   /**
    * Moves each OpenCode agent on a model that Direct lists to Direct, with the same model. Direct runs
    * the same custom endpoints in Pi, which steers a running turn, and the catalogue no longer offers
-   * these models under OpenCode (`ProviderRuntime.listModels`). Backup models that name such a model
-   * move with it.
+   * these models under OpenCode (`ProviderRuntime.listModels`). Backup models and the way back from a
+   * usage limit or a provider error that name such a model move with it, and the way back is kept.
    *
    * An agent with work in flight stays on OpenCode, which still serves the endpoint, and moves at the
    * next activation of OpenCode or Direct. A move that fails is reported and leaves the agent as it was.
@@ -528,16 +534,19 @@ export class CustomEndpoints {
     if (direct.size === 0) return;
     const onDirect = (choice: AgentModelChoice) => choice.provider === "opencode" && direct.has(choice.model);
     // An account belongs to one provider, and Direct has none.
-    const toDirect = (choice: AgentModelChoice): AgentModelChoice =>
-      onDirect(choice) ? { provider: "direct", model: choice.model } : choice;
+    const toDirect = <T extends AgentModelChoice>({ providerAccountId: _account, ...choice }: T) => ({
+      ...choice,
+      provider: "direct" as const,
+    });
     for (const agent of this.#store.list()) {
       const target = providerForAgent(agent) === "opencode" ? direct.get(agent.model) : undefined;
       const backups = agent.backupModels?.order.some(onDirect);
-      if (!target && !backups) continue;
+      const way = agent.usageLimitReturn;
+      if (!target && !backups && !(way && onDirect(way))) continue;
       if (target && this.#hasWorkInFlight(agent)) continue;
       const order: AgentModelChoice[] = [];
       for (const choice of agent.backupModels?.order ?? []) {
-        const next = toDirect(choice);
+        const next = onDirect(choice) ? toDirect(choice) : choice;
         if (!order.some((kept) => sameChoice(kept, next))) order.push(next);
       }
       yield* this.#hooks
@@ -553,6 +562,8 @@ export class CustomEndpoints {
               }
             : {}),
           ...(backups && agent.backupModels ? { backupModels: { ...agent.backupModels, order } } : {}),
+          // Sent also when it does not change: a provider change without it ends the way back.
+          ...(way ? { usageLimitReturn: onDirect(way) ? toDirect(way) : way } : {}),
         })
         .pipe(toEndpointChangeFailed)
         .pipe(
@@ -570,6 +581,8 @@ export class CustomEndpoints {
    */
   #hasWorkInFlight(agent: AgentSummary): boolean {
     if (this.#mailbox.hasUnfinishedDelivery(agent.id)) return true;
+    // A running task refuses a provider change too (`requireIdle` in the facade's agent update).
+    if (this.#conversation.workingTaskSnapshots(agent.id).length > 0) return true;
     const active =
       this.#conversation.workingSnapshot(agent.id)?.activeTurnId ??
       (agent.threadId ? this.#store.database.readConversationRuntime(agent.id, agent.threadId).activeTurnId : null);
