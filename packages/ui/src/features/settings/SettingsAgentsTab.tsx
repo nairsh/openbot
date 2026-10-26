@@ -295,6 +295,7 @@ export function SettingsAgentsTab(props: SettingsAgentsTabProps) {
                       agentStatus={models().agentStatus}
                       customProviders={models().customProviders}
                       customAgents={models().customAgents}
+                      mount={props.menuMount}
                       onChange={(model, provider) => props.onSuggestionsChange({ mode: "model", provider, model })}
                     />
                   </ItemActions>
