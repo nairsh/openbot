@@ -857,8 +857,17 @@ export class ProviderRuntime implements ProviderPort {
     for (const { client } of this.#confined.values()) if (client.releaseIdleThreads) yield* client.releaseIdleThreads();
   }).bind(this);
 
+  /**
+   * A custom endpoint model that Direct lists is not offered under OpenCode too: Direct runs it in Pi,
+   * which steers a running turn. While Direct is off or not available, OpenCode still offers it: the
+   * catalogue keeps the models of a client that stopped, and those cannot run.
+   */
   listModels(): AgentModelOption[] {
-    return this.#modelCatalog.list().filter((model) => !this.#off.has(model.provider));
+    const models = this.#modelCatalog.list().filter((model) => !this.#off.has(model.provider));
+    if (!this.#status.providers?.some((row) => row.id === "direct" && row.state === "available")) return models;
+    const direct = new Set(models.flatMap((model) => (model.provider === "direct" ? [model.id] : [])));
+    if (direct.size === 0) return models;
+    return models.filter((model) => model.provider !== "opencode" || !direct.has(model.id));
   }
 
   createProfileClient(provider: AgentProvider): AgentClient {

@@ -116,7 +116,8 @@ type RailId = AgentProviderId | "custom";
 
 const CUSTOM_RAIL = "custom" as const;
 
-const PROVIDERS: readonly RailId[] = [...PICKER_PROVIDERS, CUSTOM_RAIL];
+/** Direct runs only the custom endpoints, so its models are on the Custom tab and it has no tab of its own. */
+const PROVIDERS: readonly RailId[] = [...PICKER_PROVIDERS.filter((provider) => provider !== "direct"), CUSTOM_RAIL];
 
 /**
  * A rail entry: a provider tab, or an account of it after the first. An account entry's key is the
@@ -223,7 +224,9 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
   );
   /** The tab the current selection lives on: the Custom one for the user's endpoints and agents. */
   const activeProvider = (): RailId =>
-    props.provider === "acp" || (props.provider === "opencode" && isCustomProviderModelId(props.value, customIds()))
+    props.provider === "acp" ||
+    props.provider === "direct" ||
+    (props.provider === "opencode" && isCustomProviderModelId(props.value, customIds()))
       ? CUSTOM_RAIL
       : props.provider;
   const activeKey = (): RailKey => {
@@ -272,12 +275,14 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
     });
   };
   /**
-   * One provider status per tab. The Custom tab stands for OpenCode, which serves the endpoints, and
-   * for `acp`, which runs the agents: it is available when either of the saved kinds is.
+   * One provider status per tab. The Custom tab stands for the provider that serves the endpoints --
+   * Direct when it lists them, else OpenCode -- and for `acp`, which runs the agents: it is available
+   * when either of the saved kinds is.
    */
   const railStatus = (rail: RailId): AgentProviderStatus => {
     if (rail !== CUSTOM_RAIL) return providerAvailability(props.agentStatus, props.modelOptions, rail, t);
-    const endpoints = providerAvailability(props.agentStatus, props.modelOptions, "opencode", t);
+    const endpointProvider = props.modelOptions.some((option) => option.provider === "direct") ? "direct" : "opencode";
+    const endpoints = providerAvailability(props.agentStatus, props.modelOptions, endpointProvider, t);
     if (agentCount() === 0) return endpoints;
     const agents = providerAvailability(props.agentStatus, props.modelOptions, "acp", t);
     if (!props.customProviders?.length) return agents;
@@ -352,7 +357,7 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
     rail === CUSTOM_RAIL ? customSummary() : providerSummary(rail, status, text);
   const railHeadingSummary = (rail: RailId, status: AgentProviderStatus): string => {
     if (rail !== CUSTOM_RAIL) return providerHeadingSummary(rail, status, text);
-    // OpenCode is what serves a custom endpoint, so its trouble is this tab's trouble.
+    // Direct or OpenCode is what serves a custom endpoint, so its trouble is this tab's trouble.
     return status.state === "available" ? customSummary() : providerStatusLabel(status.state, t);
   };
 

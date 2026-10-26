@@ -48,6 +48,11 @@ export interface ChatMessageRowProps {
   showAuthor?: boolean | undefined;
   /** Whether the time stands beside the author name. Without a name, the time is in the action row. */
   showTime?: boolean | undefined;
+  /**
+   * The next row continues this sender's run. A person's bubble then keeps its actions and time
+   * beside it, not in a row under it, so the bubbles of one run stand close together.
+   */
+  runContinues?: boolean | undefined;
   animate?: boolean;
   /** Milliseconds of the entrance that an earlier row of this message already played. */
   entranceElapsed?: number | undefined;
@@ -115,6 +120,18 @@ export function ChatMessageRow(props: ChatMessageRowProps): JSX.Element {
     if (own() || currentSeed === undefined) return undefined;
     return `--message-author-color: ${avatarHeadColor(currentSeed, props.author.agent?.avatarHue ?? null)}`;
   };
+  // An agent's reply is as wide as the chat, so only a person's bubble has room beside it.
+  const actionsBeside = () => props.runContinues === true && person();
+  const actionRow = (): JSX.Element => (
+    <div class="message-action-row">
+      {props.actions}
+      <Show when={!props.showAuthor || own()}>
+        <time class="message-time" datetime={props.message.createdAt}>
+          {props.message.time}
+        </time>
+      </Show>
+    </div>
+  );
   const rowClass = () => [
     "message-entry",
     {
@@ -210,6 +227,7 @@ export function ChatMessageRow(props: ChatMessageRowProps): JSX.Element {
           </MessageHeader>
         </Show>
         <div class="message-shell">
+          <Show when={actionsBeside()}>{actionRow()}</Show>
           <Bubble
             class={member() ? "message-bubble-member" : undefined}
             align={person() ? "end" : "start"}
@@ -288,14 +306,7 @@ export function ChatMessageRow(props: ChatMessageRowProps): JSX.Element {
           </Bubble>
         </div>
         {/* The actions and the time stand under the bubble. A named author shows the time beside the name. */}
-        <div class="message-action-row">
-          {props.actions}
-          <Show when={!props.showAuthor || own()}>
-            <time class="message-time" datetime={props.message.createdAt}>
-              {props.message.time}
-            </time>
-          </Show>
-        </div>
+        <Show when={!actionsBeside()}>{actionRow()}</Show>
       </MessageContent>
     </>
   );

@@ -815,6 +815,15 @@ cost with its usage, as OpenRouter does, the extension puts it on the message, P
 session, and the usage notice carries it as `costUsd`. The usage collector books it as the reported
 cost of the session's counter. Direct is local-only, like Inception.
 
+While Direct is on, a model that Direct lists is not offered under OpenCode too
+(`ProviderRuntime.listModels`), and the model picker shows the endpoints on its Custom tab, with no
+Direct tab. When Direct or OpenCode reports its catalogue, `CustomEndpoints.moveEndpointAgentsToDirect`
+moves each idle OpenCode agent on such a model to Direct with the same model, and rewrites the backup
+models that name one. The move is a provider switch: the agent keeps its workspace, thread and
+identity, and Pi steers a message sent during a turn, which OpenCode cannot. A busy agent stays on
+OpenCode, which still serves the endpoint, until the next activation. Direct is local-only, so a
+moved agent is hidden from Team API peers. With Direct off, OpenCode serves the endpoints as before.
+
 ## Muse
 
 Muse uses the official `@muse-code/sdk` to run `muse serve` over MSP. The SDK is pinned to `1.4.2`;

@@ -1,4 +1,11 @@
-import type { AgentModelOption, AgentReasoningEffort, AgentSummary, UpdateAgentInput } from "@openbot/contracts/ipc";
+import type {
+  AgentModelChoice,
+  AgentModelOption,
+  AgentReasoningEffort,
+  AgentSummary,
+  AgentUsageLimitReturn,
+  UpdateAgentInput,
+} from "@openbot/contracts/ipc";
 import {
   CUSTOM_AGENT_DEFAULT_MODEL,
   customAgentIdOfModel,
@@ -17,8 +24,13 @@ import type { ProviderRuntime } from "./provider-runtime";
 import { providerForAgent } from "./thread-items";
 
 export interface CustomEndpointsHooks {
-  /** The facade's agent update without the chain: every caller here already holds it. */
-  applyAgentUpdate(input: UpdateAgentInput): Effect.Effect<AgentSummary, EndpointChangeFailed>;
+  /**
+   * The facade's agent update without the chain: every caller here already holds it. A
+   * `usageLimitReturn` replaces the way back; without one, a provider change ends it.
+   */
+  applyAgentUpdate(
+    input: UpdateAgentInput & { usageLimitReturn?: AgentUsageLimitReturn },
+  ): Effect.Effect<AgentSummary, EndpointChangeFailed>;
   /** Tells the renderer to read the catalogue again. */
   modelsChanged(): void;
   stopProfileClients(): Effect.Effect<void>;
@@ -97,6 +109,22 @@ export class CustomEndpoints {
     if (this.#released.size === 0) return this.#providers.listModels();
     // A custom agent id can be the same text as an endpoint id. Its models are not the endpoint's.
     return this.#providers.listModels().filter((option) => option.provider === "acp" || this.serves(option.id));
+  }
+
+  /**
+   * The listed model for a saved provider and model id. A saved OpenCode choice of an endpoint model
+   * that Direct now lists (`ProviderRuntime.listModels`) gives Direct's model: a workflow step, a
+   * suggestion model or an agent that is still busy on OpenCode keeps its endpoint. The caller runs
+   * the returned model's provider.
+   */
+  findModel(provider: AgentProvider, modelId: string): AgentModelOption | undefined {
+    const models = this.available();
+    return (
+      models.find((model) => model.provider === provider && model.id === modelId) ??
+      (provider === "opencode"
+        ? models.find((model) => model.provider === "direct" && model.id === modelId)
+        : undefined)
+    );
   }
 
   /**
@@ -225,7 +253,7 @@ export class CustomEndpoints {
       .list()
       .filter(
         (agent) =>
-          providerForAgent(agent) === "opencode" &&
+          runsEndpoints(providerForAgent(agent)) &&
           agent.model.startsWith(prefix) &&
           removed.has(agent.model.slice(prefix.length)),
       );
@@ -234,13 +262,14 @@ export class CustomEndpoints {
       (option) => !(option.id.startsWith(prefix) && removed.has(option.id.slice(prefix.length))),
     );
     const fallback =
-      remaining.find((option) => option.provider === "opencode" && option.id.startsWith(prefix)) ??
+      remaining.find((option) => runsEndpoints(option.provider) && option.id.startsWith(prefix)) ??
+      startingModel("direct", remaining, this.#hooks.preference()) ??
       startingModel("opencode", remaining, this.#hooks.preference()) ??
       (this.#hooks.providerAvailable(DEFAULT_AGENT_PROVIDER)
         ? startingModel(DEFAULT_AGENT_PROVIDER, remaining, this.#hooks.preference())
         : null);
     if (!fallback) return;
-    if (fallback.provider !== "opencode" && affected.some((agent) => this.#hasWorkInFlight(agent))) {
+    if (affected.some((agent) => fallback.provider !== providerForAgent(agent) && this.#hasWorkInFlight(agent))) {
       return yield* new EndpointChangeFailed({ cause: new Error(sourceText("error.provider.endpointRemoveBusy")) });
     }
     for (const agent of affected) {
@@ -409,18 +438,20 @@ export class CustomEndpoints {
     // and choosing one here would move agents onto an endpoint that is gone.
     const affected = this.#store
       .list()
-      .filter((agent) => providerForAgent(agent) === "opencode" && !this.serves(agent.model));
+      .filter((agent) => runsEndpoints(providerForAgent(agent)) && !this.serves(agent.model));
     if (affected.length === 0) return;
-    // OpenCode declares no default model of its own -- its catalogue is whatever the CLI lists -- so
-    // the fallback is chosen from the live list with the endpoint being removed taken out of it.
-    // The built-in default provider comes second, because an agent left on a model the CLI no longer
-    // serves cannot answer, and a provider switch keeps its workspace, thread and identity.
+    // Direct and OpenCode declare no default model of their own -- their catalogue is whatever the CLI
+    // lists -- so the fallback is chosen from the live list with the endpoint being removed taken out
+    // of it: another endpoint in Direct first, then OpenCode. The built-in default provider comes
+    // last, because an agent left on a model the CLI no longer serves cannot answer, and a provider
+    // switch keeps its workspace, thread and identity.
     const remaining = this.available();
     // The built-in default is offered only while it is usable: `#applyAgentUpdate` connects the
     // provider it moves an agent to, and a Codex that is not installed or not signed in throws
     // there. That would trap a user who runs custom endpoints only, because the last endpoint could
     // never be removed while an agent still names one of its models.
     const fallback =
+      startingModel("direct", remaining, this.#hooks.preference()) ??
       startingModel("opencode", remaining, this.#hooks.preference()) ??
       (this.#hooks.providerAvailable(DEFAULT_AGENT_PROVIDER)
         ? startingModel(DEFAULT_AGENT_PROVIDER, remaining, this.#hooks.preference())
@@ -428,7 +459,7 @@ export class CustomEndpoints {
     // Nothing is listed, so there is no model to move to. The removal still goes ahead: refusing it
     // would trap the user on an endpoint that may be the reason no model is listed.
     if (!fallback) return;
-    if (fallback.provider !== "opencode" && affected.some((agent) => this.#hasWorkInFlight(agent))) {
+    if (affected.some((agent) => fallback.provider !== providerForAgent(agent) && this.#hasWorkInFlight(agent))) {
       return yield* new EndpointChangeFailed({ cause: new Error(sourceText("error.provider.endpointRemoveBusy")) });
     }
     for (const agent of affected) {
@@ -459,12 +490,20 @@ export class CustomEndpoints {
     this: CustomEndpoints,
     provider: AgentProvider,
   ) {
-    const models = this.available().filter((model) => model.provider === provider);
+    const available = this.available();
+    const models = available.filter((model) => model.provider === provider);
     const providerFallback = models.find((model) => model.id === defaultProviderModel(provider)) ?? models[0];
     if (!providerFallback) return;
+    // An OpenCode agent on a model that Direct lists goes to Direct with its model when it is idle
+    // (`moveEndpointAgentsToDirect`), not to another OpenCode model.
+    const onDirect = (agent: AgentSummary) =>
+      provider === "opencode" && available.some((model) => model.provider === "direct" && model.id === agent.model);
     const affected = this.#store
       .list()
-      .filter((agent) => providerForAgent(agent) === provider && !models.some((model) => model.id === agent.model));
+      .filter(
+        (agent) =>
+          providerForAgent(agent) === provider && !models.some((model) => model.id === agent.model) && !onDirect(agent),
+      );
     for (const agent of affected) {
       // A custom agent is a program of its own, not a model: an agent moves only to another model of
       // the same custom agent. One that listed nothing, or did not answer, keeps its model. The router
@@ -493,17 +532,89 @@ export class CustomEndpoints {
   }, Effect.uninterruptible).bind(this);
 
   /**
+   * Moves each OpenCode agent on a model that Direct lists to Direct, with the same model. Direct runs
+   * the same custom endpoints in Pi, which steers a running turn, and the catalogue no longer offers
+   * these models under OpenCode (`ProviderRuntime.listModels`). Backup models and the way back from a
+   * usage limit or a provider error that name such a model move with it, and the way back is kept.
+   *
+   * An agent with work in flight stays on OpenCode, which still serves the endpoint, and moves at the
+   * next activation of OpenCode or Direct. A move that fails is reported and leaves the agent as it was.
+   */
+
+  readonly moveEndpointAgentsToDirect = Effect.fn("CustomEndpoints.moveEndpointAgentsToDirect")(function* (
+    this: CustomEndpoints,
+  ) {
+    const direct = new Map(
+      this.available().flatMap((model) => (model.provider === "direct" ? [[model.id, model] as const] : [])),
+    );
+    if (direct.size === 0) return;
+    const onDirect = (choice: AgentModelChoice) => choice.provider === "opencode" && direct.has(choice.model);
+    // An account belongs to one provider, and Direct has none.
+    const toDirect = <T extends AgentModelChoice>({ providerAccountId: _account, ...choice }: T) => ({
+      ...choice,
+      provider: "direct" as const,
+    });
+    for (const agent of this.#store.list()) {
+      const target = providerForAgent(agent) === "opencode" ? direct.get(agent.model) : undefined;
+      const backups = agent.backupModels?.order.some(onDirect);
+      const way = agent.usageLimitReturn;
+      if (!target && !backups && !(way && onDirect(way))) continue;
+      if (target && this.#hasWorkInFlight(agent)) continue;
+      const order: AgentModelChoice[] = [];
+      for (const choice of agent.backupModels?.order ?? []) {
+        const next = onDirect(choice) ? toDirect(choice) : choice;
+        if (!order.some((kept) => sameChoice(kept, next))) order.push(next);
+      }
+      yield* this.#hooks
+        .applyAgentUpdate({
+          agentId: agent.id,
+          ...(target
+            ? {
+                provider: "direct",
+                model: target.id,
+                reasoningEffort: target.supportedReasoningEfforts.includes(agent.reasoningEffort)
+                  ? agent.reasoningEffort
+                  : target.defaultReasoningEffort,
+              }
+            : {}),
+          ...(backups && agent.backupModels ? { backupModels: { ...agent.backupModels, order } } : {}),
+          // Sent also when it does not change: a provider change without it ends the way back.
+          ...(way ? { usageLimitReturn: onDirect(way) ? toDirect(way) : way } : {}),
+        })
+        .pipe(toEndpointChangeFailed)
+        .pipe(
+          Effect.catch((failure) =>
+            Effect.sync(() => this.#hooks.emitError("agent_direct_move_failed", failure.cause, agent.id)),
+          ),
+        );
+    }
+  }, Effect.uninterruptible).bind(this);
+
+  /**
    * Whether a turn is running for this agent or a delivery is still queued for it. Read from the
    * live snapshot first, then from the stored conversation, because an agent whose thread is not
    * loaded keeps its active turn in the database.
    */
   #hasWorkInFlight(agent: AgentSummary): boolean {
     if (this.#mailbox.hasUnfinishedDelivery(agent.id)) return true;
+    // A running task refuses a provider change too (`requireIdle` in the facade's agent update).
+    if (this.#conversation.workingTaskSnapshots(agent.id).length > 0) return true;
     const active =
       this.#conversation.workingSnapshot(agent.id)?.activeTurnId ??
       (agent.threadId ? this.#store.database.readConversationRuntime(agent.id, agent.threadId).activeTurnId : null);
     return Boolean(active);
   }
+}
+
+/** The providers that run the saved custom endpoints: OpenCode, and Direct in Pi. */
+function runsEndpoints(provider: AgentProvider): boolean {
+  return provider === "opencode" || provider === "direct";
+}
+
+function sameChoice(left: AgentModelChoice, right: AgentModelChoice): boolean {
+  return (
+    left.provider === right.provider && left.model === right.model && left.providerAccountId === right.providerAccountId
+  );
 }
 
 function isCustomAgentDefaultModel(model: string): boolean {
