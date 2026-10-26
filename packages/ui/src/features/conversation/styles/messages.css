@@ -157,6 +157,12 @@
   order: -1;
 }
 
+/* A bubble that the next one of its run follows keeps its actions beside it, as a run reads as one block. */
+.message-shell > .message-action-row {
+  flex: 0 0 auto;
+  align-self: flex-end;
+}
+
 .message-entry:hover .message-actions,
 .message-entry:focus-within .message-actions,
 .message-actions-open {

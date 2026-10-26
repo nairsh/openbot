@@ -199,6 +199,36 @@ export function ConversationTimeline() {
     const waiting = providerSilentMinutes() !== null || providerOffline();
     return waiting && agent ? providerDisplayName(agent.provider) : undefined;
   };
+  /*
+   * The separator above the row at `index`. The first row always carries one, and a later row
+   * carries one when it opens a new day. A message with no stored timestamp can only open the
+   * transcript, so it falls back to the time it prints in its footer.
+   */
+  const dayMarkerAt = (index: number): string | null => {
+    const messages = timelineMessages();
+    const current = messages[index];
+    if (!current) return null;
+    const previous = messages[index - 1];
+    if (current.createdAt) return dayMarkerLabel(previous?.createdAt, current.createdAt, { t, format });
+    return previous === undefined ? (current.time ?? t("chat.day.now")) : null;
+  };
+  /*
+   * Whether the row at `index` continues a run by the same sender. Such a row draws no time: the
+   * run carries one time at its top, and a header on every row leaves an empty line between them. A
+   * row that draws a marker of its own opens a run, because the marker stands between it and the
+   * message above it.
+   */
+  const continuesRunAt = (index: number): boolean => {
+    const messages = timelineMessages();
+    const current = messages[index];
+    if (!current) return false;
+    if (current.id === unreadBoundaryMessageId() || current.actionMarker) return false;
+    const previous = messages[index - 1];
+    return continuesSenderRun(previous && senderRunRow(previous), senderRunRow(current), {
+      previousDrawsTime: previous !== undefined && rowDrawsTime(previous),
+      startsDay: dayMarkerAt(index) !== null,
+    });
+  };
   /** An agent reply can be read aloud by this computer's speech model, in this chat's voice. */
   const readAloudAction = (message: AgentMessage) => {
     const agentId = props.agent?.id;
@@ -659,33 +689,18 @@ export function ConversationTimeline() {
                   initialActionMarker?.kind === "routine-run"
                     ? untrack(() => markMessageSeen(`routine-run:${initialActionMarker.runId}`)) && arrives
                     : arrives;
-                /*
-                 * The separator above the row. The first row always carries one, and a later row
-                 * carries one when it opens a new day. A message with no stored timestamp can only
-                 * open the transcript, so it falls back to the time it prints in its footer.
-                 */
                 const dayMarker = createMemo(() => {
-                  const current = message();
-                  if (!current) return null;
-                  const previous = previousMessage();
-                  if (current.createdAt) return dayMarkerLabel(previous?.createdAt, current.createdAt, { t, format });
-                  return previous === undefined ? (current.time ?? t("chat.day.now")) : null;
+                  const current = index();
+                  return current === undefined ? null : dayMarkerAt(current);
                 });
-                /*
-                 * A row that continues a run by the same sender draws no time: the run carries one
-                 * time at its top, and a header on every row leaves an empty line between them. A
-                 * row that draws a marker of its own opens a run, because the marker stands between
-                 * it and the message above it.
-                 */
                 const continuesRun = createMemo(() => {
-                  const current = message();
-                  if (!current) return false;
-                  if (current.id === unreadBoundaryMessageId() || current.actionMarker) return false;
-                  const previous = previousMessage();
-                  return continuesSenderRun(previous && senderRunRow(previous), senderRunRow(current), {
-                    previousDrawsTime: previous !== undefined && rowDrawsTime(previous),
-                    startsDay: dayMarker() !== null,
-                  });
+                  const current = index();
+                  return current !== undefined && continuesRunAt(current);
+                });
+                // The row below continues this run, so this bubble keeps its actions beside it.
+                const runContinues = createMemo(() => {
+                  const current = index();
+                  return current !== undefined && continuesRunAt(current + 1);
                 });
                 const author = createMemo((): ChatMessageAuthor => {
                   const current = message();
@@ -1208,6 +1223,7 @@ export function ConversationTimeline() {
                                 : undefined
                             }
                             showTime={!continuesRun()}
+                            runContinues={runContinues()}
                             animate={animateEntrance}
                             entranceElapsed={entranceElapsed}
                             agents={props.agents}
