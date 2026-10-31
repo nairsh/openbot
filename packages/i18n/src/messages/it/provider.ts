@@ -32,7 +32,7 @@ export const messages = {
   "provider.status.checking": "Controllo",
   "provider.status.off": "Disattivato",
   "provider.gemini.hostSignIn":
-    "Per connettere Gemini, apri OpenBot sull'host e seleziona «Connetti» in Impostazioni > Provider. L'accesso a Google richiede un browser su quell'host. L'accesso remoto non è supportato.",
+    "Per connettere Gemini, apri OpenBot sull'host e seleziona «Connetti» in Impostazioni server > Provider. L'accesso a Google richiede un browser su quell'host. L'accesso remoto non è supportato.",
 
   "provider.key.free": "Gratuito",
 
@@ -149,6 +149,14 @@ export const messages = {
   "provider.inceptionKey.description":
     "Salva una chiave API di Inception su questo computer per usare i modelli Mercury. OpenBot li esegue nella CLI di Pi che scarica.",
   "provider.inceptionKey.label": "Chiave API di Inception",
+  "provider.deepseekKey.title": "Chiave API di DeepSeek",
+  "provider.deepseekKey.description":
+    "Salva una chiave API di DeepSeek su questo computer per usare i modelli DeepSeek. OpenBot li esegue nella CLI di Pi che scarica.",
+  "provider.deepseekKey.label": "Chiave API di DeepSeek",
+  "provider.openrouterKey.title": "Chiave API di OpenRouter",
+  "provider.openrouterKey.description":
+    "Salva una chiave API di OpenRouter su questo computer per usare i modelli di OpenRouter. OpenBot li esegue nella CLI di Pi che scarica.",
+  "provider.openrouterKey.label": "Chiave API di OpenRouter",
 
   "provider.openCodeKey.title": "Accedi a OpenCode Go",
   "provider.openCodeKey.description":
@@ -177,6 +185,7 @@ export const messages = {
   "provider.account.cancelSignIn": "Annulla accesso",
   "provider.account.finishSignIn": "Completa l'accesso nel browser.",
   "provider.account.remove": "Rimuovi account",
+  "provider.account.disconnect": "Disconnetti",
   "provider.account.actionFailed": "Impossibile modificare l'account {name}.",
   "provider.account.resetUsage": "Azzera utilizzo",
   "provider.account.resetUsageTitle": "Azzerare l'utilizzo di {name}?",
@@ -191,6 +200,11 @@ export const messages = {
   "provider.account.resetUsageNoCredit": "{name} non ha più crediti di azzeramento dell'utilizzo.",
   "provider.account.resetUsageAlreadyRedeemed": "Questo credito di azzeramento di {name} è già stato usato.",
   "provider.account.resetUsageFailed": "Impossibile azzerare l'utilizzo di {name}.",
+  "provider.settings.disconnectTitle": "Disconnettere {name}?",
+  "provider.settings.disconnectOthers": "Gli altri account {provider} attendono finché non ricolleghi {provider}.",
+  "provider.settings.disconnectLocal":
+    "OpenBot disconnette {provider} su questo computer. Anche la CLI {provider} nel terminale viene disconnessa.",
+  "provider.settings.disconnectHost": "OpenBot disconnette {provider} sul server.",
   "provider.settings.cache": "Cache",
   "provider.settings.promptCache": "Cache dei prompt",
   "provider.settings.promptCacheDescription":
@@ -198,4 +212,17 @@ export const messages = {
   "provider.settings.promptCacheHour": "1 ora",
   "provider.settings.promptCacheDefault": "Predefinito di Claude Code",
   "provider.settings.promptCacheLoadFailed": "Impossibile caricare la durata della cache dei prompt di questo server.",
+  "provider.settings.download": "Download",
+  "provider.settings.downloadedCli": "CLI di {name}",
+  "provider.settings.downloadDetail": {
+    one: "{version} · 1 versione · {size}",
+    other: "{version} · {count} versioni · {size}",
+  },
+  "provider.settings.downloadVersions": { one: "1 versione · {size}", other: "{count} versioni · {size}" },
+  "provider.settings.downloadAgain": "Quando attivi {name}, OpenBot scarica di nuovo la sua CLI.",
+  "provider.settings.removeDownloadConfirm": "Rimuovere {size}?",
+  "provider.settings.removeDownloadKeeps": "Account, accessi e agenti restano.",
+  "provider.settings.removeDownload": "Rimuovi download",
+  "provider.settings.removingDownload": "Rimozione…",
+  "provider.settings.removeDownloadFailed": "Impossibile rimuovere il download.",
 } as const satisfies PartialTranslation<typeof source>;

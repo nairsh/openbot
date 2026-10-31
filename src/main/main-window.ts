@@ -19,7 +19,7 @@ import {
   LOCAL_SERVER_ID,
   type MacPermissionId,
 } from "@openbot/contracts/ipc";
-import type { AppTranslate } from "@openbot/i18n";
+import type { AppTextKey, AppTranslate } from "@openbot/i18n";
 import {
   app,
   BrowserWindow,
@@ -36,6 +36,7 @@ import {
 import type { AgentService } from "../backend/agent-service";
 import type { BrowserHost } from "../backend/browser-host";
 import {
+  type ChatEditAction,
   chatContextMenuItems,
   isCloseBrowserTabShortcut,
   isSelectAllShortcut,
@@ -72,6 +73,33 @@ interface MainWindowApplicationServices {
   remoteServers: RemoteServerManager;
   interfaceSize: InterfaceSizeService;
 }
+
+/**
+ * The chat menu's edit entries. They are not Electron roles: a role's label does not follow the
+ * app's own language setting, and a role acts on whichever window has focus. Each entry runs on its
+ * own window's contents instead, and its accelerator is only the shortcut hint shown beside the label.
+ */
+const CHAT_EDIT_ACTIONS = {
+  undo: { label: "menu.undo", accelerator: "CommandOrControl+Z", run: (contents) => contents.undo() },
+  redo: {
+    label: "menu.redo",
+    accelerator: process.platform === "win32" ? "Control+Y" : "Shift+CommandOrControl+Z",
+    run: (contents) => contents.redo(),
+  },
+  cut: { label: "menu.cut", accelerator: "CommandOrControl+X", run: (contents) => contents.cut() },
+  copy: { label: "menu.copy", accelerator: "CommandOrControl+C", run: (contents) => contents.copy() },
+  paste: { label: "menu.paste", accelerator: "CommandOrControl+V", run: (contents) => contents.paste() },
+  pasteAndMatchStyle: {
+    label: "menu.pasteAndMatchStyle",
+    accelerator: "Command+Option+Shift+V",
+    run: (contents) => contents.pasteAndMatchStyle(),
+  },
+  delete: { label: "menu.delete", accelerator: undefined, run: (contents) => contents.delete() },
+  selectAll: { label: "menu.selectAll", accelerator: "CommandOrControl+A", run: (contents) => contents.selectAll() },
+} as const satisfies Record<
+  ChatEditAction,
+  { label: AppTextKey; accelerator: string | undefined; run: (contents: WebContents) => void }
+>;
 
 /** The two handles that outlive any one window, so `activate` can rebuild into the same slot. */
 export interface MainWindowHolder {
@@ -172,9 +200,7 @@ export function createMainWindowController({
       // both of those rows. The setup window below uses the same offsets.
       ...(process.platform === "darwin"
         ? { titleBarStyle: "hidden" as const, trafficLightPosition: { x: 12, y: 13 } }
-        : // Windows and Linux draw the application menu as a bar under the title bar. It stays set, so
-          // its shortcuts work, and the Alt key shows it.
-          { autoHideMenuBar: true }),
+        : {}),
       webPreferences: {
         preload: join(__dirname, "../preload/index.cjs"),
         contextIsolation: true,
@@ -184,6 +210,7 @@ export function createMainWindowController({
         webSecurity: true,
       },
     });
+    hideMenuBar(window);
     followWindowGlass(window, MAIN_WINDOW_DARK_BACKGROUND);
 
     window.once("ready-to-show", () => {
@@ -276,7 +303,7 @@ export function createMainWindowController({
       icon: appIconPath,
       ...(process.platform === "darwin"
         ? { titleBarStyle: "hidden" as const, trafficLightPosition: { x: 12, y: 13 } }
-        : { autoHideMenuBar: true }),
+        : {}),
       webPreferences: {
         preload: join(__dirname, "../preload/index.cjs"),
         contextIsolation: true,
@@ -286,6 +313,7 @@ export function createMainWindowController({
         webSecurity: true,
       },
     });
+    hideMenuBar(window);
     followWindowGlass(window, MAIN_WINDOW_DARK_BACKGROUND);
     chatWindows.set(key, { target: { serverId: target.serverId, agentId: target.agentId }, window });
     window.once("ready-to-show", () => window.show());
@@ -380,15 +408,20 @@ function attachAppInput(
       window.webContents.toggleDevTools();
       return;
     }
+    // A focused frame, such as the remote desktop viewer, gets the select-all key and the size keys
+    // that the View menu also has. The viewer sends them to the remote computer and stops the menu
+    // items with the same keys (#3921). No menu item has Shift+= or "+", so these stay here.
+    const frameFocused = Boolean(window.webContents.focusedFrame?.parent);
     const sizeStep = interfaceSizeShortcut(input, process.platform === "darwin");
     const interfaceSize = getServices()?.interfaceSize;
-    if (sizeStep && interfaceSize) {
+    const sizeKeyInMenu = !input.shift && input.key !== "+";
+    if (!(frameFocused && sizeKeyInMenu) && sizeStep && interfaceSize) {
       // This also stops the View menu item with the same key, which would step the size again.
       event.preventDefault();
       Effect.runFork(interfaceSize.step(sizeStep));
       return;
     }
-    if (isSelectAllShortcut(input)) {
+    if (!frameFocused && isSelectAllShortcut(input)) {
       event.preventDefault();
       void window.webContents.executeJavaScript(
         `(() => {
@@ -437,25 +470,44 @@ function attachAppInput(
       return;
     }
     // A chat message opens its own menu, but leaves selected text and links to this one
-    // (`keepNativeMenu` in `ChatMessageRow`). The native edit menu covers copy, select-all and
+    // (`keepNativeMenu` in `ChatMessageRow`). The native edit menu covers editing, spelling and
     // link copying; anything else keeps no menu.
     const items = chatContextMenuItems({
       selectionText: params.selectionText,
       isEditable: params.isEditable,
       linkURL: params.linkURL,
+      misspelledWord: params.misspelledWord,
+      dictionarySuggestions: params.dictionarySuggestions,
+      editFlags: params.editFlags,
+      pasteAndMatchStyle: process.platform === "darwin",
     });
     if (items.length === 0) return;
     event.preventDefault();
+    const t = getTranslate();
     Menu.buildFromTemplate(
       items.map((item) => {
-        if (item === "separator") return { type: "separator" } as const;
-        if (item === "copy-link")
+        if (item.kind === "separator") return { type: "separator" } as const;
+        if (item.kind === "copy-link")
           return {
-            label: getTranslate()("menu.copyLink"),
+            label: t("menu.copyLink"),
             click: () => clipboard.writeText(params.linkURL),
           };
-        if (item === "copy") return { role: "copy" } as const;
-        return { role: "selectAll" } as const;
+        if (item.kind === "spelling")
+          return {
+            label: item.suggestion,
+            click: () => {
+              if (!window.isDestroyed()) window.webContents.replaceMisspelling(item.suggestion);
+            },
+          };
+        const action = CHAT_EDIT_ACTIONS[item.action];
+        return {
+          label: t(action.label),
+          ...(action.accelerator ? { accelerator: action.accelerator, registerAccelerator: false } : {}),
+          enabled: item.enabled,
+          click: () => {
+            if (!window.isDestroyed()) action.run(window.webContents);
+          },
+        };
       }),
     ).popup({ window });
   });
@@ -715,7 +767,21 @@ export function sendComputerUseHighlightPlacement(
   sendToRenderer(window, IPC_ENDPOINTS.computerUse.highlightPlacement, placement);
 }
 
+/** Set by `hideWindowsForQuit` and never cleared: the process ends after it. */
+let windowsHiddenForQuit = false;
+
+/**
+ * The renderer keeps reading while the services stop, and a read that the closing services fail
+ * must not show its error to the user (#3166). The Dock, the tray, a deep link or a notification
+ * then does not show the window again.
+ */
+export function hideWindowsForQuit(): void {
+  windowsHiddenForQuit = true;
+  for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.hide();
+}
+
 export function showMainWindow(window: BrowserWindow): void {
+  if (windowsHiddenForQuit) return;
   presentMainWindow(window, process.platform, () => app.show());
 }
 
@@ -748,6 +814,17 @@ function zoomFocusedContents(interfaceSize: InterfaceSizeService, step: Interfac
 }
 
 /**
+ * Windows and Linux draw the application menu as a bar under the title bar. The menu stays set, so
+ * its shortcuts work, but the bar is never shown. With `autoHideMenuBar`, a single Alt release
+ * showed the bar above the page and gave it focus, so the composer moved and lost its caret. A
+ * keyboard layout switch with Alt+Shift did the same. Electron attaches the menu in the window
+ * constructor, so the bar exists here, and a later `Menu.setApplicationMenu` does not show it again.
+ */
+function hideMenuBar(window: BrowserWindow): void {
+  if (process.platform !== "darwin") window.setMenuBarVisibility(false);
+}
+
+/**
  * The native application menu.
  *
  * Electron gives no way to relabel a built-in role, so the roles below stay in the system language
@@ -764,6 +841,7 @@ export function configureApplicationMenu(
   updater: UpdateService,
   interfaceSize: InterfaceSizeService,
   translate: AppTranslate,
+  getMainWindow: () => BrowserWindow | null,
 ): void {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
@@ -780,7 +858,15 @@ export function configureApplicationMenu(
           { type: "separator" },
           {
             label: translate("menu.checkForUpdates"),
-            click: () => {
+            click: (_item, focusedWindow) => {
+              // On macOS a closed main window only hides and the menu stays, so show it again: the
+              // check and its result are visible only in Settings.
+              const focused = focusedWindow ?? BrowserWindow.getFocusedWindow();
+              const target = focused instanceof BrowserWindow ? focused : getMainWindow();
+              if (target && !target.isDestroyed()) {
+                if (target !== focused) showMainWindow(target);
+                sendToRenderer(target, IPC_ENDPOINTS.app.openUpdateSettings);
+              }
               Effect.runFork(updater.checkForUpdates());
             },
           },

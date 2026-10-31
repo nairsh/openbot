@@ -59,6 +59,8 @@ export const messages = {
   "app.rail.marketplace": "マーケットプレイス",
   "app.rail.settings": "設定",
   "app.rail.settingsNotice": "設定。{notice}",
+  "app.rail.more": "その他",
+  "app.rail.pinPage": "{name}をバーに固定",
   "app.page.serverFallback": "サーバー",
   "app.help.label": "ヘルプ",
   "app.help.whatsNew": "新機能",

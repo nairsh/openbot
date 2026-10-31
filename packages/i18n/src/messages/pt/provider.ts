@@ -31,7 +31,7 @@ export const messages = {
   "provider.status.checking": "Verificando",
   "provider.status.off": "Desligado",
   "provider.gemini.hostSignIn":
-    "Para conectar o Gemini, abra o OpenBot no computador anfitrião e selecione Conectar em Configurações > Provedores. O login do Google precisa de um navegador nesse computador anfitrião. Login remoto não é suportado.",
+    "Para conectar o Gemini, abra o OpenBot no computador anfitrião e selecione Conectar em Configurações do servidor > Provedores. O login do Google precisa de um navegador nesse computador anfitrião. Login remoto não é suportado.",
   "provider.key.free": "Grátis",
   "provider.action.connect": "Conectar",
   "provider.action.reconnect": "Reconectar",
@@ -143,6 +143,14 @@ export const messages = {
   "provider.inceptionKey.description":
     "Salve uma chave de API da Inception neste computador para usar os modelos Mercury. O OpenBot os executa na CLI do Pi que ele baixa.",
   "provider.inceptionKey.label": "Chave de API da Inception",
+  "provider.deepseekKey.title": "Chave de API da DeepSeek",
+  "provider.deepseekKey.description":
+    "Salve uma chave de API da DeepSeek neste computador para usar os modelos da DeepSeek. O OpenBot os executa na CLI do Pi que ele baixa.",
+  "provider.deepseekKey.label": "Chave de API da DeepSeek",
+  "provider.openrouterKey.title": "Chave de API do OpenRouter",
+  "provider.openrouterKey.description":
+    "Salve uma chave de API do OpenRouter neste computador para usar os modelos do OpenRouter. O OpenBot os executa na CLI do Pi que ele baixa.",
+  "provider.openrouterKey.label": "Chave de API do OpenRouter",
   "provider.openCodeKey.title": "Entrar no OpenCode Go",
   "provider.openCodeKey.description":
     "Os modelos gratuitos não exigem uma conta. Uma chave libera os modelos pagos do Go.",
@@ -170,6 +178,7 @@ export const messages = {
   "provider.account.cancelSignIn": "Cancelar entrada",
   "provider.account.finishSignIn": "Conclua a entrada no navegador.",
   "provider.account.remove": "Remover conta",
+  "provider.account.disconnect": "Desconectar",
   "provider.account.actionFailed": "Não foi possível alterar a conta de {name}.",
   "provider.account.resetUsage": "Redefinir uso",
   "provider.account.resetUsageTitle": "Redefinir o uso de {name}?",
@@ -184,6 +193,12 @@ export const messages = {
   "provider.account.resetUsageNoCredit": "{name} não tem mais créditos de redefinição de uso.",
   "provider.account.resetUsageAlreadyRedeemed": "Este crédito de redefinição de {name} já foi usado.",
   "provider.account.resetUsageFailed": "Não foi possível redefinir o uso de {name}.",
+  "provider.settings.disconnectTitle": "Desconectar {name}?",
+  "provider.settings.disconnectOthers":
+    "As outras contas do {provider} esperam até você conectar o {provider} de novo.",
+  "provider.settings.disconnectLocal":
+    "O OpenBot sai do {provider} neste computador. A CLI do {provider} no seu terminal também sai.",
+  "provider.settings.disconnectHost": "O OpenBot sai do {provider} no servidor.",
   "provider.settings.cache": "Cache",
   "provider.settings.promptCache": "Cache de prompts",
   "provider.settings.promptCacheDescription":
@@ -191,4 +206,17 @@ export const messages = {
   "provider.settings.promptCacheHour": "1 hora",
   "provider.settings.promptCacheDefault": "Padrão do Claude Code",
   "provider.settings.promptCacheLoadFailed": "Não foi possível carregar a duração do cache de prompts deste servidor.",
+  "provider.settings.download": "Download",
+  "provider.settings.downloadedCli": "CLI do {name}",
+  "provider.settings.downloadDetail": {
+    one: "{version} · 1 versão · {size}",
+    other: "{version} · {count} versões · {size}",
+  },
+  "provider.settings.downloadVersions": { one: "1 versão · {size}", other: "{count} versões · {size}" },
+  "provider.settings.downloadAgain": "Quando você ativar {name}, o OpenBot baixa a CLI de novo.",
+  "provider.settings.removeDownloadConfirm": "Remover {size}?",
+  "provider.settings.removeDownloadKeeps": "Contas, logins e agentes continuam.",
+  "provider.settings.removeDownload": "Remover download",
+  "provider.settings.removingDownload": "Removendo…",
+  "provider.settings.removeDownloadFailed": "Não foi possível remover o download.",
 } as const satisfies PartialTranslation<typeof source>;

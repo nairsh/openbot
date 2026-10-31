@@ -24,7 +24,6 @@ import {
   STORY_MCP_SERVERS,
   STORY_PRESENCE,
 } from "../src/preview/fixtures";
-import { storyConnectorRegistry } from "./connector-fixtures";
 import { createSignInHost } from "./mcp-sign-in-host";
 import {
   ServerSettingsStory,
@@ -352,6 +351,8 @@ function storyBrowserProfiles(initial: readonly BrowserProfileSummary[]): Server
     store: {
       state,
       refresh: async () => undefined,
+      // The story is one window, so no other device changes the profiles.
+      follow: () => () => undefined,
       create: async (name) => {
         if (state.profiles?.some((profile) => profile.name.toLowerCase() === name.toLowerCase()))
           throw new Error(sourceText("error.backend.browserProfileNameTaken"));
@@ -520,20 +521,6 @@ export const ContainerReleaseAvailable: Story = {
     />
   ),
 };
-
-/**
- * This computer's connectors: GitHub is connected; Slack, Discord and Telegram are not set up. Open
- * one to see the header read `Connectors › GitHub`; the parent crumb goes back to the list.
- */
-export const Connectors: Story = {
-  args: { initialSection: "connectors" },
-  render: (args) => <ConnectorsStory settings={args} />,
-};
-
-function ConnectorsStory(props: { settings: ServerSettingsModalProps }) {
-  const connectors = storyConnectorRegistry(localServer);
-  return <ServerSettingsStory settings={{ ...props.settings, connectors }} />;
-}
 
 /**
  * The roles of one story server: Research is closed to Everyone, Legal chats with it, and Finance

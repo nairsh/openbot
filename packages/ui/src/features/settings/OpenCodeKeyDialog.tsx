@@ -7,6 +7,7 @@
  * could show a key would carry it into every screenshot and crash report that follows.
  */
 
+import { isKeyOnlyProvider } from "@openbot/contracts/agent-providers";
 import type {
   AgentProviderId,
   ExternalDestination,
@@ -29,7 +30,10 @@ import {
 import { createSignal, onSettled, Show } from "solid-js";
 import { useText } from "../../text";
 
-/** The text of each provider whose key this dialog saves. Muse, Gemini and Claude also sign in without a key. */
+/**
+ * The text of each provider whose key this dialog saves. Muse, Gemini, Claude and Codex also sign in
+ * without a key. Codex keeps its key in its own login, not in OpenBot's store.
+ */
 const KEY_TEXT = {
   opencode: {
     name: "OpenCode Go",
@@ -55,11 +59,29 @@ const KEY_TEXT = {
     description: "provider.claudeKey.description",
     label: "provider.claudeKey.label",
   },
+  codex: {
+    name: "OpenAI",
+    title: "provider.codexKey.title",
+    description: "provider.codexKey.description",
+    label: "provider.codexKey.label",
+  },
   inception: {
     name: "Inception",
     title: "provider.inceptionKey.title",
     description: "provider.inceptionKey.description",
     label: "provider.inceptionKey.label",
+  },
+  deepseek: {
+    name: "DeepSeek",
+    title: "provider.deepseekKey.title",
+    description: "provider.deepseekKey.description",
+    label: "provider.deepseekKey.label",
+  },
+  openrouter: {
+    name: "OpenRouter",
+    title: "provider.openrouterKey.title",
+    description: "provider.openrouterKey.description",
+    label: "provider.openrouterKey.label",
   },
 } as const satisfies Record<string, { name: string; title: AppTextKey; description: AppTextKey; label: AppTextKey }>;
 
@@ -113,6 +135,11 @@ export function OpenCodeKeyDialog(props: OpenCodeKeyDialogProps) {
   });
 
   async function readState(): Promise<void> {
+    // Codex keeps its key in its own login, so OpenBot's store has no state for it. Disconnect removes it.
+    if (provider() === "codex") {
+      setPhase("idle");
+      return;
+    }
     setPhase("loading");
     try {
       setStored((await props.api.getProviderApiKeyState(provider())).status);
@@ -229,14 +256,16 @@ export function OpenCodeKeyDialog(props: OpenCodeKeyDialogProps) {
                   {t("common.cancel")}
                 </Button>
                 {/* Gemini's and Claude's reconnect is an account sign-in, which a saved key
-                    overrides. The row's Connect offers it once the key is removed. Inception has
-                    nothing to reconnect with until a key is saved. */}
+                    overrides. The row's Connect offers it once the key is removed. Codex's is the
+                    ChatGPT sign-in, which replaces the key. A key-only provider, such as Inception,
+                    has nothing to reconnect with until a key is saved. */}
                 <Show
                   when={
                     props.onReconnect &&
                     provider() !== "antigravity" &&
                     provider() !== "claude" &&
-                    !(provider() === "inception" && stored() === "missing")
+                    provider() !== "codex" &&
+                    !(isKeyOnlyProvider(provider()) && stored() === "missing")
                   }
                 >
                   <Button type="button" variant="ghost" disabled={busy()} onClick={() => void reconnect()}>

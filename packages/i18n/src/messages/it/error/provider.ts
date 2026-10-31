@@ -6,6 +6,10 @@ export const messages = {
     "OpenBot non è riuscito a registrare i server MCP nella configurazione di Codex. Controlla che il config.toml di Codex sia valido e scrivibile, poi riavvia OpenBot.",
   "error.provider.computerUseConfig":
     "OpenBot non è riuscito a registrare il Controllo del computer nella configurazione di Codex. Controlla che il config.toml di Codex sia valido e scrivibile, poi riavvia OpenBot. Puoi disattivare il Controllo del computer nelle impostazioni dell'agente per continuare senza.",
+  "error.provider.codexUnresponsive": "Codex ha smesso di rispondere, quindi OpenBot ha terminato il suo processo.",
+  "error.provider.acpUnresponsive": "{provider} non ha risposto in tempo, quindi OpenBot ha terminato il suo processo.",
+  "error.provider.acpMcpNotLoaded":
+    "{provider} non ha caricato gli strumenti di OpenBot, quindi questo agente non può usarli né contattare i suoi compagni. Una policy del team {provider} può bloccare i server MCP locali. Chiedi all’amministratore del team di consentirli, poi riprova.",
   "error.provider.endpointsReadOnly":
     "Gli endpoint salvati sono stati scritti da una versione più recente di OpenBot, oppure il file non è leggibile. Aggiorna OpenBot per modificarli.",
   "error.provider.endpointNoSecureStorage":
@@ -56,6 +60,10 @@ export const messages = {
     "OpenBot non è riuscito a raggiungere le fonti delle release dei provider. Controlla la connessione e riprova.",
   "error.provider.runtimesUnsupported": "I runtime dei provider non sono disponibili su questa piattaforma.",
   "error.provider.closing": "OpenBot si sta chiudendo.",
+  "error.provider.removeWhileOn": "Disattiva il provider prima di rimuoverne il download.",
+  "error.provider.removeWhileDownloading": "Attendi la fine del download, poi rimuovilo.",
+  "error.provider.removeIncomplete": "Un programma usa alcuni file di questa CLI. Chiudilo e riprova.",
+  "error.provider.removeDownloadsFailed": "Impossibile rimuovere i download della CLI di {providers}.",
   "error.provider.cliOverride": "Rimuovi l'override esplicito del percorso della CLI prima di aggiornare da OpenBot.",
   "error.provider.runtimeUpdateIncomplete": "L'aggiornamento del runtime non è stato completato.",
   "error.provider.downloadHttp": "Download del runtime non riuscito con HTTP {status}.",
@@ -93,11 +101,14 @@ export const messages = {
   "error.provider.modelsTooMany": "Ci sono troppi modelli.",
   "error.provider.modelIdCharacter": "L'ID di un modello contiene un carattere non utilizzabile.",
   "error.provider.modelIdDuplicate": "Due modelli hanno lo stesso ID.",
+  "error.provider.contextWindowInvalid":
+    "La finestra di contesto di un modello deve essere un numero intero di token tra {min} e {max}.",
   "error.provider.headersTooMany": "Ci sono troppi header.",
   "error.provider.headerNameCharacter": "Il nome di un header contiene un carattere non consentito da HTTP.",
   "error.provider.headerNameTooLong": "Il nome di un header è troppo lungo.",
   "error.provider.headerNameDuplicate": "Due header hanno lo stesso nome.",
   "error.provider.headerValueInvalid": "Il valore di un header manca o è troppo lungo.",
+  "error.provider.headerValueMissing": "Inserisci un valore per l'header {name}.",
   "error.provider.apiKeyTooLong": "La chiave API è troppo lunga.",
   "error.provider.localOnly": "I provider si possono modificare solo sul computer che esegue gli agenti.",
   "error.provider.keyRequired": "Serve una chiave del provider.",
@@ -179,6 +190,7 @@ export const messages = {
   "error.provider.cliActivateFailed": "OpenBot non è riuscito ad attivare la CLI gestita.",
   "error.provider.cliBusyReconnect":
     "La CLI di {provider} sta lavorando a un turno. Attendi che finisca, poi riconnetti.",
+  "error.provider.cliBusySignOut": "La CLI {provider} sta elaborando un turno. Attendi che finisca, poi disconnetti.",
   "error.provider.opencodeCredentialsRejected":
     "Il provider del modello ha rifiutato la chiave API. Correggi la chiave di OpenCode in Impostazioni, oppure la chiave del provider con `opencode auth login`. Poi riprova o scegli un altro modello.\n{detail}",
   "error.provider.opencodeAuthRequired":
@@ -263,6 +275,8 @@ export const messages = {
   "error.provider.acpSignInStopped": "L'accesso si è interrotto prima di essere completato.",
   "error.provider.geminiBrowserUnavailable":
     "Gemini non è riuscito ad aprire la pagina di accesso. Installa un browser e xdg-utils, poi connettiti da una sessione desktop su questo host. Un server senza desktop non può completare questo accesso.",
+  "error.provider.geminiBrowserOpenFailed":
+    "Gemini non è riuscito ad aprire la pagina di accesso nel browser. Controlla il browser predefinito, poi connettiti di nuovo.",
   "error.provider.acpSignInFailed": "L'accesso non è stato completato.",
   "error.provider.acpSignInFailedReason": "L'accesso non è stato completato: {reason}",
   "error.provider.acpSignInMethodMissing":
@@ -270,6 +284,10 @@ export const messages = {
   "error.provider.httpsSignInLinkOnly": "Solo i link di accesso HTTPS possono aprirsi nel browser.",
   "error.provider.geminiKeyRefused":
     "Gemini ha rifiutato la chiave API salvata. Sostituisci o rimuovi la chiave nelle Impostazioni, poi connettiti di nuovo.",
+  "error.provider.keyProviderRefused":
+    "{provider} ha rifiutato la chiave API salvata. Sostituisci o rimuovi la chiave nelle Impostazioni, poi riprova.",
+  "error.provider.keyProviderNoBalance":
+    "L’account {provider} della chiave API salvata non ha credito. Aggiungi credito all’account, poi riprova.",
   "error.provider.messageTooLarge":
     "OpenBot ha fermato {provider} perché ha inviato un messaggio più grande di {limit} MB.",
   "error.provider.customAgentIdInvalid":
@@ -309,6 +327,7 @@ export const messages = {
   "error.provider.accountsUnsupported": "{provider} può avere un solo account.",
   "error.provider.accountNeedsConnection": "Connetti {provider} prima di aggiungere un altro account.",
   "error.provider.usageResetUnsupported": "{provider} non può azzerare i limiti di utilizzo.",
+  "error.provider.signOutUnsupported": "OpenBot non può disconnettere l'accesso a {provider}.",
   "error.provider.usageResetNotConnected": "Accedi di nuovo a questo account {provider} prima di azzerarne l'utilizzo.",
   "error.provider.accountLimit": "{provider} può avere al massimo {limit} account.",
   "error.provider.accountNotFound": "Questo account {provider} non è su questo computer. Aggiorna e riprova.",
@@ -374,6 +393,8 @@ export const messages = {
     "L'autenticazione di Muse non è verificata. Connettiti sul computer host, oppure imposta una chiave API di Meta.",
   "error.provider.museSignIn": "Per continuare, accedi a Muse sul computer host.",
   "error.provider.inceptionSignIn": "Per continuare, aggiungi una chiave API di Inception.",
+  "error.provider.deepseekSignIn": "Aggiungi una chiave API di DeepSeek per continuare.",
+  "error.provider.openrouterSignIn": "Aggiungi una chiave API di OpenRouter per continuare.",
   "error.provider.terminalLoginFailed":
     "Impossibile aprire il terminale di accesso. Apri la CLI del provider su questo host e accedi da lì, poi aggiorna i provider.",
   "error.provider.nativeArchiveInvalid": "Il download del provider non contiene un'installazione valida.",

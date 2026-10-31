@@ -4,6 +4,7 @@ import type { messages as source } from "../../en/status/agent";
 export const messages = {
   "status.agent.claudeWriteOutside": "写入 {path}，位置在助手工作区、共享文件夹和临时文件夹之外。",
   "status.agent.contextCleared": "上下文已清空，将从这里开始新对话。",
+  "status.agent.instructionsChanged": "更新了它的指令",
   "status.agent.modelSwitchedForLimit": "额度已用完，已切换到 {model}。",
   "status.agent.modelReturnedAfterLimit": "额度已恢复，已切回 {model}。",
   "status.agent.modelSwitchedForError": "服务商出错，已切换到 {model}。",
@@ -25,12 +26,20 @@ export const messages = {
   "status.agent.vaultCardFillFrames": "银行卡字段位于来自 {origins} 的框架中。",
   "status.agent.screenCaptureProgress": "正在请求截屏…",
   "status.agent.screenCaptureReviewing": "正在查看截屏…",
+  "status.agent.browserOpening": "正在打开网页…",
+  "status.agent.browserReading": "正在读取网页…",
+  "status.agent.browserClicking": "正在点击网页…",
+  "status.agent.browserTyping": "正在网页中输入…",
+  "status.agent.browserActing": "正在使用网页…",
+  "status.agent.browserReviewing": "正在查看网页…",
   "status.agent.memoriesSearching": "正在搜索记忆…",
   "status.agent.memoriesSearched": { other: "已搜索记忆：找到 {count} 条" },
   "status.agent.memoriesUpdating": "正在更新记忆…",
   "status.agent.skillUsing": "正在使用技能 {name}…",
   "status.agent.skillReading": "正在读取技能…",
   "status.agent.memoryChanges": "记忆：已保存 {saved} 条，已更新 {updated} 条，已忘记 {forgotten} 条。",
+  "status.agent.memoryChangesWithConflicts":
+    "记忆：已保存 {saved} 条，已更新 {updated} 条，已忘记 {forgotten} 条，{notChanged} 条因另一个话题先更改而未更改。",
   "status.agent.mcpServerAdd":
     "添加 MCP 服务器 {name}：{target}。该服务器上的每个助手都能使用它的工具。OpenBot 会连接它进行测试。",
   "status.agent.mcpServerChange":
@@ -42,4 +51,6 @@ export const messages = {
   "status.agent.vaultAdded": "已保存到保险库：{name}",
   "status.agent.vaultUpdated": "已在保险库中修改：{name}",
   "status.agent.vaultDeleted": "已从保险库删除：{name}",
+  "status.agent.planContinues": "计划还有未完成的步骤。助手继续工作（{current}/{limit}）。",
+  "status.agent.branchTitle": "分支聊天",
 } as const satisfies PartialTranslation<typeof source>;

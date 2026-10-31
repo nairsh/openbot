@@ -1,5 +1,11 @@
-import { type ClientAgentSummary, LOCAL_SERVER_ID, type UpdateAgentInput } from "@openbot/contracts/ipc";
+import {
+  type BackgroundProcess,
+  type ClientAgentSummary,
+  LOCAL_SERVER_ID,
+  type UpdateAgentInput,
+} from "@openbot/contracts/ipc";
 import type { GeneralSettingsValue } from "@openbot/ui/features/settings/app-settings";
+import { BackgroundProcessesSection } from "@openbot/ui/features/settings/BackgroundProcessesSection";
 import {
   type AgentDefaultChoice,
   type AgentDefaultSetting,
@@ -10,7 +16,7 @@ import {
 } from "@openbot/ui/features/settings/SettingsAgentsTab";
 import { currentText, useText } from "@openbot/ui/text";
 import type { JSX } from "@solidjs/web";
-import { createEffect, createStore } from "solid-js";
+import { createEffect, createStore, Show } from "solid-js";
 import { actionToast } from "../../action-toast";
 import { settingsPort } from "./settings-port";
 
@@ -18,6 +24,10 @@ interface AgentsSectionState {
   agents: AgentDefaultsAgent[];
   loadFailed: boolean;
   setting: AgentDefaultSetting | null;
+  /** Null until the first answer, and where this computer cannot list them (Windows). */
+  processes: BackgroundProcess[] | null;
+  processesFailed: boolean;
+  stopping: string[];
 }
 
 export interface SettingsAgentsSection {
@@ -55,9 +65,17 @@ export function createSettingsAgentsSection(options: {
   suggestionModels: () => ComposerSuggestionModels | undefined;
 }): SettingsAgentsSection {
   const { t } = useText();
-  const [state, setState] = createStore<AgentsSectionState>({ agents: [], loadFailed: false, setting: null });
+  const [state, setState] = createStore<AgentsSectionState>({
+    agents: [],
+    loadFailed: false,
+    setting: null,
+    processes: null,
+    processesFailed: false,
+    stopping: [],
+  });
   /** Bumped for each read, so an answer of an earlier read is dropped. */
   let generation = 0;
+  let processGeneration = 0;
 
   function applyAgent(agent: ClientAgentSummary): void {
     setState((draft) => {
@@ -85,6 +103,47 @@ export function createSettingsAgentsSection(options: {
       });
   }
 
+  function loadProcesses(): void {
+    const current = ++processGeneration;
+    settingsPort()
+      .backgroundProcesses.list()
+      .then((processes) => {
+        if (current !== processGeneration) return;
+        setState((draft) => {
+          draft.processes = processes;
+          draft.processesFailed = false;
+        });
+      })
+      .catch(() => {
+        if (current !== processGeneration) return;
+        setState((draft) => {
+          draft.processes = [];
+          draft.processesFailed = true;
+        });
+      });
+  }
+
+  function stopProcess(id: string): void {
+    setState((draft) => {
+      draft.stopping.push(id);
+    });
+    settingsPort()
+      .backgroundProcesses.stop(id)
+      .catch((error: unknown) => {
+        const { t, errorMessage } = currentText();
+        actionToast.error(errorMessage(error, t("settings.backgroundProcesses.stopFailed")), {
+          id: "settings-background-process-stop-failed",
+          report: { operation: "settings", source: "action", cause_code: "unknown" },
+        });
+      })
+      .finally(() => {
+        setState((draft) => {
+          draft.stopping = draft.stopping.filter((item) => item !== id);
+        });
+        loadProcesses();
+      });
+  }
+
   function showList(): void {
     setState((draft) => {
       draft.setting = null;
@@ -92,8 +151,10 @@ export function createSettingsAgentsSection(options: {
   }
 
   createEffect(options.visible, (visible) => {
-    if (visible) load();
-    else showList();
+    if (visible) {
+      load();
+      loadProcesses();
+    } else showList();
   });
 
   function changeDefault(setting: AgentDefaultSetting, on: boolean): void {
@@ -119,26 +180,39 @@ export function createSettingsAgentsSection(options: {
 
   return {
     Panel: (props) => (
-      <SettingsAgentsTab
-        agents={state.agents}
-        loadFailed={state.loadFailed}
-        defaults={options.value().agentDefaults}
-        steer={options.value().busyMessageMode === "steer"}
-        setting={state.setting}
-        menuMount={props.menuMount}
-        onOpen={(setting) =>
-          setState((draft) => {
-            draft.setting = setting;
-          })
-        }
-        onDefaultChange={changeDefault}
-        onChoiceChange={changeChoice}
-        suggestions={options.value().composerSuggestions}
-        suggestionModels={options.suggestionModels()}
-        onSuggestionsChange={(composerSuggestions) =>
-          options.onValueChange({ ...options.value(), composerSuggestions })
-        }
-      />
+      <>
+        <SettingsAgentsTab
+          agents={state.agents}
+          loadFailed={state.loadFailed}
+          defaults={options.value().agentDefaults}
+          steer={options.value().busyMessageMode === "steer"}
+          setting={state.setting}
+          menuMount={props.menuMount}
+          onOpen={(setting) =>
+            setState((draft) => {
+              draft.setting = setting;
+            })
+          }
+          onDefaultChange={changeDefault}
+          onChoiceChange={changeChoice}
+          suggestions={options.value().composerSuggestions}
+          suggestionModels={options.suggestionModels()}
+          onSuggestionsChange={(composerSuggestions) =>
+            options.onValueChange({ ...options.value(), composerSuggestions })
+          }
+        />
+        <Show when={!state.setting && state.processes}>
+          {(processes) => (
+            <BackgroundProcessesSection
+              processes={processes()}
+              loadFailed={state.processesFailed}
+              agents={state.agents}
+              stopping={state.stopping}
+              onStop={stopProcess}
+            />
+          )}
+        </Show>
+      </>
     ),
     crumb() {
       const setting = state.setting;

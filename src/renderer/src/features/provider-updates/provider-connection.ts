@@ -74,8 +74,8 @@ interface ProviderAccountSignInTarget extends Omit<ProviderHostSignInTarget, "st
 }
 
 /**
- * How a joined server relays the sign-in of one account of a provider (`provider-account-relay-v1`),
- * for the `providers` it names. The page opens as for `ProviderRelayTarget`.
+ * How a joined server relays the sign-in of one account of a provider (`provider-account-relay-v1`
+ * or `-v2`), for the `providers` it names. The page opens as for `ProviderRelayTarget`.
  */
 interface ProviderAccountRelayTarget extends Omit<ProviderRelayTarget, "start"> {
   providers: readonly AgentProviderId[];
@@ -339,7 +339,9 @@ export function createProviderConnection(options: ProviderConnectionOptions): Pr
         status.page?.listening && codeLoginAccount === undefined && route(provider).alternative === "code"
           ? { ...status.page, pasteable: false }
           : status.page;
-      if (page && !samePage(shown, page)) setCodeLoginState({ phase: "relay", hostName: relay.hostName, page });
+      // The page went away before the result: the callback came back, and the host completes the sign-in.
+      if (!page && shown) setCodeLoginState({ phase: "verifying" });
+      else if (page && !samePage(shown, page)) setCodeLoginState({ phase: "relay", hostName: relay.hostName, page });
       await new Promise((resolve) => window.setTimeout(resolve, HOST_SIGN_IN_POLL_MS));
     }
   }

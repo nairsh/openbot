@@ -57,6 +57,8 @@ export const messages = {
   "app.rail.marketplace": "마켓플레이스",
   "app.rail.settings": "설정",
   "app.rail.settingsNotice": "설정. {notice}",
+  "app.rail.more": "더 보기",
+  "app.rail.pinPage": "{name} 바에 고정",
   "app.page.serverFallback": "서버",
   "app.help.label": "도움말",
   "app.help.whatsNew": "새로운 기능",

@@ -1,15 +1,11 @@
-import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import {
   type AgentEvent,
   type AgentSummary,
   agentProviderDescriptor,
   type BrowserControlState,
   type BrowserTab,
-  CONVERSATION_MEMORY_CHANGE_LIMIT,
-  CONVERSATION_MEMORY_CHANGES_ITEM_TYPE,
   CONVERSATION_PLAN_ITEM_TYPE,
   CONVERSATION_SUBAGENTS_ITEM_TYPE,
-  type ConversationMemoryChange,
   type ConversationMessage,
   type ConversationPlan,
   type ConversationSnapshot,
@@ -18,9 +14,9 @@ import {
   clampConversationSubagents,
   conversationPlanText,
   conversationSubagentsText,
-  countConversationMemoryChanges,
   isAgentContextCategories,
   latestTurnAnswer,
+  PLAN_CONTINUATION_ITEM_TYPE,
 } from "@openbot/contracts/ipc";
 import { type DynamicRecord, isString } from "@openbot/contracts/runtime-values";
 import { sourceText } from "@openbot/i18n/source";
@@ -33,7 +29,7 @@ import type { BrowserOperationError } from "../browser-effects";
 import type { BrowserDynamicToolHooks } from "../browser-tool-actions";
 import { newAssistantMessage, normalizeCompletionStatus } from "../conversation-snapshots";
 import { causeHelpers, reportOriginalFailure } from "../effect-boundary";
-import type { DeliveryContext, MailboxStore } from "../mailbox-store";
+import type { DeliveryContext, MailboxStore, UsageLimitContinuation } from "../mailbox-store";
 import {
   type AppServerNotification,
   type DynamicToolCallParams,
@@ -46,6 +42,7 @@ import {
   type ThreadItem,
 } from "../protocol";
 import type { AgentMemories } from "./agent-memories";
+import { answerFilePaths } from "./answer-file-paths";
 import type { AttentionBrowserHost, AttentionRegistry } from "./attention-registry";
 import type { BrowserUploadTarget } from "./browser-uploads";
 import { PROMPT_SUGGESTION_METHOD } from "./composer-suggestions";
@@ -53,9 +50,13 @@ import { type ContextCompaction, compactsOnRequest } from "./context-compaction"
 import type { ConversationRuntime } from "./conversation-runtime";
 import type { DeltaBuffer } from "./delta-buffer";
 import type { FailureContext, FailureSignal } from "./failure-signal";
+import { readCapturedSteps } from "./handoff-tool-steps";
 import type { ImageGenRuntime } from "./image-gen-runtime";
 import { markIncompleteImageGeneration } from "./image-generation";
+import { type InstructionsChanges, instructionsChangeMessage } from "./instructions-changes";
 import type { MailboxSync } from "./mailbox-sync";
+import { memoryChangesMessage } from "./memory-changes-message";
+import type { PlanContinuation } from "./plan-continuation";
 import { PLAN_UPDATED_METHOD, planFromNotification } from "./plan-updates";
 import { isBalanceDiagnostic, isPlanLimitDiagnostic, isUsageLimitDiagnostic } from "./provider-diagnostics";
 import type { ProviderRuntime } from "./provider-runtime";
@@ -136,6 +137,11 @@ export interface TurnHooks {
   emitError(code: string, error: unknown, agentId?: string, context?: FailureContext): void;
   emitRuntimeSnapshot(): void;
   scheduleDrain(agentId: string): void;
+  /**
+   * Takes a message from another agent into the recipient's running chat turn when the recipient's
+   * busy-message mode is "steer". Otherwise the message waits in the queue.
+   */
+  steerAgentMessage(recipientAgentId: string, deliveryId: string): Effect.Effect<void>;
   /** Closes a provider session the provider refuses; the next turn opens a new one with the transcript. */
   dropRefusedSession(agentId: string, externalThreadId: string): Effect.Effect<void, TurnOperationFailed>;
   listAgents(): AgentSummary[];
@@ -150,7 +156,7 @@ export interface TurnHooks {
    * Gives a channel task back to its channel's queue after a spent plan refused its turn. False
    * when the delivery is not an active channel assignment that can go back.
    */
-  requeueChannelDelivery(deliveryId: string): Effect.Effect<boolean>;
+  requeueChannelDelivery(deliveryId: string, continueWork?: boolean): Effect.Effect<boolean>;
   /**
    * Whether this delivery is a routine run that may end without a message: a scheduled run whose
    * agent answers only the no-update marker or calls the no-update tool.
@@ -158,6 +164,8 @@ export interface TurnHooks {
   quietRoutineDelivery(deliveryId: string): boolean;
   /** The task whose thread this is, or null for any other thread. */
   taskForThread(threadId: string): string | null;
+  /** Whether this task's thread exists and is not archived. */
+  taskOpen(taskId: string): boolean;
   /** The error of a task turn. It shows in the task's panel, not in the agent's own chat. */
   taskFailed(taskId: string, message: string): void;
   /**
@@ -165,12 +173,34 @@ export interface TurnHooks {
    * Null after a restart or for any other delivery.
    */
   takeRoutinePreview(deliveryId: string): { previous: string; shown: string } | null;
+  /**
+   * A turn of the agent's own chat (`sideThreadId` null) or of its side thread ended. `counts` is true
+   * for a completed turn that a person started, and `memoryCommitted` when the agent changed its
+   * memories in it.
+   */
+  conversationTurnEnded(
+    agentId: string,
+    sideThreadId: string | null,
+    counts: boolean,
+    memoryCommitted: boolean,
+  ): Effect.Effect<void>;
+  /** Whether the user stopped this turn, in the agent's own chat (`taskId` null) or in a task. */
+  turnStopped(agentId: string, taskId: string | null, turnId: string): boolean;
+  /** Whether the agent has an open wait for one of these deliveries. */
+  hasOpenWait(agentId: string, deliveryIds: readonly string[]): boolean;
   /** Ends the provider session of a routine run. Nothing for any other session, or a second time. */
   closeRoutineSession(externalThreadId: string): Effect.Effect<void>;
   /** Gives the answer of a routine run in its own session to the session of the agent's chat. */
   routineAnswered(agentId: string, deliveryId: string, answer: string): Effect.Effect<void>;
   /** The provider's own prediction of the user's next message, after a turn of `threadId` (public). */
   promptSuggestion(agentId: string, threadId: string, suggestion: string): void;
+  /** Attaches the files that a finished answer names by path to it. It never fails the turn. */
+  attachAnswerFiles(
+    agentId: string,
+    snapshot: ConversationSnapshot,
+    answer: ConversationSnapshot["messages"][number],
+    paths: string[],
+  ): Effect.Effect<void>;
 }
 
 export interface TurnLifecycleOptions {
@@ -180,12 +210,14 @@ export interface TurnLifecycleOptions {
   conversation: ConversationRuntime;
   providers: ProviderRuntime;
   memories: AgentMemories;
+  instructions: InstructionsChanges;
   attention: AttentionRegistry;
   browser: AgentBrowserHost;
   compaction: ContextCompaction;
   images: ImageGenRuntime;
   deltas: DeltaBuffer;
   usageLimits: UsageLimitGate;
+  planContinuation: PlanContinuation;
   hooks: TurnHooks;
 }
 
@@ -205,12 +237,14 @@ export class TurnLifecycle {
   readonly #conversation: ConversationRuntime;
   readonly #providers: ProviderRuntime;
   readonly #memories: AgentMemories;
+  readonly #instructions: InstructionsChanges;
   readonly #attention: AttentionRegistry;
   readonly #browser: AgentBrowserHost;
   readonly #compaction: ContextCompaction;
   readonly #images: ImageGenRuntime;
   readonly #deltas: DeltaBuffer;
   readonly #usageLimits: UsageLimitGate;
+  readonly #planContinuation: PlanContinuation;
   readonly #hooks: TurnHooks;
   readonly fileHistory = new ThreadFileHistory();
   readonly #failedTurns = new Map<string, string>();
@@ -284,12 +318,14 @@ export class TurnLifecycle {
     this.#conversation = options.conversation;
     this.#providers = options.providers;
     this.#memories = options.memories;
+    this.#instructions = options.instructions;
     this.#attention = options.attention;
     this.#browser = options.browser;
     this.#compaction = options.compaction;
     this.#images = options.images;
     this.#deltas = options.deltas;
     this.#usageLimits = options.usageLimits;
+    this.#planContinuation = options.planContinuation;
     this.#hooks = options.hooks;
   }
 
@@ -383,6 +419,7 @@ export class TurnLifecycle {
       ) {
         // The turn does not end here, so it keeps no trace.
         this.#traces.drop(turnId);
+        this.#instructions.dropTurn(turn.agentId, turnId);
         // The client is gone, so no browser tool of this turn can run. Other agents keep their controls.
         this.#browser.endControl(this.#conversation.publicThreadId(turn.agentId, turn.threadId), turnId);
         // The turn does not end here, so a provider error held for a failover shows now.
@@ -422,6 +459,41 @@ export class TurnLifecycle {
   #taskForThread(agentId: string, externalThreadId: string): string | null {
     const threadId = this.#conversation.publicThreadId(agentId, externalThreadId);
     return this.#conversation.isTaskThread(threadId) ? this.#hooks.taskForThread(threadId) : null;
+  }
+
+  /**
+   * Whether a completed turn may continue its plan: it served only the user's or the agent's own
+   * messages, the user did not stop it, it asked nothing, opened no wait and holds no question,
+   * approval or takeover, and no other message waits in its lane.
+   */
+  #planContinues(
+    agentId: string,
+    taskId: string | null,
+    turnId: string,
+    deliveries: readonly DeliveryContext[],
+    answer: string | undefined,
+  ): boolean {
+    if (deliveries.length === 0 || this.#planContinuation.limit <= 0) return false;
+    if (
+      !deliveries.every(
+        ({ delivery, channelId }) =>
+          channelId === undefined &&
+          (delivery.sender.kind === "user" ||
+            (delivery.sender.kind === "agent" && delivery.sender.agentId === agentId)),
+      )
+    )
+      return false;
+    // A question anywhere in the last line, so Markdown or a closing remark after it does not hide it.
+    if (/[?？]/.test(answer?.trimEnd().split("\n").at(-1) ?? "")) return false;
+    return (
+      !this.#hooks.turnStopped(agentId, taskId, turnId) &&
+      !this.#hooks.hasOpenWait(
+        agentId,
+        deliveries.map(({ delivery }) => delivery.id),
+      ) &&
+      !this.#attention.hasAttentionFor(agentId) &&
+      this.#mailbox.laneQueuedIds(agentId, taskId).length === 0
+    );
   }
 
   /** Shows a provider error that was held for a failover that did not happen, as it shows with no backup. */
@@ -513,6 +585,8 @@ export class TurnLifecycle {
         }
         this.#hooks.emit({ type: "turn-started", agentId, threadId: publicThreadId, turnId, origin });
         this.#conversation.emitConversation(snapshot, "turn.started", { turnId });
+        const workspace = this.#store.list().find((entry) => entry.id === agentId)?.workspacePath;
+        if (workspace) yield* this.#instructions.startTurn(agentId, turnId, workspace);
         return;
       }
       case "item/started":
@@ -878,6 +952,8 @@ export class TurnLifecycle {
       const association = this.#turnAssociations.get(turnId);
       if (association) yield* Deferred.await(association).pipe(Effect.catch(() => Effect.void));
       const memoryChanges = this.#memories.finishTurn(turnId, status).get(agentId) ?? [];
+      const workspace = this.#store.list().find((entry) => entry.id === agentId)?.workspacePath;
+      const instructionsChange = yield* this.#instructions.finishTurn(agentId, turnId, workspace);
       // A refused session is closed below, and a spent plan would refuse the summary turn too, so
       // neither is compacted.
       // A routine run's own session closes after this turn, so it is not compacted either. Nor is a
@@ -904,12 +980,24 @@ export class TurnLifecycle {
         yield* this.#retryRefusedTurn(agentId, threadId, turnId, snapshot, deliveries);
         return;
       }
-      // The plan refused the turn before it did anything that a second run would repeat, so its
-      // messages wait in the queue for the reset. A channel task goes back to its channel's queue
-      // instead: an assignment that waited here would hold its agent until the reset.
-      const repeatable = limited && running !== undefined && !running.acted && deliveries.length > 0;
       const channelTurn = !taskTurn && this.#conversation.isExecutionThread(snapshot.threadId);
-      const requeue = repeatable && !channelTurn;
+      // After work started, only a ready automatic backup continues it. A turn refused before
+      // work still waits for the reset when no backup is ready. A continuation that a backup refused
+      // before work keeps the earlier provider's work.
+      const carriesWork =
+        running !== undefined &&
+        (running.acted || deliveries.some((context) => context.resumeAfterUsageLimit !== undefined));
+      let continuing = limited && carriesWork && deliveries.length > 0 && this.#hooks.mayFailOver(agentId);
+      if (continuing) {
+        for (const { delivery, channelId } of deliveries) {
+          if (channelId && !(yield* this.#hooks.requeueChannelDelivery(delivery.id, true))) {
+            continuing = false;
+            break;
+          }
+        }
+      }
+      const repeatable = limited && running !== undefined && (!running.acted || continuing) && deliveries.length > 0;
+      const requeue = repeatable && (!channelTurn || continuing);
       // The limit belongs to the model the turn ran on, which the agent may have left since.
       const model = this.#hooks.turnModel(agentId, turnId);
       // The same for a provider error, when the agent moves to a backup model. Only the agent's own
@@ -936,7 +1024,47 @@ export class TurnLifecycle {
       // Only this loop reads the map, so the finished turn's items go, or it holds every item ever seen.
       for (const [itemId, itemTurnId] of this.#itemTurns) if (itemTurnId === turnId) this.#itemTurns.delete(itemId);
       if (requeue) {
-        yield* this.#requeueTurn(agentId, threadId, turnId, snapshot, deliveries);
+        const workSteps =
+          continuing && running
+            ? yield* readCapturedSteps(running.client, threadId, turnId).pipe(
+                Effect.timeout("2 seconds"),
+                Effect.map((steps) => steps.get(turnId) ?? ""),
+                Effect.catch((error) =>
+                  Effect.sync(() => {
+                    logger.warn("Could not read the interrupted turn's work steps.", { error });
+                    return "";
+                  }),
+                ),
+              )
+            : "";
+        if (continuing && trace) this.#attachTrace(snapshot.messages, agentId, turnId, trace);
+        const traceSteps =
+          continuing && trace
+            ? trace.steps
+                .filter((step) => step.kind === "tool")
+                .map(
+                  (step) =>
+                    `${step.command ?? step.text ?? "tool"} (${step.endedAt === null ? "interrupted" : step.failed ? "failed" : "completed"})`,
+                )
+                .join("\n")
+            : "";
+        yield* this.#requeueTurn(
+          agentId,
+          threadId,
+          turnId,
+          snapshot,
+          deliveries,
+          continuing
+            ? {
+                turnId,
+                previousTurnIds: [turnId],
+                workSteps: this.#hooks.redactMcp(
+                  workSteps ||
+                    (traceSteps ? `Full tool results are unavailable. Verify the saved work.\n${traceSteps}` : ""),
+                ),
+              }
+            : undefined,
+        );
         // After the requeue, so a routine set to skip finds its run back in the queue.
         yield* this.#usageLimits.reached(agentId, resetsAt, model);
         this.#hooks.scheduleDrain(agentId);
@@ -1000,11 +1128,38 @@ export class TurnLifecycle {
       const routineDelivery = deliveries[0]?.delivery.id;
       if (routineSession && routineDelivery && outcome === "completed" && !quiet && !markerAnswer && latestAssistant)
         yield* this.#hooks.routineAnswered(agentId, routineDelivery, latestAssistant.text);
+      const laneTaskId = taskTurn ? this.#taskForThread(agentId, threadId) : null;
+      const planContinues =
+        outcome === "completed" &&
+        reportedFailure === undefined &&
+        running !== undefined &&
+        !channelTurn &&
+        !routineSession &&
+        (!taskTurn || laneTaskId !== null) &&
+        this.#planContinues(agentId, laneTaskId, turnId, deliveries, latestAssistant?.text);
+      const continuation = planContinues
+        ? this.#planContinuation.consider({
+            agentId,
+            taskId: laneTaskId,
+            deliveryIds: deliveries.map(({ delivery }) => delivery.id),
+            plan: snapshot.messages.find((message) => message.id === `${turnId}:plan`)?.plan ?? null,
+            earlierPlan:
+              snapshot.messages.findLast(
+                (message) => message.itemType === CONVERSATION_PLAN_ITEM_TYPE && message.turnId !== turnId,
+              )?.plan ?? null,
+          })
+        : null;
+      if (!continuation) this.#planContinuation.cancel(agentId, laneTaskId);
       if (deliveries.length > 0) {
         const terminal = outcome === "failed" ? "failed" : outcome === "interrupted" ? "interrupted" : "completed";
         for (const delivery of deliveries) {
           this.#refusedRetries.delete(delivery.delivery.id);
           this.#failoverRetries.delete(delivery.delivery.id);
+          // A plan that continues keeps the deliveries for its next turn, which the drain starts.
+          if (continuation) {
+            yield* this.#mailbox.requeueForPlan(delivery.delivery.id, turnId).pipe(toTurnOperationFailed);
+            continue;
+          }
           // A reported failure leaves the delivery completed, since the agent did answer; its run ends failed.
           const reason =
             terminal === "failed" && failure
@@ -1017,7 +1172,12 @@ export class TurnLifecycle {
         }
         // A turn can start with the answers of several teammates. `#relayAgentResult` skips each one
         // that wants no answer, so only a teammate that asked for a result gets one.
-        if (!this.#conversation.isExecutionThread(snapshot.threadId) && terminal === "completed" && latestAssistant) {
+        if (
+          !continuation &&
+          !this.#conversation.isExecutionThread(snapshot.threadId) &&
+          terminal === "completed" &&
+          latestAssistant
+        ) {
           for (const delivery of deliveries)
             yield* this.#relayAgentResult(agentId, turnId, delivery, latestAssistant.text);
         }
@@ -1043,8 +1203,30 @@ export class TurnLifecycle {
           this.#hooks.emit({ type: "agents-changed", agents: this.#hooks.listAgents() });
         }
       }
+      if (outcome === "completed" && latestAssistant && !quiet && !markerAnswer) {
+        const paths = answerFilePaths(latestAssistant.text);
+        if (paths.length > 0) yield* this.#hooks.attachAnswerFiles(agentId, snapshot, latestAssistant, paths);
+      }
       if (trace) this.#attachTrace(snapshot.messages, agentId, turnId, trace);
-      addMemoryChangesMessage(snapshot, turnId, memoryChanges, (text) => this.#hooks.redactMcp(text));
+      const memoryLine = memoryChangesMessage(turnId, memoryChanges, (text) => this.#hooks.redactMcp(text));
+      if (memoryLine) snapshot.messages.push(memoryLine);
+      if (instructionsChange) snapshot.messages.push(instructionsChangeMessage(turnId, instructionsChange));
+      if (continuation) {
+        // No `turnId`: inside the turn, a system row sorts before the answer. Alone, the line shows
+        // after this turn's answer and before the continuation turn.
+        snapshot.messages.push({
+          id: `${turnId}:plan-continuation`,
+          author: "system",
+          source: "system",
+          status: "completed",
+          createdAt: new Date().toISOString(),
+          itemType: PLAN_CONTINUATION_ITEM_TYPE,
+          text: sourceText("status.agent.planContinues", {
+            current: continuation.count,
+            limit: this.#planContinuation.limit,
+          }),
+        });
+      }
       this.#conversation.emitConversation(snapshot, "turn.completed", { turnId, status: outcome });
       if (deliveries.length > 0) {
         try {
@@ -1062,7 +1244,19 @@ export class TurnLifecycle {
         status: outcome,
         origin: deliveries[0]?.delivery.sender.kind ?? "unknown",
         ...(quiet ? { quiet: true as const } : {}),
+        ...(continuation ? { continues: true as const } : {}),
       });
+      if (!channelTurn && !routineSession) {
+        // An automatic continuation is part of the turn that the person started, so it counts once.
+        const counts =
+          outcome === "completed" &&
+          !quiet &&
+          !continuation &&
+          deliveries.every(({ delivery }) => delivery.sender.kind !== "routine");
+        const memoryCommitted = memoryChanges.some((change) => change.action !== "notChanged");
+        const sideThreadId = taskTurn ? snapshot.threadId : null;
+        yield* this.#hooks.conversationTurnEnded(agentId, sideThreadId, counts, memoryCommitted);
+      }
       if (shouldCompact) yield* this.#compaction.request(agentId, threadId);
       else {
         // A routine's session closes after its turn, so only another chat can wait idle.
@@ -1108,6 +1302,7 @@ export class TurnLifecycle {
     this.#runningTurns.delete(turnId);
     this.#reportedFailures.delete(turnId);
     this.#markEnded(turnId);
+    this.#instructions.dropTurn(agentId, turnId);
     const trace = this.#traces.take(turnId, new Date().toISOString());
     const deliveries = yield* turnStep(() => this.#mailbox.findDeliveriesByTurn(agentId, turnId)).pipe(
       Effect.catchCause((cause) => report(cause).pipe(Effect.as([]))),
@@ -1213,7 +1408,7 @@ export class TurnLifecycle {
     this.#hooks.scheduleDrain(agentId);
   }, Effect.uninterruptible);
 
-  /** Puts the deliveries of a turn the provider refused back at their place in the queue, and ends the turn as interrupted. */
+  /** Queues refused or unfinished deliveries, retaining the continuation across provider switches and restarts. */
   readonly #requeueTurn = Effect.fn("TurnLifecycle.requeueTurn")(function* (
     this: TurnLifecycle,
     agentId: string,
@@ -1221,9 +1416,26 @@ export class TurnLifecycle {
     turnId: string,
     snapshot: ConversationSnapshot,
     deliveries: readonly DeliveryContext[],
+    resumeAfterUsageLimit?: UsageLimitContinuation,
   ) {
-    for (const { delivery } of deliveries) {
-      yield* this.#mailbox.requeueRefused(delivery.id).pipe(toTurnOperationFailed);
+    for (const context of deliveries) {
+      const { delivery } = context;
+      const continuation = resumeAfterUsageLimit
+        ? {
+            ...resumeAfterUsageLimit,
+            previousTurnIds: [
+              ...new Set([
+                ...(context.resumeAfterUsageLimit?.previousTurnIds ?? []),
+                ...resumeAfterUsageLimit.previousTurnIds,
+              ]),
+            ],
+            workSteps: [context.resumeAfterUsageLimit?.workSteps, resumeAfterUsageLimit.workSteps]
+              .filter(Boolean)
+              .join("\n\n")
+              .slice(-6000),
+          }
+        : undefined;
+      yield* this.#mailbox.requeueRefused(delivery.id, continuation).pipe(toTurnOperationFailed);
       this.#mailboxSync.syncDeliveryMessage(snapshot, delivery.id);
     }
     this.#conversation.emitConversation(snapshot, "turn.completed", { turnId, status: "interrupted" });
@@ -1296,12 +1508,16 @@ export class TurnLifecycle {
     )
       return;
 
-    yield* this.#mailbox
+    // A result for a request from a side thread runs in that thread, as an answer with send_message does.
+    const answerTaskId = this.#mailbox.answerTaskId(agentId, messageId, [recipientAgentId]);
+    const taskId = answerTaskId && this.#hooks.taskOpen(answerTaskId) ? answerTaskId : undefined;
+    const receipt = yield* this.#mailbox
       .enqueue({
         sender: { kind: "agent", agentId },
         recipientAgentIds: [recipientAgentId],
         text,
         replyToMessageId: messageId,
+        ...(taskId ? { taskId } : {}),
         // The requested result, not a new request. The chain-origin guard above already stops a
         // second relay; this is what tells the recipient it owes no acknowledgement for one.
         expectsReply: false,
@@ -1313,6 +1529,7 @@ export class TurnLifecycle {
       this.#mailboxSync.syncMailboxMessages(senderSnapshot);
       this.#conversation.emitConversation(senderSnapshot);
     }
+    for (const queued of receipt.deliveries) yield* this.#hooks.steerAgentMessage(recipientAgentId, queued.id);
     this.#mailboxSync.emitQueue(recipientAgentId);
     this.#hooks.scheduleDrain(recipientAgentId);
   }, Effect.uninterruptible);
@@ -1513,39 +1730,6 @@ function isRepeatedWork(item: { type?: unknown; phase?: unknown; text?: unknown 
   if (item.type === "userMessage" || item.type === "reasoning" || item.type === "contextCompaction") return false;
   if (item.type !== "agentMessage") return true;
   return item.phase !== "commentary" && isString(item.text) && item.text.trim() !== "";
-}
-
-/**
- * Puts the memory changes that the turn committed on one system message of the turn, after its
- * answer. The text counts them for a client that does not read `memoryChanges`, such as a Team API
- * client. `redact` is the redaction that the memory tools use when the agent reads them back,
- * which also removes the secrets of the MCP servers.
- */
-function addMemoryChangesMessage(
-  snapshot: ConversationSnapshot,
-  turnId: string,
-  changes: readonly ConversationMemoryChange[],
-  redact: (text: string) => string,
-): void {
-  if (changes.length === 0) return;
-  const memoryChanges = changes.slice(0, CONVERSATION_MEMORY_CHANGE_LIMIT).map((change) => ({
-    ...change,
-    text: redact(change.text).slice(0, INPUT_LIMITS.agentMemoryText),
-    ...(change.previousText === undefined
-      ? {}
-      : { previousText: redact(change.previousText).slice(0, INPUT_LIMITS.agentMemoryText) }),
-  }));
-  snapshot.messages.push({
-    id: `${turnId}:memory-changes`,
-    turnId,
-    author: "system",
-    source: "system",
-    status: "completed",
-    createdAt: new Date().toISOString(),
-    itemType: CONVERSATION_MEMORY_CHANGES_ITEM_TYPE,
-    text: sourceText("status.agent.memoryChanges", countConversationMemoryChanges(memoryChanges)),
-    memoryChanges,
-  });
 }
 
 /** Which subagents a list holds and the state of each, without their steps. */

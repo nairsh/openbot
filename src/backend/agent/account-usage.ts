@@ -25,6 +25,8 @@ export function normalizeAccountUsage(rateLimits: AccountRateLimitsReadResult | 
   // Antigravity's groups belong to the one reading that it sends.
   const groups = rateLimits?.groups?.slice(0, MAX_USAGE_GROUPS).map(normalizeUsageGroup);
   if (groups?.length && limits.length === 1 && limits[0]) limits[0] = { ...limits[0], groups };
+  if (rateLimits?.sharedQuotaWith && limits.length === 1 && limits[0])
+    limits[0] = { ...limits[0], sharedQuotaWith: rateLimits.sharedQuotaWith };
 
   return { limits };
 }
@@ -46,6 +48,20 @@ export function usageWindowHasReset(limit: AccountUsageLimit): boolean {
   const now = Date.now() / 1_000;
   return [limit, ...(limit.groups ?? [])].some((group) =>
     [group.primary, group.secondary].some((window) => window?.resetsAt != null && window.resetsAt <= now),
+  );
+}
+
+/**
+ * True when a window of the reading, or of one of its groups, reset after `sinceMs` and before now. A window
+ * that had already reset when the reading was taken does not count, so it cannot ask for a read each time.
+ */
+export function usageWindowResetSince(limit: AccountUsageLimit, sinceMs: number): boolean {
+  const now = Date.now() / 1_000;
+  const since = sinceMs / 1_000;
+  return [limit, ...(limit.groups ?? [])].some((group) =>
+    [group.primary, group.secondary].some(
+      (window) => window?.resetsAt != null && window.resetsAt > since && window.resetsAt <= now,
+    ),
   );
 }
 

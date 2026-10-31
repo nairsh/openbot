@@ -1,4 +1,10 @@
-import type { AvatarImageInput, CentralAuthUser, MobileConnectedDevice, UpdateStatus } from "@openbot/contracts/ipc";
+import type {
+  AvatarImageInput,
+  CentralAuthUser,
+  MobileConnectedDevice,
+  ServerSummary,
+  UpdateStatus,
+} from "@openbot/contracts/ipc";
 import { Button, Toaster, toast } from "@openbot/ui";
 import { DEFAULT_GENERAL_SETTINGS, type GeneralSettingsValue } from "@openbot/ui/features/settings/app-settings";
 import { createSignal, onCleanup } from "solid-js";
@@ -59,7 +65,8 @@ function SettingsModalStory(props: {
   onCleanup(() => {
     mock.dispose();
     toast.dismiss();
-    window.openbot = previousApi;
+    // Storybook can render the story again before it cleans up the first render. That render's API stays.
+    if (window.openbot === mock.api) window.openbot = previousApi;
   });
   const hostedServersApi = {
     ...mock.api.hostedServers,
@@ -76,6 +83,11 @@ function SettingsModalStory(props: {
       : storyUpdateStatus,
   );
   const [account, setAccount] = createSignal<CentralAuthUser>({ ...storyAccount });
+  // The notification level and the mute of each server, as the server list of the app keeps them.
+  const [servers, setServers] = createSignal<readonly ServerSummary[]>(STORY_SERVERS);
+  const updateServer = (serverId: string, change: Partial<ServerSummary>): void => {
+    setServers((list) => list.map((server) => (server.id === serverId ? { ...server, ...change } : server)));
+  };
   const [mobileDevices, setMobileDevices] = createSignal<MobileConnectedDevice[]>([
     {
       sessionId: "11111111-1111-4111-8111-111111111111",
@@ -110,7 +122,24 @@ function SettingsModalStory(props: {
     setUpdateStatus({ ...storyUpdateStatus, phase: "up-to-date", checkedAt: new Date().toISOString() });
   }
 
+  /** A phone scans the code and signs in a few seconds after the code shows. */
+  let scanTimer: number | undefined;
+  onCleanup(() => window.clearTimeout(scanTimer));
   async function createMobileConnect(): Promise<{ qrData: string; expiresAt: number }> {
+    window.clearTimeout(scanTimer);
+    scanTimer = window.setTimeout(() => {
+      setMobileDevices((current) => [
+        ...current,
+        {
+          sessionId: crypto.randomUUID(),
+          name: "Work iPhone",
+          platform: "ios",
+          connectedAt: Date.now(),
+          lastActiveAt: Date.now(),
+          via: "code",
+        },
+      ]);
+    }, 6_000);
     return {
       qrData:
         "openbot://mobile-connect?api=https%3A%2F%2Fapi.openbot.run&ticket=storybook-mobile-ticket_1234567890abcdef",
@@ -141,7 +170,16 @@ function SettingsModalStory(props: {
               setValue(next);
             }}
             appInfo={storyAppInfo}
-            servers={STORY_SERVERS}
+            servers={servers()}
+            onSetServerNotificationLevel={async (serverId, level) =>
+              updateServer(serverId, { notificationLevel: level })
+            }
+            onSetServerMuted={async (serverId, muted, durationMs) =>
+              updateServer(serverId, {
+                notificationsMuted: muted,
+                notificationsMutedUntil: muted && durationMs !== undefined ? Date.now() + durationMs : null,
+              })
+            }
             updateStatus={updateStatus()}
             onCancelScheduledRestart={async () => {
               const { scheduledRestart: _cancelled, ...rest } = updateStatus();
@@ -151,7 +189,10 @@ function SettingsModalStory(props: {
             onUpdateAccountName={updateAccountName}
             onUpdateAccountAvatar={updateAccountAvatar}
             onCreateMobileConnect={createMobileConnect}
-            onCancelMobileConnect={mock.api.auth.cancelMobileConnect}
+            onCancelMobileConnect={async () => {
+              window.clearTimeout(scanTimer);
+              await mock.api.auth.cancelMobileConnect();
+            }}
             onGetMobileConnectLink={mock.api.auth.getMobileConnectLink}
             onCreateMobileConnectLink={mock.api.auth.createMobileConnectLink}
             onRevokeMobileConnectLink={mock.api.auth.revokeMobileConnectLink}

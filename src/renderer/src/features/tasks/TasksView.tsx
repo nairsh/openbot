@@ -1,6 +1,8 @@
+import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import type {
   AgentApproval,
   AgentTask,
+  AgentTaskInput,
   AgentTasksSnapshot,
   AttachmentSummary,
   ConversationSnapshot,
@@ -8,19 +10,24 @@ import type {
 import type { AppTextKey } from "@openbot/i18n";
 import { plainTaskTitle, taskApproval } from "@openbot/team-client/agent-tasks";
 import type { AgentMessage, AgentProfile } from "@openbot/ui/data";
-import { AgentTaskPanel } from "@openbot/ui/features/conversation/AgentTasks";
+import type { AgentTaskWait } from "@openbot/ui/features/conversation/AgentTasks";
+import type { SendShortcut } from "@openbot/ui/features/conversation/send-shortcut";
+import { AgentThreadView } from "@openbot/ui/features/conversation/threads/AgentThreadView";
+import { TaskAnswerCard, TaskPanel } from "@openbot/ui/features/tasks/TaskPanel";
 import { TasksPage, type TasksVoice } from "@openbot/ui/features/tasks/TasksPage";
 import { currentText } from "@openbot/ui/text";
 import { createEffect, createMemo, createProjection, createStore, onCleanup, Show, untrack } from "solid-js";
 import { actionToast } from "../../action-toast";
+import { useShowAgentSteps } from "../../agent-steps-preference";
 import { toAgentMessages } from "../../app-message-projection";
+import { usePlatform } from "../../platform";
 import { readAgentSelection, writeAgentSelection } from "../agents/agent-selection";
+import { latestVisibleAgentMessageId } from "../conversation/conversation-read-state";
+import { createTurnSteps } from "../conversation/turn-steps";
 import type { TaskEvent, TasksSource } from "./tasks-port";
 
 /** How long a start waits before it reaches the agent. Undo cancels it in this time. */
 const UNDO_MS = 6_000;
-/** The longest task title that the host keeps. */
-const TITLE_LIMIT = 120;
 /** The agent last chosen on this page for each server, kept apart from the chat agent. */
 const TASK_AGENT_STORAGE_KEY = "openbot:task-agent:v1";
 
@@ -38,7 +45,7 @@ export interface TasksVoiceControls {
 /** The voice of the composer. `submit` sends while it records: the transcript starts the task. */
 export type TasksVoiceAdapter = TasksVoice & { submit: () => void };
 
-export interface TasksViewProps {
+interface TasksViewProps {
   serverId: string;
   hostName: string;
   onBack?: (() => void) | undefined;
@@ -53,6 +60,13 @@ export interface TasksViewProps {
   /** The waiting approvals of the server's agents. */
   approvals: readonly AgentApproval[];
   onRespondApproval: (approval: AgentApproval, decision: "accept" | "decline") => Promise<boolean>;
+  /** Moves the read mark of an open task to a message. Absent where the server keeps no read marks. */
+  onRead?: ((input: AgentTaskInput, messageId: string) => void) | undefined;
+  /** Whether the task's running turn waits for a question or a browser takeover, which the chat answers. */
+  waitsForAnswer?: ((task: AgentTask) => boolean) | undefined;
+  /** Opens the task as a thread tab in its agent's chat, and leaves the page. */
+  onOpenInChat?: ((task: AgentTask) => void) | undefined;
+  sendShortcut?: SendShortcut | undefined;
 }
 
 /** A start that waits for its Undo time. Its task shows in the list as queued. */
@@ -70,6 +84,8 @@ interface TasksViewState {
   snapshots: Record<string, AgentTasksSnapshot>;
   /** The conversation of each opened task, by task id. */
   conversations: Record<string, ConversationSnapshot>;
+  /** The unsent text of each task's message box, by task id. */
+  drafts: Record<string, string>;
   pending: AgentTask | null;
   agentId: string;
   draft: string;
@@ -93,6 +109,7 @@ export function TasksView(props: TasksViewProps) {
   const [state, setState] = createStore<TasksViewState>({
     snapshots: {},
     conversations: {},
+    drafts: {},
     pending: null,
     agentId: "",
     draft: "",
@@ -101,6 +118,8 @@ export function TasksView(props: TasksViewProps) {
     took: null,
     selectedId: null,
   });
+  const { appFocused } = usePlatform();
+  const showAgentSteps = useShowAgentSteps();
   let pending: PendingStart | null = null;
   let generation = 0;
   const listRequests = new Map<string, number>();
@@ -119,11 +138,24 @@ export function TasksView(props: TasksViewProps) {
   });
   const taskOf = (taskId: string) => tasks().find((task) => task.id === taskId);
 
-  function applySnapshot(snapshot: AgentTasksSnapshot): void {
-    listRequests.set(snapshot.agentId, (listRequests.get(snapshot.agentId) ?? 0) + 1);
+  /** Stores a task list. A task that the list no longer has loses its conversation, its draft and the panel. */
+  function setSnapshot(snapshot: AgentTasksSnapshot): void {
+    const kept = new Set(snapshot.tasks.map((task) => task.id));
+    const gone = (state.snapshots[snapshot.agentId]?.tasks ?? []).filter((task) => !kept.has(task.id));
     setState((draft) => {
       draft.snapshots[snapshot.agentId] = snapshot;
+      for (const { id } of gone) {
+        delete draft.conversations[id];
+        delete draft.drafts[id];
+        if (draft.selectedId === id) draft.selectedId = null;
+        if (draft.took?.taskId === id) draft.took = null;
+      }
     });
+  }
+
+  function applySnapshot(snapshot: AgentTasksSnapshot): void {
+    listRequests.set(snapshot.agentId, (listRequests.get(snapshot.agentId) ?? 0) + 1);
+    setSnapshot(snapshot);
   }
 
   /** Keeps the newest conversation of a task. A delta raises the revision, so an older snapshot loses. */
@@ -177,9 +209,7 @@ export function TasksView(props: TasksViewProps) {
       listRequests.set(id, request);
       return props.source.list(id, serverId).then((snapshot) => {
         if (current !== generation || listRequests.get(id) !== request) return;
-        setState((draft) => {
-          draft.snapshots[id] = snapshot;
-        });
+        setSnapshot(snapshot);
       });
     });
     void Promise.allSettled(loads).then((results) => {
@@ -204,8 +234,12 @@ export function TasksView(props: TasksViewProps) {
     );
   }
 
-  /** Adds a task that a start returned, so it shows before the list event arrives. */
+  /**
+   * Adds a task that a start returned, so it shows before the list event arrives. A list read that started
+   * before the task does not have it, so its answer no longer counts.
+   */
   function rememberTask(task: AgentTask): void {
+    listRequests.set(task.agentId, (listRequests.get(task.agentId) ?? 0) + 1);
     setState((draft) => {
       const snapshot = draft.snapshots[task.agentId];
       if (!snapshot) draft.snapshots[task.agentId] = { agentId: task.agentId, tasks: [task], limit: 1 };
@@ -274,7 +308,7 @@ export function TasksView(props: TasksViewProps) {
       agentId: owner,
       threadId: "",
       origin: "user",
-      title: title.slice(0, TITLE_LIMIT),
+      title: title.slice(0, INPUT_LIMITS.agentTaskTitle),
       state: "queued",
       outcome: null,
       hold: null,
@@ -363,16 +397,23 @@ export function TasksView(props: TasksViewProps) {
       setState((draft) => {
         draft.snapshots = {};
         draft.conversations = {};
+        draft.drafts = {};
         draft.pending = null;
         draft.selectedId = null;
         draft.took = null;
         // Agent IDs can repeat on two servers, so the new server starts from its own saved agent.
         draft.agentId = "";
       });
+      // The agents of the new server load again, also an agent ID that the old server had.
+      listRequests.clear();
+      readRequests.clear();
       untrack(() => loadLists(props.agents.map((agent) => agent.id)));
-      const unsubscribe = props.source.onEvent(serverId, applyEvent, () =>
-        loadLists(props.agents.map((agent) => agent.id)),
-      );
+      // A turn can end while the host is away, so the open task reads its whole conversation again.
+      const unsubscribe = props.source.onEvent(serverId, applyEvent, () => {
+        loadLists(props.agents.map((agent) => agent.id));
+        const task = state.selectedId ? taskOf(state.selectedId) : undefined;
+        if (task && !task.id.startsWith("pending:")) readTask(task);
+      });
       return () => {
         // A waiting start goes to the server it was sent on.
         commitNow();
@@ -411,72 +452,146 @@ export function TasksView(props: TasksViewProps) {
     generation++;
   });
 
+  /** What a running task waits for from the person. The chat answers a question or a browser takeover. */
+  function waitOf(task: AgentTask): AgentTaskWait {
+    if (task.state !== "running") return undefined;
+    if (taskApproval(task, props.approvals)) return "approval";
+    return props.waitsForAnswer?.(task) ? "answer" : undefined;
+  }
+
   function panel(taskId: string) {
     const task = () => taskOf(taskId) ?? null;
+    /** The task on the host. A start that waits for its Undo time has none yet. */
+    const hosted = () => {
+      const current = task();
+      return current && !current.id.startsWith("pending:") ? current : null;
+    };
     const owner = () => agentOf(task()?.agentId ?? "");
     /** Reconciled by id, so a stream chunk redraws only the message that changed. */
     const messages = createProjection<AgentMessage[]>(
       () => {
         const conversation = state.conversations[taskId];
-        return conversation ? toAgentMessages(conversation.messages, task()?.agentId) : [];
+        // The chat answers a question that waits, so its message is left out, as in a thread tab.
+        const shown = conversation?.messages.filter((message) => message.questionPrompt?.resolution !== null);
+        return shown ? toAgentMessages(shown, task()?.agentId) : [];
       },
       [],
       { key: "id" },
     );
+    // The page gets only the latest progress line of a running turn, so its steps are the thoughts,
+    // and after the turn the tool steps of its stored trace.
+    const turnSteps = createTurnSteps({
+      messages: () => messages,
+      lines: () => undefined,
+      activeTurnId: () => hosted()?.activeTurnId,
+    });
     const input = () => {
-      const current = task();
-      return current && !current.id.startsWith("pending:") ? { agentId: current.agentId, taskId: current.id } : null;
+      const current = hosted();
+      return current ? { agentId: current.agentId, taskId: current.id } : null;
     };
     const approval = () => {
-      const current = task();
+      const current = hosted();
       return current ? taskApproval(current, props.approvals) : undefined;
+    };
+    const wait = () => {
+      const current = hosted();
+      return current ? waitOf(current) : undefined;
+    };
+    /** An archived task is restored first: the chat does not show an archived thread as a tab. */
+    const openInChat = async () => {
+      const current = hosted();
+      if (!current) return;
+      const target = { agentId: current.agentId, taskId: current.id };
+      if (
+        current.state === "closed" &&
+        !(await runAction(() => props.source.reopen(target, props.serverId), "conversation.threads.error.restore"))
+      )
+        return;
+      props.onOpenInChat?.(current);
+    };
+    const chatAction = () => (props.onOpenInChat ? () => void openInChat() : undefined);
+    /** A question or a browser takeover waits: the card sends the person to the chat, which answers it. */
+    const answerCard = (agentName: string) => {
+      if (wait() !== "answer") return undefined;
+      return <TaskAnswerCard agentName={agentName} onAnswer={chatAction()} />;
+    };
+    // The person reads the open task while the window has focus, as in its thread tab.
+    createEffect(
+      () => ({ target: input(), messageId: appFocused() ? latestVisibleAgentMessageId(messages) : null }),
+      ({ target, messageId }) => {
+        if (target && messageId) props.onRead?.(target, messageId);
+      },
+    );
+    /** An archived task is restored before the message goes, as in a thread tab. */
+    const send = async (text: string): Promise<boolean> => {
+      const target = input();
+      if (!target) return false;
+      const serverId = untrack(() => props.serverId);
+      const sent = await runAction(async () => {
+        if (hosted()?.state === "closed") await props.source.reopen(target, serverId);
+        await props.source.send({ ...target, text, clientMessageId: crypto.randomUUID() }, serverId);
+      }, "conversation.tasks.error.send");
+      if (sent)
+        setState((draft) => {
+          delete draft.drafts[taskId];
+        });
+      return sent;
     };
     return (
       <Show when={owner() ?? props.agents[0]}>
         {(agent) => (
-          <AgentTaskPanel
-            task={task()}
-            limit={state.snapshots[task()?.agentId ?? ""]?.limit ?? 1}
-            agent={agent()}
-            agents={props.agents}
-            messages={messages}
-            onSend={async (text) => {
-              const target = input();
-              if (!target) return false;
-              return runAction(
-                () =>
-                  props.source.send(
-                    { ...target, text, clientMessageId: crypto.randomUUID() },
-                    untrack(() => props.serverId),
-                  ),
-                "conversation.tasks.error.send",
-              );
-            }}
-            onStop={() => {
+          <TaskPanel
+            task={hosted()}
+            title={task()?.title ?? ""}
+            wait={wait()}
+            onArchive={() => {
               const target = input();
               if (target)
-                void runAction(() => props.source.stop(target, props.serverId), "conversation.tasks.error.stop");
+                void runAction(() => props.source.close(target, props.serverId), "conversation.threads.error.archive");
             }}
-            onCloseTask={() => {
+            onRestore={() => {
               const target = input();
               if (target)
-                void runAction(() => props.source.close(target, props.serverId), "conversation.tasks.error.close");
+                void runAction(() => props.source.reopen(target, props.serverId), "conversation.threads.error.restore");
             }}
-            onReopen={() => {
-              const target = input();
-              if (target)
-                void runAction(() => props.source.reopen(target, props.serverId), "conversation.tasks.error.reopen");
-            }}
-            onClosePanel={() => select(null)}
-            onOpenLink={props.onOpenLink}
-            onPreview={(attachment) => props.onAttachmentAction(attachment, "open")}
-            onAttachmentAction={props.onAttachmentAction}
-            approval={approval()}
-            onRespondApproval={async (decision) => {
-              const current = approval();
-              return current ? props.onRespondApproval(current, decision) : false;
-            }}
-          />
+            onOpenInChat={chatAction()}
+            onClose={() => select(null)}
+          >
+            <AgentThreadView
+              task={hosted()}
+              limit={state.snapshots[task()?.agentId ?? ""]?.limit ?? 1}
+              agent={agent()}
+              agents={props.agents}
+              messages={messages}
+              draft={state.drafts[taskId] ?? ""}
+              onDraftChange={(text) =>
+                setState((draft) => {
+                  draft.drafts[taskId] = text;
+                })
+              }
+              onSend={send}
+              onStop={() => {
+                const target = input();
+                if (target)
+                  void runAction(() => props.source.stop(target, props.serverId), "conversation.tasks.error.stop");
+              }}
+              onOpenLink={props.onOpenLink}
+              onPreview={(attachment) => props.onAttachmentAction(attachment, "open")}
+              onAttachmentAction={props.onAttachmentAction}
+              approval={approval()}
+              onRespondApproval={async (decision) => {
+                const current = approval();
+                return current ? props.onRespondApproval(current, decision) : false;
+              }}
+              waitsForAnswer={wait() === "answer"}
+              attention={answerCard(agent().name)}
+              stepsAbove={turnSteps.stepsAbove}
+              factsAbove={turnSteps.factsAbove}
+              activeSteps={turnSteps.activeSteps()}
+              stepsOpenByDefault={showAgentSteps()}
+              sendShortcut={props.sendShortcut}
+            />
+          </TaskPanel>
         )}
       </Show>
     );
@@ -541,7 +656,8 @@ export function TasksView(props: TasksViewProps) {
         })
       }
       selectedId={state.selectedId}
-      waitsForApproval={(task) => taskApproval(task, props.approvals) !== undefined}
+      waitOf={waitOf}
+      sendShortcut={props.sendShortcut}
       onSelect={select}
       panel={panel}
     />

@@ -32,7 +32,7 @@ export const messages = {
   "provider.status.checking": "확인 중",
   "provider.status.off": "꺼짐",
   "provider.gemini.hostSignIn":
-    "Gemini를 연결하려면 호스트에서 OpenBot을 열고 설정 > 제공자에서 연결을 선택하세요. Google 로그인에는 해당 호스트의 브라우저가 필요해요. 원격 로그인은 지원하지 않아요.",
+    "Gemini를 연결하려면 호스트에서 OpenBot을 열고 서버 설정 > 제공자에서 연결을 선택하세요. Google 로그인에는 해당 호스트의 브라우저가 필요해요. 원격 로그인은 지원하지 않아요.",
 
   "provider.key.free": "무료",
 
@@ -150,6 +150,14 @@ export const messages = {
   "provider.inceptionKey.description":
     "Mercury 모델을 사용하려면 이 컴퓨터에 Inception API 키를 저장하세요. OpenBot은 다운로드한 Pi CLI에서 모델을 실행해요.",
   "provider.inceptionKey.label": "Inception API 키",
+  "provider.deepseekKey.title": "DeepSeek API 키",
+  "provider.deepseekKey.description":
+    "DeepSeek 모델을 사용하려면 이 컴퓨터에 DeepSeek API 키를 저장하세요. OpenBot은 다운로드한 Pi CLI에서 모델을 실행해요.",
+  "provider.deepseekKey.label": "DeepSeek API 키",
+  "provider.openrouterKey.title": "OpenRouter API 키",
+  "provider.openrouterKey.description":
+    "OpenRouter 모델을 사용하려면 이 컴퓨터에 OpenRouter API 키를 저장하세요. OpenBot은 다운로드한 Pi CLI에서 모델을 실행해요.",
+  "provider.openrouterKey.label": "OpenRouter API 키",
 
   "provider.openCodeKey.title": "OpenCode Go에 로그인",
   "provider.openCodeKey.description": "무료 모델은 계정이 필요 없어요. 키가 있으면 유료 Go 모델을 사용할 수 있어요.",
@@ -177,6 +185,7 @@ export const messages = {
   "provider.account.cancelSignIn": "로그인 취소",
   "provider.account.finishSignIn": "브라우저에서 로그인을 마치세요.",
   "provider.account.remove": "계정 제거",
+  "provider.account.disconnect": "연결 해제",
   "provider.account.actionFailed": "{name} 계정을 변경할 수 없어요.",
   "provider.account.resetUsage": "사용량 초기화",
   "provider.account.resetUsageTitle": "{name}의 사용량을 초기화할까요?",
@@ -216,6 +225,11 @@ export const messages = {
   "provider.settings.removeMoves": "{agents}이(가) {name}을(를) 사용하게 돼요.",
   "provider.settings.removeUnused": "이 계정을 사용하는 에이전트가 없어요.",
   "provider.settings.removeCredentials": "OpenBot이 이 컴퓨터에서 이 계정의 로그인 정보를 삭제해요.",
+  "provider.settings.disconnectTitle": "{name} 연결을 해제할까요?",
+  "provider.settings.disconnectOthers": "{provider}을(를) 다시 연결할 때까지 다른 {provider} 계정은 대기합니다.",
+  "provider.settings.disconnectLocal":
+    "OpenBot이 이 컴퓨터에서 {provider}에서 로그아웃합니다. 터미널의 {provider} CLI도 로그아웃됩니다.",
+  "provider.settings.disconnectHost": "OpenBot이 서버에서 {provider}에서 로그아웃합니다.",
   "provider.settings.usageLow": "{percent} 남음 · {window}",
   "provider.settings.usageOf": "{name} 사용량",
   "provider.settings.signIn": "로그인",
@@ -243,6 +257,16 @@ export const messages = {
   "provider.settings.turnOnFirst": "먼저 {name}을(를) 켜세요.",
   "provider.settings.makeDefault": "기본으로 지정",
   "provider.settings.useTitle": "{name} 사용",
+  "provider.settings.download": "다운로드",
+  "provider.settings.downloadedCli": "{name} CLI",
+  "provider.settings.downloadDetail": { other: "{version} · 버전 {count}개 · {size}" },
+  "provider.settings.downloadVersions": { other: "버전 {count}개 · {size}" },
+  "provider.settings.downloadAgain": "{name}을 켜면 OpenBot이 CLI를 다시 다운로드해요.",
+  "provider.settings.removeDownloadConfirm": "{size}를 삭제할까요?",
+  "provider.settings.removeDownloadKeeps": "계정, 로그인, 에이전트는 유지돼요.",
+  "provider.settings.removeDownload": "다운로드 삭제",
+  "provider.settings.removingDownload": "삭제 중…",
+  "provider.settings.removeDownloadFailed": "다운로드를 삭제하지 못했어요.",
   "provider.settings.endpoints": "엔드포인트",
   "provider.settings.noEndpoints": "엔드포인트가 없어요.",
   "provider.settings.endpointModels": { other: "{url} · 모델 {count}개" },

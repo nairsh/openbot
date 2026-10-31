@@ -14,15 +14,24 @@ export interface ConversationHeaderProps {
   /** The title of a chat that has no one agent, such as a channel. It shows when `agent` is missing. */
   title?: JSX.Element | undefined;
   modelPicker: ComponentProps<typeof ProviderModelPicker>;
-  /** A model or effort chosen during the running turn. It applies from the next turn. */
+  /** A model, effort, provider or account chosen during the running turn. It applies from the next turn. */
   pendingModel?: ConversationHeaderPendingModel | undefined;
   /** How full the agent's context is. It stands to the left of the model picker. */
   contextMeter?: JSX.Element | undefined;
   onSettingsIntent: () => void;
   onOpenSettings: () => void;
+  /** Set while a side thread is open: the agent's name then opens the agent's own chat, not its settings. */
+  onOpenChat?: (() => void) | undefined;
   remoteControl?: ConversationHeaderRemoteControl | undefined;
   /** Missing when the chat has no side panel, such as a deleted channel. */
   sidePanel?: SidePanelToggleProps | undefined;
+  /** The thread tabs of the agent, after its name. */
+  threads?: JSX.Element | undefined;
+  /**
+   * Set when the agent has thread tabs: the agent's name is then the first tab, for the agent's own
+   * chat, and is selected while that chat is open.
+   */
+  titleSelected?: boolean | undefined;
 }
 
 export interface ConversationHeaderPendingModel {
@@ -41,6 +50,8 @@ export interface ConversationHeaderRemoteControl {
 
 export function ConversationHeader(props: ConversationHeaderProps) {
   const { t } = useText();
+  const titleTab = () => (props.titleSelected === undefined ? undefined : "");
+  const titleSelected = () => (props.titleSelected ? "" : undefined);
   return (
     <header class="window-drag conversation-header">
       <div class="conversation-heading-group">
@@ -51,10 +62,12 @@ export function ConversationHeader(props: ConversationHeaderProps) {
               size="sm"
               type="button"
               class="conversation-title no-drag"
-              aria-label={t("conversation.header.settings")}
-              onPointerEnter={props.onSettingsIntent}
-              onFocus={props.onSettingsIntent}
-              onClick={props.onOpenSettings}
+              data-tab={titleTab()}
+              data-selected={titleSelected()}
+              aria-label={props.onOpenChat ? t("conversation.header.mainChat") : t("conversation.header.settings")}
+              onPointerEnter={() => props.onOpenChat || props.onSettingsIntent()}
+              onFocus={() => props.onOpenChat || props.onSettingsIntent()}
+              onClick={() => (props.onOpenChat ?? props.onOpenSettings)()}
             >
               <AgentAvatar agent={agent()} />
               <h1>{agent().name}</h1>
@@ -68,6 +81,7 @@ export function ConversationHeader(props: ConversationHeaderProps) {
             </span>
           )}
         </Show>
+        {props.threads}
       </div>
       <div class="conversation-header-actions no-drag">
         <Show when={props.agent && props.pendingModel}>

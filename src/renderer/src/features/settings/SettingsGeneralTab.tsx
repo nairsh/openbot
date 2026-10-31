@@ -27,24 +27,15 @@ import { type ChatWidth, setChatWidth, useChatWidth } from "../../chat-width-pre
 import { useI18n } from "../../i18n-context";
 import { useInterfaceSizeChoice } from "../../interface-size";
 import { useLogoColorChoice } from "../../logo-color";
+import { ExternalLinkSelect } from "./ExternalLinkSelect";
 
 const interfaceSizeOptions = [...APP_INTERFACE_SIZES];
-const linkTargetOptions: GeneralSettingsValue["externalLinkTarget"][] = ["Default browser", "OpenBot"];
 const chatWidthOptions: ChatWidth[] = ["full", "medium"];
 
 const CHAT_WIDTH_KEYS = {
   full: "settings.chatWidth.full",
   medium: "settings.chatWidth.medium",
 } as const satisfies Record<ChatWidth, AppTextKey>;
-
-/**
- * The saved value is the English name, because it is what `app-settings.ts` persists and what the
- * main process compares against. Only the label a reader sees is translated.
- */
-const LINK_TARGET_KEYS = {
-  "Default browser": "settings.externalLinks.defaultBrowser",
-  OpenBot: "settings.externalLinks.openbot",
-} as const satisfies Record<GeneralSettingsValue["externalLinkTarget"], AppTextKey>;
 
 interface SettingsGeneralTabProps {
   value: GeneralSettingsValue;
@@ -60,8 +51,6 @@ interface SettingsGeneralTabProps {
 
 export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
   const i18n = useI18n();
-  const linkTargetLabel = (value: GeneralSettingsValue["externalLinkTarget"] | undefined) =>
-    value === undefined ? "" : i18n.t(LINK_TARGET_KEYS[value]);
   const appearance = useAppearanceChoice();
   const logoColor = useLogoColorChoice();
   const interfaceSize = useInterfaceSizeChoice();
@@ -193,23 +182,12 @@ export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
               <ItemDescription>{i18n.t("settings.externalLinks.description")}</ItemDescription>
             </ItemContent>
             <ItemActions>
-              <Select<GeneralSettingsValue["externalLinkTarget"]>
-                class="settings-modal-select"
-                options={linkTargetOptions}
-                value={props.value.externalLinkTarget}
-                onChange={(value) => value && props.onUpdateSetting("externalLinkTarget", value)}
-                placement="bottom-end"
-                itemComponent={(selectProps) => (
-                  <SelectItem item={selectProps.item}>{linkTargetLabel(selectProps.item.rawValue)}</SelectItem>
-                )}
-              >
-                <SelectTrigger size="sm" aria-label={i18n.t("settings.externalLinks.title")}>
-                  <SelectValue<GeneralSettingsValue["externalLinkTarget"]>>
-                    {(state) => linkTargetLabel(state.selectedOption())}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent mount={props.selectMount} />
-              </Select>
+              <ExternalLinkSelect
+                target={props.value.externalLinkTarget}
+                platform={props.platform}
+                mount={props.selectMount}
+                onChange={(target) => props.onUpdateSetting("externalLinkTarget", target)}
+              />
             </ItemActions>
           </Item>
         </ItemGroup>

@@ -23,6 +23,7 @@ import type { VirtualItem } from "@tanstack/virtual-core";
 import { createEffect, createMemo, createSignal, onCleanup, untrack } from "solid-js";
 import { groupAgentMessageMarkers, markOpenAgentMessages } from "../agent-message-timeline";
 import type { ConversationProps, ConversationTarget } from "../conversation-types";
+import { summarizeHostedSiteMessages } from "../hosted-site-timeline";
 import {
   expandRoutineRunGroups,
   groupRoutineRunMarkers,
@@ -77,13 +78,15 @@ export function createScrollStore(deps: ScrollStoreDeps) {
     () => new Set(deps.props.messages.flatMap((message) => (isTurnAnswer(message) ? [message.turnId] : []))),
   );
   const shownMessages = createMemo(() =>
-    deps.props.messages.filter(
-      (message) =>
-        message.kind !== "thinking" &&
-        // An answer shows once it is complete, not word by word; the activity line shows the work.
-        !(message.author === "agent" && message.streaming === true && message.kind === "text") &&
-        !(message.kind === "memory-changes" && answeredTurns().has(message.turnId)) &&
-        !silentAgentAnswer(message),
+    summarizeHostedSiteMessages(
+      deps.props.messages.filter(
+        (message) =>
+          message.kind !== "thinking" &&
+          // An answer shows once it is complete, not word by word; the activity line shows the work.
+          !(message.author === "agent" && message.streaming === true && message.kind === "text") &&
+          !(message.kind === "memory-changes" && answeredTurns().has(message.turnId)) &&
+          !silentAgentAnswer(message),
+      ),
     ),
   );
   const routineRunTurns = createMemo(() => routineRunTurnMessages(deps.props.messages, shownMessages()));

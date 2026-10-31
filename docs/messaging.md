@@ -13,7 +13,7 @@ and the Slack Orchestrator, an agent that OpenBot adds, asks the right agent and
 computer (**Server settings**), because Slack sends the workspace's events to OpenBot's Signal
 service, which passes them to this computer.
 
-1. Open **Server settings → Connectors → Slack**.
+1. Open **Marketplace → Apps → Slack**.
 2. Select **Connect Slack**, then **Connect in Slack**. Slack opens in the browser. Select the
    workspace in the top-right corner, and select **Allow**. The dialog continues by itself.
 3. Pick the model of the Slack Orchestrator, and select **Add agent**. OpenBot adds the agent, with its
@@ -69,7 +69,7 @@ needs an OpenBot account and a name for this computer (**Server settings**): Sig
 Discord connection, passes the server's mentions to this computer, and makes OpenBot's Discord posts
 for it.
 
-1. Open **Server settings → Connectors → Discord**.
+1. Open **Marketplace → Apps → Discord**.
 2. Select **Connect Discord**, then **Connect in Discord**. Discord opens in the browser. Select the
    Discord server, and select **Authorize**. You must have the **Manage Server** permission there. The
    dialog continues by itself.
@@ -125,7 +125,7 @@ OpenBot account and a name for this computer (**Server settings**), because Tele
 updates to OpenBot's Signal service, which passes them to this computer. Signal holds the bot token;
 this computer never has it.
 
-1. Open **Server settings → Connectors → Telegram**.
+1. Open **Marketplace → Apps → Telegram**.
 2. Select **Add to a group** or **Open a direct chat**. Telegram opens with a one-use link (it is
    valid for 15 minutes). Pick the group, or select **Start**. The chat appears in OpenBot by itself.
 3. Pick the model of the Telegram Orchestrator, and select **Add agent**. One orchestrator answers
@@ -144,8 +144,11 @@ agents.
   gives each reply chain its own thread, so a reply to the bot, or to a message in the chain, reaches
   the same agent without a mention. In a forum, each topic is one conversation. A direct chat is one
   conversation.
-- With privacy mode on (Telegram's default), Telegram sends the bot only messages that mention it,
-  replies to it and commands. Other messages of the chat do not reach this computer.
+- The OpenBot bot has privacy mode off, so Telegram sends it every message of a group, and Signal
+  passes each one to this computer. OpenBot answers only a mention, a reply to the bot, or a message
+  of a reply chain that an agent answers. It keeps the others in memory only, and an agent can read
+  the last of them with `messaging_history`. With privacy mode on, Telegram does not send a plain
+  mention to a bot that is not an admin of the group.
 - 👀 means the message arrived. "Working on it…" is replaced by the answer. 👌, 💔 or 🫡 shows the end.
 - An approval appears with **Approve** and **Deny**. Only the person who wrote the message can answer
   it there. When another person presses a button, the bot answers in the chat that only the requester
@@ -157,7 +160,8 @@ agents.
 
 Telegram must reach Signal over public HTTPS.
 
-1. Make a development bot with [@BotFather](https://t.me/BotFather). Keep privacy mode on.
+1. Make a development bot with [@BotFather](https://t.me/BotFather). Turn privacy mode off
+   (`/setprivacy`), or mentions reach the bot only when it is a group admin.
 2. Start a tunnel to the local Signal, for example `cloudflared tunnel --url http://127.0.0.1:<signal port>`.
 3. Give Signal `TELEGRAM_BOT_TOKENS` (the bot token), `TELEGRAM_WEBHOOK_SECRET` (32 bytes or more) and
    `TELEGRAM_WEBHOOK_ORIGIN` (the tunnel address). Signal sets the bot's webhook when it starts.
@@ -241,7 +245,7 @@ routine prompt, for example "post the summary to #bot-inflow on Discord".
   thread: a Slack thread ts, a Discord message ID, a Telegram message ID, or `t<topic ID>` for a
   Telegram forum topic. The text is redacted before it leaves this computer. A Discord post pings
   nobody; a Telegram `@username` notifies that person. A Telegram connection posts only in its own
-  chat.
+  chat. The result has `messageId`, the ID of the first post, and for Discord a `url` to it.
 - A long text goes in more than one post. When a later part fails, the earlier parts stay posted.
 - A routine posts only when its run calls the tool. The scheduler does not post the run's answer.
 - A reply to the post reaches an agent only as usual: it must mention OpenBot, and it goes to the
@@ -310,5 +314,5 @@ core changes:
 | Discord | The Gateway in Signal (`@discordjs/ws`), which passes mentions to the host; calls go through Signal | The id of the first message of a reply chain | Implemented. No privileged intent. |
 | Telegram | The webhook of the one OpenBot bot through Signal, which holds the token | `message_thread_id`, the topic in a forum, `dm` in a direct chat | Implemented. No history API: the host keeps what the bot sees, in memory. |
 
-Then add the platform to `MESSAGING_PLATFORMS`, a page in Server settings → Connectors, and its i18n
+Then add the platform to `MESSAGING_PLATFORMS`, a page in Marketplace → Apps, and its i18n
 keys. The database needs no migration: `platform` has no `CHECK`.

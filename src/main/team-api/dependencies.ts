@@ -3,16 +3,21 @@ import type { ChannelService } from "../../backend/channel-service";
 import type { AcpRegistry } from "../acp-registry";
 import type { AgentAccessStore } from "../agent-access-store";
 import type { AgentAdminSettingsService } from "../agent-admin-settings";
+import type { AgentFolders } from "../agent-folders";
 import type { AgentHostSettingsService } from "../agent-host-settings";
 import type { AgentMarketplaceService } from "../agent-marketplace-service";
 import type { AgentMemoryLimitSetting } from "../agent-memory-limit-preference-store";
 import type { AgentTemplateService } from "../agent-template-service";
 import type { BrowserProfileService } from "../browser-profile-service";
+import type { CustomAgentChanges } from "../custom-agent-changes";
 import type { PeerCustomProviderChanges } from "../custom-provider-changes";
 import type { HostEventsApi } from "../host-events-api";
 import type { HostEventsService } from "../host-events-service";
 import type { HostReleaseService } from "../host-release-service";
 import type { HostService } from "../host-service";
+import type { MachineAlertMonitor } from "../machine-alerts";
+import type { MemoryReviewPreferenceStore } from "../memory-review-preference-store";
+import type { PreferenceFileFailure } from "../preference-file";
 import type { PromptCacheTtlPreferenceStore } from "../prompt-cache-ttl-preference-store";
 import type { ProviderCredentialStore } from "../provider-credential-store";
 import type { ProviderRuntimeManager } from "../provider-runtime-manager";
@@ -30,12 +35,18 @@ import type { SkillMarketplaceService } from "../skill-marketplace-service";
 
 import type {
   AgentEvent,
+  AgentModelId,
+  AgentNotificationLevelsSnapshot,
+  AgentProviderId,
   CentralAuthUser,
   DirectMessageRealtimeEvent,
   DirectTypingRealtimeEvent,
   RoutineResultConnectionOption,
   RoutineResultDestination,
   RoutineResultRoutineInput,
+  SaveSetupInput,
+  ServerNotificationLevel,
+  SetAgentNotificationLevelInput,
   SetRoutineResultDestinationInput,
   SidebarLayoutSnapshot,
   TeamPresenceSnapshot,
@@ -67,6 +78,7 @@ import type { PushNotificationService } from "../push-notifications";
 import type { RemoteScreenGateway } from "../remote-screen-gateway";
 import type { SignInRelayHost } from "../sign-in-relay-host";
 import type { TeamStore } from "../team-store";
+import type { VaultService } from "../vault-service";
 
 type TeamApiAgentMethods = Pick<
   AgentService,
@@ -216,8 +228,16 @@ export type TeamApiProviderAccounts = Pick<
 /** Its presence is what `#protocolSupport` advertises `provider-usage-reset-v1` on. The routes are admin-only. */
 export type TeamApiProviderUsageResets = Pick<AgentService, "providerUsageResets" | "resetProviderUsage">;
 
+/** Its presence is what `#protocolSupport` advertises `provider-sign-out-v1` on. The route is admin-only. */
+export type TeamApiProviderSignOut = Pick<AgentService, "signOutProvider">;
+
 /** Its presence is what `#protocolSupport` advertises `storage-v1` and `storage-disk-v1` on. */
 export type TeamApiStorage = Pick<StorageUsageService, "usage" | "deleteFile" | "clear" | "disk">;
+/** `machine-resources-v1`: the machine use and its alerts. The routes are admin-only. */
+export type TeamApiMachine = Pick<
+  MachineAlertMonitor,
+  "metrics" | "alerts" | "setAlerts" | "canBeResponsible" | "pending" | "subscribe"
+>;
 /** `hosted-sites-v1`: the openbot.site sites of this server. Members list; only admins delete. */
 export type TeamApiHostedSites = Pick<HostedSiteDesktopService, "listServerSites" | "deleteServerSite">;
 
@@ -225,12 +245,37 @@ export type TeamApiHostedSites = Pick<HostedSiteDesktopService, "listServerSites
 export type TeamApiHiddenAgents = Pick<AgentService, "listHiddenAgents" | "setAgentHidden">;
 
 /**
- * Its presence is what `#protocolSupport` advertises `agent-tasks-v1` on. A member who can send a
- * message to the agent can use it. Moving a queued message into a task stays local.
+ * `agent-notification-levels-v1`: the level that each member chose for this server and for each agent.
+ * The host keeps the levels of the owner under one key, so its desktop app and its phones read the
+ * same levels.
+ */
+export interface TeamApiAgentNotificationLevels {
+  snapshot(memberId: string, hidden: ReadonlySet<string>): AgentNotificationLevelsSnapshot;
+  set(memberId: string, input: SetAgentNotificationLevelInput): Effect.Effect<unknown, PreferenceFileFailure>;
+  setServer(memberId: string, level: ServerNotificationLevel | null): Effect.Effect<unknown, PreferenceFileFailure>;
+  /** Calls `listener` with the member after each change of their levels, from any of their devices. */
+  subscribe(listener: (memberId: string) => void): () => void;
+}
+
+/**
+ * Its presence is what `#protocolSupport` advertises `agent-tasks-v1` and `agent-threads-v1` on. A member
+ * who can send a message to the agent can use it. Moving a queued message into a task stays local.
  */
 export type TeamApiAgentTasks = Pick<
   AgentService,
-  "listAgents" | "listTasks" | "readTask" | "startTask" | "sendMessage" | "stopTask" | "closeTask" | "reopenTask"
+  | "listAgents"
+  | "listTasks"
+  | "readTask"
+  | "startTask"
+  | "sendMessage"
+  | "stopTask"
+  | "closeTask"
+  | "reopenTask"
+  | "renameTask"
+  | "deleteTask"
+  | "listTaskReads"
+  | "markTaskRead"
+  | "branchTask"
 >;
 
 /**
@@ -285,6 +330,17 @@ export type TeamApiWorkflows = Pick<
 > &
   Pick<HostEventsService, "rotateWorkflowSecret">;
 
+/** The setup choice of this computer: the same file and the same service step as the local Settings save. */
+interface TeamApiDefaultProvider {
+  get(): Effect.Effect<ProviderDefaultSetting, { readonly cause: unknown }>;
+  set(input: SaveSetupInput): Effect.Effect<ProviderDefaultSetting, { readonly cause: unknown }>;
+}
+
+export interface ProviderDefaultSetting {
+  provider: AgentProviderId | null;
+  model: AgentModelId | null;
+}
+
 /**
  * The admin routes, one member per optional capability. A member's presence is what
  * `#protocolSupport` advertises its capability on; every route behind it requires an owner or admin.
@@ -295,6 +351,8 @@ export interface TeamApiAdmin {
       AcpRegistry[Method]
     >;
   };
+  /** `custom-agents-v1`: the custom ACP agents of this host. */
+  customAgents?: Pick<CustomAgentChanges, "list" | "save" | "remove">;
   /** Read-only release discovery, independent of permission to install. */
   release?: Pick<HostReleaseService, "snapshot" | "check">;
   /** `agent-admin-v1`: access and auto-approve of one agent. */
@@ -303,8 +361,12 @@ export interface TeamApiAdmin {
    * `agent-host-settings-v1`: Computer Use, local scripts and the busy-message mode of one agent.
    * `agent-backup-models-v1`: its backup models.
    * `agent-task-limit-v1`: how many of its tasks run at the same time.
+   * `agent-new-chat-v1`: whether it starts a new chat itself when its chat gets long.
+   * `agent-plan-card-v1`: whether it shows its plan card before a long task.
    */
   agentHost?: AgentHostSettingsService;
+  /** `agent-folders-v1`: the folders that one agent can change besides its workspace. */
+  folders?: Omit<AgentFolders, "requireAgent">;
   sessionSettings?: Pick<
     AgentService,
     "readAgentSessionSettings" | "setAgentSessionSetting" | "resetAgentSessionSetting"
@@ -328,10 +390,16 @@ export interface TeamApiAdmin {
   update?: Pick<RequestedUpdate, "snapshot" | "check" | "start" | "requestWhenIdle" | "cancel" | "changeSettings">;
   /** `host-timezone-v1`: the server timezone. */
   timezone?: Pick<ServerTimezonePreferenceStore, "get" | "set">;
+  /** `host-key-rotation-v1`: the owner changes this host's key. Resolves with the new public key. */
+  hostKey?: { rotate(): Effect.Effect<{ publicKey: string }, RemoteWorkflowError> };
   /** `agent-memory-limit-v1`: how many memories each agent of this computer can keep. */
   memoryLimit?: AgentMemoryLimitSetting;
+  /** `memory-review-v1`: how often this computer's agents review their memories in the background. */
+  memoryReview?: MemoryReviewPreferenceStore;
   /** `prompt-cache-ttl-v1`: how long the provider keeps the prompt cache of this computer's agents. */
   promptCacheTtl?: Pick<PromptCacheTtlPreferenceStore, "get" | "set">;
+  /** `provider-default-v1`: the provider and model that a new agent of this computer starts on. */
+  defaultProvider?: TeamApiDefaultProvider;
   /** `routine-results-v1`: the place where an agent routine sends its answers. */
   routineResults?: TeamApiRoutineResults;
 }
@@ -361,7 +429,10 @@ interface TeamApiProviders {
     | "clearProviderCredential"
   >;
   credentials: Pick<ProviderCredentialStore, "status" | "set" | "clear">;
-  runtimes: Pick<ProviderRuntimeManager, "getStatus" | "download" | "cancel" | "checkForUpdates">;
+  runtimes: Pick<
+    ProviderRuntimeManager,
+    "getStatus" | "download" | "cancel" | "checkForUpdates" | "startKeyProviderCli"
+  >;
   customProviders: PeerCustomProviderChanges;
   /**
    * Whether this host can run the Claude pasted-code sign-in. `providers-v3` promises it, so a host
@@ -435,6 +506,9 @@ export type TeamApiOnePasswordConnector = Pick<
 /** `bitwarden-connector-v1`: the Bitwarden connection of this host, by an API key and the master password. */
 export type TeamApiBitwardenConnector = Pick<BitwardenConnectorService, "status" | "connectWithApiKey" | "disconnect">;
 
+/** `vault-v1`: the Vault of this host, for an owner or admin. The route uses no CSV import. */
+export type TeamApiVault = VaultService;
+
 export type TeamApiAgentAccess = Pick<AgentAccessStore, "copyAgent" | "get" | "levels" | "set" | "subscribe">;
 
 export interface TeamApiOptions {
@@ -447,18 +521,22 @@ export interface TeamApiOptions {
   connectors?: TeamApiConnectors | undefined;
   onePasswordConnector?: TeamApiOnePasswordConnector | undefined;
   bitwardenConnector?: TeamApiBitwardenConnector | undefined;
+  vault?: TeamApiVault | undefined;
   providerHostSignIns?: TeamApiProviderHostSignIns | undefined;
   providerAccounts?: TeamApiProviderAccounts | undefined;
   providerUsageResets?: TeamApiProviderUsageResets | undefined;
+  providerSignOut?: TeamApiProviderSignOut | undefined;
   /** Starts and waits for the managed tool runtimes behind the MCP save, enable, and test routes. */
   mcpToolRuntimePreparation?: McpToolRuntimePreparation;
   storage?: TeamApiStorage;
+  machine?: TeamApiMachine;
   hostedSites?: TeamApiHostedSites;
   agentImport?: TeamApiAgentImport;
   instanceTransfer?: TeamApiInstanceTransfer;
   routineFlows?: TeamApiRoutineFlows;
   workflows?: TeamApiWorkflows;
   hiddenAgents?: TeamApiHiddenAgents;
+  agentNotificationLevels?: TeamApiAgentNotificationLevels;
   /** `agent-access-v1`: the roles that limit what a member can do with each agent. */
   agentAccess?: TeamApiAgentAccess;
   agentTasks?: TeamApiAgentTasks;

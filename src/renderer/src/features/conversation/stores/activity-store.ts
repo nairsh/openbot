@@ -1,4 +1,5 @@
-import type { AgentModelId, AgentReasoningEffort } from "@openbot/contracts/ipc";
+import type { AgentModelId, AgentProviderRef, AgentReasoningEffort } from "@openbot/contracts/ipc";
+import { markdownPreviewText } from "@openbot/contracts/markdown-preview-text";
 import type { AgentProfile } from "@openbot/ui/data";
 import { type AgentActivityLabel, nextAgentActivityLabel } from "@openbot/ui/features/conversation/AgentActivity";
 import { reasoningHeadline } from "@openbot/ui/features/conversation/AgentSteps";
@@ -27,11 +28,13 @@ export interface RenderedAgentActivity {
   label: AgentActivityLabel;
 }
 
-/** The model and effort that a turn started with. A change during the turn applies from the next one. */
+/** The provider, account, model and effort that a turn started with. A change during the turn applies from the next one. */
 export interface TurnRuntime {
   turnId: string;
+  provider: AgentProviderRef;
   model: AgentModelId;
   reasoningEffort: AgentReasoningEffort;
+  providerAccountId?: string | undefined;
 }
 
 export interface ActivityStoreDeps {
@@ -95,24 +98,28 @@ export function createActivityStore(deps: ActivityStoreDeps) {
       if (message?.turnId !== activeTurnId || message.itemType !== "commentary") continue;
       const items = message.items ?? [message.body];
       for (let itemIndex = items.length - 1; itemIndex >= 0; itemIndex -= 1) {
-        const detail = reasoningHeadline(items[itemIndex] ?? "");
+        const detail = markdownPreviewText(reasoningHeadline(items[itemIndex] ?? ""));
         if (detail) return detail;
       }
     }
     return null;
   });
   const activeActivityDetail = createMemo(() => {
+    // A card on screen stops the turn until the user acts, so the last tool step is not what happens now (#3707).
+    if (deps.props.prompt) return currentText().t("chat.activity.waitingForAnswer");
+    if (deps.props.approval) return currentText().t("chat.activity.waitingForApproval");
+    if (deps.props.browserTakeover) return currentText().t("chat.activity.waitingForBrowser");
     const hold = heldByOwnChannelWork();
     if (hold) return currentText().t("chat.activity.workingIn", { channel: hold.channelName });
     const progress = deps.props.activityDetail?.trim();
-    // The agent's own commentary is shown as it is; the host's progress text is in the host's source
-    // English and is read here in the user's language.
+    // The agent's own commentary is shown as plain text, without its Markdown marks (#3425); the host's
+    // progress text is in the host's source English and is read here in the user's language.
     return latestActiveCommentary() ?? (progress ? currentText().sourceText(progress) : null);
   });
   const agentActivity = createMemo<"Working" | null>(() => (activeActivityId() ? "Working" : null));
   /**
-   * The saved model and effort when this chat first saw the running turn. The host does not send the
-   * model of a turn, and a turn reads the saved settings when it starts.
+   * The saved provider, account, model and effort when this chat first saw the running turn. The host does not
+   * send the runtime of a turn, and a turn reads the saved settings when it starts.
    */
   const runningTurnRuntime = createMemo<TurnRuntime | null>(() => {
     const agent = deps.props.agent;
@@ -125,7 +132,13 @@ export function createActivityStore(deps: ActivityStoreDeps) {
     }
     const known = deps.turnRuntimes.get(key);
     if (known?.turnId === turnId) return known;
-    const runtime = untrack(() => ({ turnId, model: agent.model, reasoningEffort: agent.reasoningEffort }));
+    const runtime = untrack(() => ({
+      turnId,
+      provider: agent.provider,
+      model: agent.model,
+      reasoningEffort: agent.reasoningEffort,
+      providerAccountId: agent.providerAccountId,
+    }));
     deps.turnRuntimes.set(key, runtime);
     return runtime;
   });

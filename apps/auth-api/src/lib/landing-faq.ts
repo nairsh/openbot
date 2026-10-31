@@ -5,6 +5,8 @@
 export interface LandingQuestion {
   question: string;
   answer: string;
+  /** Shown after the answer on the page. Not in the JSON-LD text. */
+  link?: { label: string; href: string };
 }
 
 export const LANDING_FAQ: readonly LandingQuestion[] = [
@@ -14,9 +16,10 @@ export const LANDING_FAQ: readonly LandingQuestion[] = [
       "Yes. OpenBot costs $0, with no locked features. You pay only your AI provider, through the plan or API key you already have.",
   },
   {
-    question: "Is OpenBot open source?",
+    question: "Is OpenBot's source code open?",
     answer:
-      "The source code is public on GitHub, under the PolyForm Noncommercial License 1.0.0. You can read, change and run it for any noncommercial purpose. It is not an open-source license as the OSI defines one: commercial use needs a separate license.",
+      "Yes. All of the source code is open on GitHub, so you can check what OpenBot does. You can change and run it for free for noncommercial use, such as personal projects, study or research. Commercial use needs a separate license. The license is PolyForm Noncommercial 1.0.0.",
+    link: { label: "See the source code on GitHub", href: "https://github.com/nightly-labs/openbot" },
   },
   {
     question: "Can I use my ChatGPT or Claude plan?",

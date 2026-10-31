@@ -43,8 +43,7 @@ export const messages = {
   "sitePage.connect.failure.tabClosed":
     "Karta OpenBot, która rozpoczęła połączenie z {name}, nie odpowiedziała. Otwórz OpenBot w przeglądarce i ponownie połącz {name}.",
   "sitePage.connect.failure.failed": "{name} nie zakończył połączenia. Spróbuj ponownie.",
-  "sitePage.connect.restartHint":
-    "W OpenBot otwórz {serverSettings}, potem {connectors}, potem {name} i wybierz {connect}.",
+  "sitePage.connect.restartHint": "W OpenBot otwórz {marketplace}, potem {apps}, potem {name} i wybierz {connect}.",
   "sitePage.connect.notOpened":
     "Uruchom OpenBot, a potem spróbuj ponownie. Jeśli OpenBot nie jest zainstalowany na tym komputerze, pobierz go i połącz {name} w aplikacji.",
   "sitePage.openApp.title": "Nic się nie otworzyło?",
@@ -76,4 +75,12 @@ export const messages = {
   "sitePage.report.sentTitle": "Zgłoszenie wysłane",
   "sitePage.report.sentBody": "Dziękujemy. Otrzymaliśmy Twoje zgłoszenie.",
   "sitePage.report.home": "Przejdź do strony głównej",
+  "sitePage.pricing.title": "Cennik OpenBot",
+  "sitePage.pricing.description":
+    "Hostowane serwery i licencja dla zespołów. OpenBot jest darmowy do użytku osobistego na własnym komputerze.",
+  "sitePage.pricing.heading": "Cennik",
+  "sitePage.pricing.enterprise.title": "Enterprise",
+  "sitePage.pricing.enterprise.body":
+    "Większe serwery, ponad {count} członków lub cokolwiek innego, czego potrzebujesz. Ze wsparciem dla firm.",
+  "sitePage.pricing.enterprise.contact": "Kontakt ze sprzedażą",
 } as const satisfies PartialTranslation<typeof source>;

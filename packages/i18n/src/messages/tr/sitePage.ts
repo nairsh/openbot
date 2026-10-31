@@ -44,7 +44,7 @@ export const messages = {
     "{name} bağlantısını başlatan OpenBot sekmesi yanıt vermedi. OpenBot'u tarayıcınızda açın ve {name} bağlantısını yeniden kurun.",
   "sitePage.connect.failure.failed": "{name} bağlantıyı tamamlamadı. Tekrar deneyin.",
   "sitePage.connect.restartHint":
-    "OpenBot'ta {serverSettings}, ardından {connectors}, ardından {name} bölümünü açın ve {connect} seçeneğini seçin.",
+    "OpenBot'ta {marketplace}, ardından {apps}, ardından {name} bölümünü açın ve {connect} seçeneğini seçin.",
   "sitePage.connect.notOpened":
     "OpenBot'u başlatın, sonra tekrar deneyin. OpenBot bu bilgisayarda yoksa indirin ve {name} bağlantısını uygulamadan kurun.",
   "sitePage.openApp.title": "Hiçbir şey açılmadı mı?",
@@ -76,4 +76,12 @@ export const messages = {
   "sitePage.report.sentTitle": "Bildirim gönderildi",
   "sitePage.report.sentBody": "Teşekkürler. Bildiriminizi aldık.",
   "sitePage.report.home": "Ana sayfaya git",
+  "sitePage.pricing.title": "OpenBot fiyatlandırması",
+  "sitePage.pricing.description":
+    "Barındırılan sunucular ve ekipler için lisans. OpenBot, kendi bilgisayarınızda kişisel kullanım için ücretsizdir.",
+  "sitePage.pricing.heading": "Fiyatlandırma",
+  "sitePage.pricing.enterprise.title": "Kurumsal",
+  "sitePage.pricing.enterprise.body":
+    "Daha büyük sunucular, {count} üyeden fazlası veya ihtiyacınız olan her şey. Kurumsal destekle.",
+  "sitePage.pricing.enterprise.contact": "Satış ekibine ulaşın",
 } as const satisfies PartialTranslation<typeof source>;

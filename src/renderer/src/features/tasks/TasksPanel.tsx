@@ -3,8 +3,15 @@ import { currentText } from "@openbot/ui/text";
 import { createSignal, onCleanup } from "solid-js";
 import { actionToast } from "../../action-toast";
 import { appPort } from "../../app-port";
+import { useLayout } from "../../layout";
+import { useNavigation } from "../../navigation";
+import { usePlatform } from "../../platform";
+import { deviceSendShortcut } from "../../send-shortcut-preference";
 import { useTurns } from "../../turns";
 import { appendVoiceTranscript } from "../../voice-recording";
+import { useAgentTasks } from "../agent-tasks/agent-tasks-context";
+import { useAgentThreads } from "../agent-threads/agent-threads-context";
+import { attentionKey } from "../agents/agent-runtime-snapshot";
 import { useAgents } from "../agents/agents-context";
 import { EMPTY_DRAFT } from "../conversation/composer-draft";
 import { composerDraftKey } from "../conversation/conversation-keys";
@@ -16,7 +23,7 @@ import { desktopTasksSource } from "./tasks-port";
 /** The voice store dictates for one composer. The Tasks composer is not an agent's, so it has its own key. */
 const VOICE_TARGET_AGENT_ID = "tasks";
 
-export interface TasksPanelProps {
+interface TasksPanelProps {
   serverId: string;
   hostName: string;
   onBack?: (() => void) | undefined;
@@ -27,7 +34,12 @@ export interface TasksPanelProps {
 /** The Tasks page on desktop: the agents of the active server, the task IPC, and voice from this computer. */
 export function TasksPanel(props: TasksPanelProps) {
   const { agentList } = useAgents();
-  const { approvals, respondToApprovalRequest } = useTurns();
+  const { approvals, pendingPrompts, respondToApprovalRequest } = useTurns();
+  const threads = useAgentTasks();
+  const tabs = useAgentThreads();
+  const { selectAgent } = useNavigation();
+  const platform = usePlatform();
+  const layout = useLayout();
 
   function openAttachment(attachment: AttachmentSummary, action: "open" | "reveal" | "download"): void {
     window.openbot.agent.openAttachment({ attachmentId: attachment.id, action }, props.serverId).catch((error) => {
@@ -45,6 +57,18 @@ export function TasksPanel(props: TasksPanelProps) {
       onOpenLink={(url) => void appPort().openUrl(url)}
       onAttachmentAction={openAttachment}
       approvals={approvals()}
+      // A question and a browser takeover wait by thread, as the thread tab reads them.
+      waitsForAnswer={(task) => pendingPrompts()[attentionKey(task.agentId, task.threadId)] !== undefined}
+      // The tab is written first, so the chat opens on it. Opening the chat closes the page.
+      onOpenInChat={(task) => {
+        tabs.open(task.agentId, task.id);
+        // The Routines view covers the chat.
+        layout.setSidebarView("agents");
+        selectAgent(task.agentId);
+      }}
+      sendShortcut={deviceSendShortcut(platform.appInfo()?.platform)}
+      // The thread state reaches the active server, which the page follows.
+      onRead={(input, messageId) => threads.markTaskRead(input.agentId, input.taskId, messageId)}
       // The page covers the chat, so a failed answer shows as a toast, not in the chat.
       onRespondApproval={(approval, decision) =>
         respondToApprovalRequest(approval.agentId, approval.requestId, decision, {
@@ -86,6 +110,7 @@ function createTasksVoice(controls: TasksVoiceControls): TasksVoiceAdapter {
     voiceMeterStop: undefined,
     voiceAgentId: undefined,
     voiceServerId: undefined,
+    voiceThreadSend: false,
   };
   const showError = (message: string | null) => {
     if (message) controls.showError(message);
@@ -104,6 +129,9 @@ function createTasksVoice(controls: TasksVoiceControls): TasksVoiceAdapter {
     voiceElapsedSeconds: elapsedSeconds,
     setVoiceElapsedSeconds: setElapsedSeconds,
     setVoiceLiveTranscript: (transcript) => setLiveText(transcript?.text ?? ""),
+    // The Tasks composer has no side threads.
+    voiceThreadKey: () => undefined,
+    setVoiceThreadKey: () => {},
     setVoiceLevels: setLevels,
     drafts: () => ({ [key()]: draft() }),
     setDrafts: (update) => controls.setDraft(update({ [key()]: draft() })[key()]?.text ?? ""),

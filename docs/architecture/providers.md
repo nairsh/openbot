@@ -5,10 +5,11 @@ To add a provider, or to see how a provider signs in on a joined server, read
 
 ## Built-in tool discovery
 
-`agent/tool-catalog.ts` exposes ten direct tools and three discovery tools to every adapter.
+`agent/tool-catalog.ts` exposes eleven direct tools and three discovery tools to every adapter.
 Claude uses its native question tool instead of `ask_user`. The direct tools are `ask_user`,
 `attach_files_to_response`, `list_agents`, `send_message`, `search_memories`, `remember`,
-`forget_memory`, `react_to_user_message`, `routine_no_update`, and `routine_report_failure`. External plugin registration stays with each provider adapter.
+`forget_memory`, `react_to_user_message`, `request_api_key`, `routine_no_update`, and
+`routine_report_failure`. External plugin registration stays with each provider adapter.
 
 `tool_search` uses local keyword matching. Exact names come first, then word matches, with stable
 catalog order for ties. It returns five results by default and at most ten. It accepts `queries`, or
@@ -16,8 +17,12 @@ one `query` string, because models often send one string. Up to three strong res
 queries that contain each word of the tool name without its namespace, include the original schema and guidance, so the agent can call them
 without a describe step. Each model step sends the full context again, so one step less saves more
 input than the added schema costs. A query word that is only in the namespace, or one shared verb
-such as "read", does not make a result strong. The other results have a short description only. `tool_describe`
-returns the original schemas for up to ten qualified names, plus guidance from
+such as "read", does not make a result strong. The other results have a short description only. When a
+strong result is an `openbot_browser` tool, the results also include `openbot_browser.run_script` with its
+schema. Agents search for the single actions that they know, such as click, and otherwise do not find the
+multi-step tool (see [Browser](browser.md)). The instructions
+tell the agent to describe a tool only when no search result gave its schema. `tool_describe` accepts `names`, or
+one `name` string, and returns the original schemas for up to ten qualified names, plus guidance from
 `agent/tool-guidance.ts`. Identical guidance appears once per response. The initial catalog lists
 names without schemas.
 
@@ -35,15 +40,16 @@ receive them through the local MCP bridge.
 `agent/developer-instructions.ts` puts stable rules first, profile and workspace settings next,
 and memories last. Detailed browser, administration, routine, hosting, data, and visual guidance
 loads through `tool_search` or `tool_describe`. Essential secret handling and untrusted-content rules stay in the
-permanent instructions. ACP and Muse still insert these shorter instructions on each normal turn.
+permanent instructions. Each rule has one place: the Vault, wait, and memory-selection details are in
+their tool guidance or descriptions, and the teammate reply format and the rule against
+acknowledgement loops come with each teammate message (`agent/delivery-content.ts`). ACP and Muse still insert these shorter instructions on each normal turn.
 Retention after compaction is not assumed. Compaction thresholds are unchanged.
 
-The default synthetic fixture measures 11,541 instruction characters and 8,382 characters for the
-serialized visible tool definitions, including the 1,912-character catalog. This is 19,923
-characters, or about 4,981 tokens at four characters per token, compared with the earlier 101,602
-characters (about 25,401 tokens). It is an 80.4% reduction in default application text. Schemas and
-guidance loaded later add context and can add model steps. Provider prompts, external plugins,
-caching, billing, and native model serialization are outside this measurement.
+`bun run check:agent-context` measures the instruction text, the visible tool definitions, the
+catalog, and the guidance in bytes, and fails when one of them grows. See
+[Agent context budget](../development-checks.md#agent-context-budget). Schemas and guidance loaded
+later add context and can add model steps. Provider prompts, external plugins, caching, billing, and
+native model serialization are outside this measurement.
 
 ## History retrieval and replacement sessions
 
@@ -84,6 +90,51 @@ reason and Claude configuration restarts, without conversation text.
 Memory refresh behavior remains unchanged. The Codex fake-provider test proves that updated
 instructions are sent on resume; it does not prove native model adoption. Claude prompt snapshots
 stay off so they cannot freeze changed profile or memory text.
+
+## Background memory review
+
+`agent/memory-review.ts` reviews an agent's memories in the background. Each conversation has its
+own count: the agent's own chat and each side thread. A review starts after 20 completed turns of a
+conversation, after 15 minutes with no turn in a conversation that has 3 or more new turns, when
+the user clears the chat, and when a side thread with new turns closes. Turns of channels,
+messaging threads and routine runs do not count. A turn in which the agent changes its memories
+itself starts the count again. A deleted side thread is not reviewed, and its running review ends.
+The counts and the last reviewed message are in memory only; after a restart, a review reads the
+latest messages.
+
+The number of turns is a setting of the server that runs the agents: Server settings > General >
+Memory review, with 10, 20 (the default) or 40 turns, or Off. An owner or admin of a joined server sets
+it through `memory-review-v1` (see [servers.md](servers.md)). Main owns
+`openbot-memory-review-v1.json` (`MemoryReviewPreferenceStore`) and passes
+`memoryReviewInterval()` to the agent service, which reads it at each use, so a change applies from
+the next turn. Off starts no review of any kind: not after turns, a pause, a clear or a closed side
+thread. The counts continue while it is off, so the first turn after it is on again can start a
+review.
+
+The review is one profile-client generation without tools, on the agent's own provider. It uses
+the provider's default model (`defaultProviderModel`) when that model is listed and its standard
+input price in `usage-pricing.ts` is lower than the price of the agent's model, with that model's
+default reasoning effort. Otherwise, also when a price is not known, it uses the agent's own model
+and reasoning effort. Benchmark v2 measured the review quality on `claude-haiku-5-5`. The review
+does not reuse the main chat's prompt cache: its prompt and tools are not the chat's, so its input
+is billed at the full rate. It reads the agent's profile, its memories, and the conversation since the last review and after
+the latest context reset, with the side-question transcript budget. The prompt holds every
+essential memory and as many searchable memories as fit 12,000 characters: first those that share
+the most words with the reviewed conversation, then the newest. It states how many are not shown,
+so a review stays the same size at any memory limit. Chat and memory text pass through
+the secret redaction before the prompt is made. The model answers `add`, `update` and `forget`
+operations as JSON. `AgentMemories.applyReview` commits them as one turn through the checks of the
+memory tools: the memory limit, the essential budget, duplicates and the user's selections. A
+review does not change a memory that the user wrote or whose inclusion the user chose, a memory
+whose text changed after the review read it, or a memory whose text the redaction changed. A memory
+clear during the review drops all of its changes.
+
+Only one review runs at a time, and only when a profile-client slot stays free for the user. A
+review that cannot start waits, and starts when the running review ends or at the next turn. A
+clear's review that waits for longer reads the new chat, not the chat that the clear ended. A failed generation or an answer that is not JSON is logged
+and shows nothing. A usage limit is skipped silently and does not mark the model. The changes show as a
+memory-changes line with its own `memory-review-` turn id, in the conversation that was reviewed.
+While a turn of that conversation runs, the line waits for the turn to end. Agent deletion and service stop end a running review.
 
 ## Compaction ownership
 
@@ -154,7 +205,11 @@ artifact and preserves the old runtime, so a release that does not start leaves 
 in use. Download status stays `finishing` until activation succeeds.
 
 CLI resolution prefers an explicit `OPENBOT_*_PATH`, then the installed managed copy, then an
-automatically discovered system CLI. Updates never run the system CLI's updater. An explicit path
+automatically discovered system CLI. When the managed copy wins, `resolveInstalledFirst` in
+`src/backend/cli.ts` also resolves with no managed copy, at the same time, and a system CLI of the same or a newer
+version runs instead: the user's CLI on `PATH` replaces a copy that is not newer. A version that
+cannot be compared, such as two Cursor builds of one date, keeps the managed copy. Antigravity has
+no `PATH` discovery, so it always runs the managed copy. Updates never run the system CLI's updater. An explicit path
 suppresses managed update offers. Startup uses the same selection and reads the executable's version.
 On macOS and Linux, discovery looks in the folders of the login-shell `PATH` (`loginSearchPath` in
 `src/backend/cli.ts`, shared with ACP and custom agents and cached for 60 s), then in fixed user
@@ -217,10 +272,38 @@ agent service has to be given the executable either way. Staging directories car
 random suffix and are swept by age, never by name, so a sibling's install is not collected while it
 runs. The manager stamps each version it takes into use -- the pinned one it verified, and the older
 one it falls back to until the pinned one arrives -- and collection keeps anything stamped within two
-days. When the computer has been awake for one check interval (one hour), the update check keeps
+days. Once the version it runs is `ready`, the manager keeps no older version to fall back on and stops
+stamping the one it replaced, so that version goes when its last stamp leaves the window. Before
+this, the store kept the last working older version of each CLI for good, and every update left two
+copies on disk. When the computer has been awake for one check interval (one hour), the update check keeps
 only what was stamped within three hours. So a version another instance or another
 worktree's pin still runs is not removed; a collection that fails, as it does on Windows for an open
 binary, never stops startup.
+
+A provider that is off in this profile runs no CLI, so the manager does not stamp its versions. Pi
+counts as in use while a key-only provider that runs on it is on. Its
+provider page in Settings offers Remove download (#3321), which removes every version of that CLI and
+this profile's partial downloads of it, and leaves accounts and sign-ins alone. It is refused while
+the provider is on, while its download runs, and for a provider with an explicit CLI path. The same
+age rule keeps a version another instance stamped, with one change: the manager remembers its own
+last stamp of each directory, and a directory whose mtime is not later than that stamp counts as
+unstamped. Otherwise the stamps this instance wrote before the user turned the provider off would
+keep it for hours. A sibling stamp older than this instance's last one is hidden by it until the
+sibling's next check stamps again. Each version is moved aside before it is deleted, so a version a
+program holds open stays whole, and the removal then reports that it did not finish. The manager
+stamps the version it activates, so an install it made in the same session is its own. Because a
+provider that is off is not stamped, a sibling can collect its version; turning the provider on
+reads the store again when that version is gone. Turning the provider on later downloads the CLI as
+on first use.
+
+Server settings > Storage shows the same downloads in its "Provider runtimes" cleanup row, for this
+computer only. `removableRuntimes` answers the old versions and the download of each provider that is
+off, counts a directory that is both once, and names those providers; a provider whose download runs
+is left out. A provider that is on keeps its copy unless main reported a system version for it
+(`setSystemVersion`): it then runs the user's CLI, so its copy runs nothing and counts as removable.
+The row never moves a running provider to another CLI. `removeRemovableRuntimes` collects the old versions, then calls `removeDownload`
+for each named provider at once, so each follows the rules above. A failure does not stop the
+others; the error names the providers that failed, and the page measures again.
 
 ### Managed provider updates
 
@@ -229,6 +312,14 @@ for `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, and `win32-x64`; a
 that it is not supported instead of offering a download. An older managed installation is display
 metadata until the offered runtime passes the existing download and install checks. Runtime snapshots carry the previous version and an optional `availableVersion` through the
 preload decoder. Cancellation and failure preserve the previous installation and its update offer.
+
+After an app upgrade, main updates the managed CLIs with no offer (#3164).
+`openbot-provider-cli-app-version-v1.json` in `userData` keeps the app version that last started the
+update checks. A different or missing version calls `startUpdateChecks({ updateInstalled: true })`.
+Until the first check starts the downloads, `getStatus` does not offer the CLIs that it will update. That check then starts the
+download of each managed CLI that has a newer version, before it sends its status, so the renderer
+announces no offer. A CLI the user installed, an explicit path and an off provider keep the normal
+offer path. The renderer shows a notification for such an update only when it fails, with a Retry.
 
 `ProvidersProvider` starts the shared renderer runtime store for the active server. The store
 announces each provider that gains an offer as one notification, from an effect over both the
@@ -248,8 +339,10 @@ Each provider status row reports `cliSource`, and main passes the version of a `
 it compares a managed installation. The row and the notification therefore use the one update offer,
 the one Update button, and one entry point in the runtime store, `startProviderUpdate`. One path
 runs behind it, whoever owns the CLI: the download installs the managed copy and
-`updateProviderCli` activates it, and CLI resolution then prefers that copy to the system install,
-which is left where it is. OpenBot never runs the CLI's own updater, so no version it offers depends
+`updateProviderCli` activates it with `preferInstalled: false`, so it starts the copy it downloaded.
+Later resolutions keep that copy while it is newer than the system install, which is left where it
+is; when the user's CLI catches up, the user's CLI runs again. When the user's CLI goes away, main calls
+`providerUseChanged`, which stamps the copy again, or reads the store when a sibling collected it. OpenBot never runs the CLI's own updater, so no version it offers depends
 on another release channel. An explicit `OPENBOT_*_PATH` suppresses the offer, because that path
 names the binary to run and the managed copy is not it. The owner comes from the last resolution of
 the binary, not from the client that runs it, so a provider that is signed out still reports its own
@@ -330,6 +423,17 @@ with no key stored those models can only come from the user's own OpenCode sign-
 buy them. Neither `/models` endpoint authenticates, so entitlement cannot be read back and the
 split is a product rule rather than a check.
 
+The CLI reports no Go quota over ACP. `readOpenCodeGoUsage` (`src/backend/opencode-usage.ts`)
+sends `opencode.ai/zen/go/v1/usage` the key the CLI uses. A saved key is the only key: the CLI
+applies config `options.apiKey` last. With no saved key, it reads the CLI's own keys in the order
+T3 Code uses: the active OpenCode Console row (`integration_id = 'opencode'`, `type: "key"`, no
+self-hosted `metadata.server`) in the `credential` table of `$XDG_DATA_HOME/opencode/opencode.db`
+(or `OPENCODE_DB`), then the Go key: the `opencode-go` key of `auth.json` (or `OPENCODE_AUTH_CONTENT`,
+which also skips the database), or `OPENCODE_API_KEY` when that has none (#3548). A 401 or 403 on the
+Console key tries the Go key. The
+database is opened read-only with a 100 ms busy timeout, because Effect cannot interrupt a blocked
+SQLite call. `scripts/opencode-go-usage-e2e.ts` covers it.
+
 `PREFERRED_MODEL_ORDER` (in the same file) reorders that catalog, because a provider with no
 `defaultProviderModel` runs the first model of its list and OpenCode reports the third-party
 services the user signed in to before its own — so the fallback used to pick a model behind a token
@@ -348,6 +452,43 @@ A keyless OpenCode still lists models whose provider has no sign-in. OpenCode 2.
 one with `-32000` "provider authentication required" and no provider ID. `OPENCODE_ACP_FLAVOR`
 maps that code to `error.provider.opencodeAuthRequired`, which names the provider from the model ID
 before its first `/` and lists the fixes: a Free model, a Go key, or `opencode auth login`.
+
+#### Turns of a background subagent
+
+OpenCode 2.2.0 sends session updates only for the execution that a `session/prompt` starts. When a
+background subagent ends, OpenCode answers its result in a turn of its own (a `synthetic` row with
+`source: subagent` in its store), and no update of that turn reaches the client (#3406). The flag
+`unsentBackgroundTurns` of `OPENCODE_ACP_FLAVOR` turns on the recovery in `acp-client.ts`:
+
+- A tool call that ends with `rawOutput.metadata.status` "running" and a `sessionID` started a
+  background task. OpenBot then watches the session for 30 minutes, and longer while it changes.
+  The idle pool does not close a watched session, because a closed one never reports the result.
+- Every 2 seconds, when no prompt runs or opens, OpenBot reads `session/list`. When the session's
+  `updatedAt` changes, it sends `session/load` with the session's own MCP servers, and collects the
+  replay apart from live updates until the load answers, also after the request time limit. A
+  prompt waits for the load meanwhile. A failed load is tried again at the next poll.
+- The client keeps the ACP `messageId` of each message with text and the ID of each tool call that
+  the chat showed. The replay's entries after the last shown one, the updates of the tool calls
+  that are still open, and the added text of the message that the turn shows last go through the
+  live update path in a turn with `unprompted: true`. OpenCode stores a message when it starts and
+  its text when the step ends, so a replay can find it empty first. As for Claude
+  (#1904), no delivery attaches to that turn, and a message sent meanwhile fails with
+  `ProviderTurnActiveError` and waits in the queue.
+- OpenBot ends that turn when the session sends nothing new for 15 seconds and no tool call is open,
+  or after the stall limit while one is. A step that writes for longer can split one turn in two;
+  nothing is lost. A stop cancels the turn and marks its open tool calls as stopped. For 30 seconds
+  after any turn that does not complete, a replay marks new entries as shown and does not show
+  them, because OpenCode can go on with a stopped turn (#2858).
+
+The watch is in memory. A background task that ends while OpenBot is closed, or after OpenBot
+loaded the session again, shows only in OpenCode's own store.
+
+#### Text of two steps
+
+OpenCode 2.2.0 gives the message of each step its own ACP `messageId`. With `messagePerId`, text of a
+new `messageId` with no tool call before it starts a new paragraph of the same answer, so the text
+of two steps does not show as one line. As for every ACP agent, text before a tool call is
+commentary, which the chat folds into the turn's thinking.
 
 Provider session IDs remain in `projection_provider_sessions`; migration 17 adds OpenCode while
 preserving turn links. Provider switches keep the same agent, workspace, and local thread.
@@ -392,7 +533,7 @@ callback uses `127.0.0.1` on the host, so complete sign-in in a desktop session 
 VM. A browser on another computer cannot complete this loopback callback. A server with no
 desktop can install and start Gemini, but cannot complete the interactive Google sign-in.
 
-The local Settings > Providers screen offers Connect for both a managed runtime and an
+The local Server settings > Providers screen offers Connect for both a managed runtime and an
 external runtime. Gemini has no device-code flow, so a remote host signs it in on a page in its
 own browser. A Linux host advertises `provider-host-sign-in-v1` (Team API v7 only). Connect sends
 `start` to the host. The host runs the same sign-in as its own Connect, and opens the Google link
@@ -457,8 +598,9 @@ The account sign-in is the same ACP `authenticate` call as the first account's; 
 `logout` first. So a Reconnect refuses while an agent on the account runs a turn, and it stops the
 account's idle agent processes, which keep the old token. A saved Gemini API key belongs to the
 first account: an account process never gets `GEMINI_API_KEY`. The server reports no email and the token file holds none, so OpenBot cannot see
-that two accounts are the same Google account. A joined server signs the account in through the
-live view, because `provider-account-relay-v1` names Codex and Claude only.
+that two accounts are the same Google account. A joined server relays the account's sign-in to the
+client's browser with `provider-account-relay-v2`. A host with only `provider-account-relay-v1`, which
+names Codex and Claude only, signs the account in through the live view.
 
 From 1.4.1 the server answers a prompt that starts with `/usage` itself, without a model turn: it
 reads the Google account's quota summary and sends one Markdown answer. The driver's
@@ -553,7 +695,9 @@ the primary window. The reader also sends `GetPlanInfo`: on a merged plan (`isMe
 subscription, the included usage covers Grok and Composer only, so `totalPercentUsed` alone fills the
 primary window and the dock shows no other models window, as the Cursor app does. The Cursor app
 keeps the split for a merged Enterprise team plan; the reader cannot see the membership type, so it
-does not. A failed `GetPlanInfo` keeps the split. No token, a 401 or 403, or no percentage gives no reading. The dock poll calls
+does not. That merged total is the Grok plan quota, so the reading sets `sharedQuotaWith: "grok"`
+(not sent on the Team API): the page rail then shows the Grok ring alone when Grok has one. Its
+hover card lists the Cursor reading too, and the ring draws the reading with the least left. A failed `GetPlanInfo` keeps the split. No token, a 401 or 403, or no percentage gives no reading. The dock poll calls
 `readCursorUsage` directly, as it does for OpenCode, so it does not start the CLI for a reading.
 `scripts/cursor-usage-e2e.ts` covers it.
 
@@ -618,9 +762,14 @@ provider added after v8 needs no new protocol version. The `providers-v8` routes
 
 The host hides a provider from a peer below v8 when that protocol's frozen list does not have it
 (`FROZEN_PROVIDERS` in `src/main/team-api/provider-visibility.ts`). So a new provider is hidden
-from old peers with no change there. Do not edit those lists. A local-only provider
-(`LOCAL_ONLY_PROVIDERS`, now Inception and Direct) is hidden from peers on every protocol, v8 too, and the
-peer key routes refuse its key.
+from old peers with no change there. Do not edit those lists. A key-only provider
+(`KEY_ONLY_PROVIDERS`, now Inception, DeepSeek and OpenRouter) is not in any frozen list, so a v8
+peer is the first to see it. The `providers-v8` key routes read, set and clear its key. A key set
+there starts the host's Pi download when Pi cannot start, and does not wait for it. Until Pi is
+ready no process uses the key, so the route saves only the key; the provider is checked again when Pi
+is ready. The `providers-v5` and `providers-v1` key routes refuse its key. A local-only provider
+(`LOCAL_ONLY_PROVIDERS` in `src/main/team-api/provider-visibility.ts`, now Direct) is hidden from
+peers on every protocol, v8 too.
 
 A v8 client keeps the agents of a provider that its build does not know (`ForeignProviderId`,
 `AgentProviderRef`). The agent stays in the list and chat works, because the host runs it. The
@@ -729,6 +878,34 @@ a refused `turn/start`, and a provider that fails to start do not fail over. A m
 most once for each model that failed it, so a move that cannot happen shows the error on the next
 failure; the check for a ready backup runs again when the turn ends.
 
+### Usage read pacing
+
+Each desktop window, web tab and phone polls the plan usage every five minutes, and each poll reaches
+the host. A usage endpoint allows few requests an hour for each login: Claude's is shared with Claude
+Code and answers HTTP 429 for an hour or more when a client asks too often. So `UsageReadGate`
+(`src/backend/agent/usage-read-gate.ts`) paces the reads of each provider's own sign-in in
+`ProviderRuntime.usage`, and of each account after the first in `ProviderAccounts.usage`. One read runs
+at a time; a request that comes during it waits and takes its reading. A reading answers for four
+minutes, a little less than the poll, so one view still gets a new reading at each poll. After a failed
+read, the next one waits 5 minutes, then 10, 20 and 40, up to an hour. Between reads and during the wait,
+the last reading stays on the rail, also when one of its windows has reset.
+A window that resets after the last read starts a read before the four minutes end, but not during the
+wait after a failure; a window that had already reset when the provider sent the reading does not.
+
+A read outside the poll of the provider's own sign-in, with the dock's model, also counts: when Codex
+starts, its reading replaces the kept one and the next poll does not read again. The read after a usage
+limit has no model, so for a provider whose limits depend on the model it resets the gate, and the next
+poll reads. These reads, and the reads of a usage reset, are not paced. A credential change, another
+login, a sign-out, turning the provider off or a new key resets the gate and forgets the kept reading and
+reset credits, so the next poll reads at once and no view shows the old login's reading; a read that
+started before the reset does not set the next read time. An account check or a usage reset of an
+account after the first also counts as a read.
+
+The values follow t3code (one refresh in five minutes for each host, one at a time) and openusage (5
+minutes, doubling up to an hour). CodexBar and openusage first wait for `Retry-After`; the Claude Agent
+SDK and the Codex app-server do not give OpenBot that header, so the gate uses only the doubling.
+`scripts/usage-read-pacing-e2e.ts` checks the gate with a fake Codex.
+
 ### Usage reset credits
 
 Codex can give an account usage reset credits: one restores the spent usage limits of the account at
@@ -736,8 +913,8 @@ once (issue #2859). `account/rateLimits/read` counts them in `rateLimitResetCred
 and `account/rateLimitResetCredit/consume` spends one; both are stable Codex app-server methods since
 0.156.0. `ProviderRuntime.#refreshUsage` keeps the count of each client with its usage reading.
 `usageResets` reads the provider's own sign-in again while its process runs, and keeps the last count
-while it is released; an account after the first uses the reading that the dock keeps for five
-minutes. An account whose reading has no count is left out. `resetUsage` sends the consume with a new
+while it is released; an account after the first uses the reading that the dock keeps (see
+[Usage read pacing](#usage-read-pacing)). An account whose reading has no count is left out. `resetUsage` sends the consume with a new
 `idempotencyKey` for each reset the user asks for, through the running client, an agent's process or a
 short one in the account's folder. Then it reads the account's usage again and sends `usage-changed`.
 After the answer `reset`, or `nothingToReset` (no limit of the account is spent), `AgentService` calls
@@ -746,6 +923,19 @@ After the answer `reset`, or `nothingToReset` (no limit of the account is spent)
 Settings > Providers shows **Reset usage** in the ⋯ menu of a connected account that has a credit.
 The confirmation names the credits left, and the answer shows under the accounts. A joined server
 uses the optional `provider-usage-reset-v1` routes (see [Admin capabilities](servers.md#admin-capabilities)).
+
+### Disconnect the own sign-in
+
+Settings > Providers shows **Disconnect** in the ⋯ menu of the connected own sign-in of Claude and
+Codex (issue #3487). These drivers have an `accounts.signOut` command (`claude auth logout`,
+`codex logout`). `ProviderRuntime.signOutProvider` refuses while the provider runs a turn, cancels a
+sign-in, and runs that command with no home variable, so it signs out the user's own home folder.
+On this computer a terminal CLI shares that folder and the macOS keychain item, so it signs out too;
+the confirmation says so. Then OpenBot stops the client and reports the provider signed out, as a
+Gemini Reconnect does. A failed sign-out keeps the client and shows its reason. Agents keep the own
+sign-in and wait for a Reconnect. The accounts after the first and their folders stay, but they
+need the connected CLI, so they wait too. A joined server uses the optional `provider-sign-out-v1`
+route.
 
 ## Provider settings and the ACP registry
 
@@ -788,12 +978,45 @@ Inception is a provider of its own that runs on Pi's managed CLI. Its driver set
 so it resolves Pi's downloaded binary and has no runtime or download of its own. After a Pi update, a
 running Inception process restarts on the new binary when its turns end. Connect and Reconnect on the
 row open the key dialog, and the composer's sign-in opens the Providers settings, because a key is the
-only sign-in. The key is stored as the `inception` API key. `pi-inception.ts` writes a key-free extension that
+only sign-in. The key is stored as the `inception` API key. `pi-key-providers.ts` writes a key-free extension that
 calls `pi.registerProvider("inception", …)` with the Mercury models; the key is in the process
 environment and a `globalThis` slot, because Pi runs extensions again on `switch_session`. The
 Inception client lists only the `inception` models, with bare ids such as `mercury-3`. The Pi client
-does not load this extension, so it keeps only the user's own `inception` models. Without a key the provider has no models and asks for a key. Inception is local-only:
-no Team API protocol carries it, v8 included (`LOCAL_ONLY_PROVIDERS`).
+does not load this extension, so it keeps only the user's own `inception` models. Without a key the provider has no models and asks for a key. Team API v8 carries Inception; peers
+below v8 do not see it.
+
+## DeepSeek
+
+DeepSeek works as Inception does: a provider of its own on Pi's managed CLI (`cliProvider: "pi"`),
+with a key as its only sign-in (`KEY_ONLY_PROVIDERS` in contracts). The key is stored as the
+`deepseek` API key. Pi has a built-in `deepseek` provider, so the extension from
+`pi-key-providers.ts` calls `pi.registerProvider("deepseek", ...)` with the key and no models. A
+registration with only the key keeps Pi's DeepSeek models, endpoint and thinking levels (checked in
+Pi 1.4.0), so OpenBot keeps no DeepSeek model list. Pi prefers a `deepseek` key in its own
+`auth.json` to the registered `apiKey`, so the extension also sets the `Authorization` header,
+which replaces either key. A 401 or a 402 from a key provider shows a text about the saved key or
+the account balance (`#failureText` in `pi-client.ts`). The DeepSeek client lists only the `deepseek`
+models, with bare ids such as `deepseek-v4-pro`. The Pi client loads no key extension, so it keeps
+the user's own `deepseek` models, for example from `DEEPSEEK_API_KEY` in Pi's environment.
+Peers see DeepSeek from v8, as Inception.
+
+## OpenRouter
+
+OpenRouter works as DeepSeek does: a key-only provider on Pi's managed CLI. The key is stored as the
+`openrouter` API key. Pi has a built-in `openrouter` provider with OpenRouter's model list (401 models
+in Pi 1.1.0 and 1.4.0), so the extension registers only the key and the `Authorization` header, and
+OpenBot keeps no OpenRouter model list. Pi sends some models to OpenRouter's Anthropic Messages
+endpoint and the others to its chat completions endpoint; both read the header. On the Anthropic
+Messages endpoint Pi also sends the key from its own `auth.json` as `x-api-key`, so the extension sets
+that header to the OpenBot key too (checked in Pi 1.4.0 with a local server). Pi's own
+`/api/models/user` request still uses a key from `auth.json` when the user saved one there; it reads
+the model list and sends no turn content. Model ids keep
+OpenRouter's `<lab>/<model>` form, such as `anthropic/claude-opus-5.5`, and the client passes them to
+Pi unchanged. The catalog drops the aliases that start with `~`, such as
+`~anthropic/claude-sonnet-latest`, because `isAgentModel` refuses that character, and the default is
+`anthropic/claude-sonnet-5.5`. The model picker groups the models by lab (`openRouterLab` in
+`provider-model-options.ts`) and marks the `:free` models as free. A 402 means the account has no
+credits. Peers see OpenRouter from v8, as Inception.
 
 ## Direct
 
@@ -857,8 +1080,10 @@ remain valid; the names are reserved only for new custom-agent creation.
 
 Optional `providers-v5` routes include the new runtimes and write-only provider keys.
 `agent-session-settings-v1` adds read, set, reset, and an agent-ID-only invalidation event.
-`acp-registry-v1` adds registry administration. Each administrative route checks the host role;
-clients hide unsupported controls. MCP-over-ACP transport is outside this change.
+`acp-registry-v1` adds registry administration. `custom-agents-v1` lists, adds, replaces and removes
+the host's custom agents with the parsers and change service of the local Settings; the trial start
+and the usage answers stay local. Each administrative route checks the host role; clients hide
+unsupported controls. MCP-over-ACP transport is outside this change.
 
 ## Local context indication
 
@@ -870,6 +1095,11 @@ The snapshot includes only active personal provider sessions. Reset, session rep
 provider changes remove the old indication. A provider change publishes a runtime snapshot before
 the next turn, so retired counts do not remain on screen. Execution-thread data does not enter
 personal chat.
+
+Optional `threadContextStates` carries the same state for the active provider session of each open
+side thread, keyed by its `threadId`. The side thread's message box shows it. It is local only, as
+`contextStates` is, and `fitRuntimeSnapshot` drops it first. A `handoff` provider cannot replace the
+session of a side thread, so its `autoCompactAt` is null there.
 Codex uses `tokenUsage.last.totalTokens` and its reported `modelContextWindow`. Claude reads the
 SDK `getContextUsage({ detail: "summary" })` result after a turn. This uses the previous response
 and local estimates; it avoids full per-category token-count requests. The read runs outside the
@@ -893,3 +1123,5 @@ summary is not copied into this state.
 when `autoCompactAt` is set, which means that OpenBot compacts the thread (`events`, `request` or
 `handoff`). It refuses while a turn, a queued message or a session start needs the session. It is
 local only: the Team API has no route, and a joined server's agent shows no ring.
+`agent:tasks:compact-context` does the same for one open side thread. It refuses while the thread
+has an active turn or delivery, or while its session compacts or waits after a refused start.

@@ -47,8 +47,13 @@ import {
   type DetectedAcpAgent,
   type DetectedModelServer,
   type DiscoverModelsResult,
+  decodeExternalLinkTarget,
   decodeScheduledUpdateRestart,
   type ExportResult,
+  type ExternalLinkBrowser,
+  type ExternalLinkBrowsers,
+  type ExternalLinkFallback,
+  type ExternalLinkPreference,
   type GitHubConnectorRepositories,
   type GitHubConnectorStatus,
   type HostedSiteList,
@@ -81,6 +86,8 @@ import {
   isSpeechVoice,
   isVoiceLanguage,
   isVoiceModelId,
+  isVoiceServerProbe,
+  isVoiceServerSettings,
   type MobileConnectedDevice,
   type MobileConnectLink,
   type MobileConnectTicket,
@@ -103,6 +110,8 @@ import {
   type UpdatePreference,
   type UpdateStatus,
   type VoiceModelStatus,
+  type VoiceServerProbe,
+  type VoiceServerSettings,
   type VoiceSettings,
   type VoiceStream,
   type VoiceStreamTranscript,
@@ -122,7 +131,7 @@ import {
 } from "@openbot/contracts/ipc-decoding";
 import { type LicenseState, parseLicenseState } from "@openbot/contracts/license";
 import { isPluginSlug } from "@openbot/contracts/plugin-links";
-import { isBoolean, isNumber, isOneOf, isString } from "@openbot/contracts/runtime-values";
+import { type DynamicRecord, isBoolean, isNumber, isOneOf, isString } from "@openbot/contracts/runtime-values";
 
 export function decodeAppInfo(value: unknown): AppInfo {
   const info = decodeRecord(value, "app info");
@@ -253,7 +262,15 @@ function decodeCentralAuthUser(value: unknown): CentralAuthUser {
     email: requiredString(user, "email"),
     name: nullableString(user, "name"),
     avatarUrl: nullableString(user, "avatarUrl"),
+    ...optionalAnalyticsEnabled(user),
   };
+}
+
+function optionalAnalyticsEnabled(user: DynamicRecord): Pick<CentralAuthUser, "analyticsEnabled"> {
+  const { analyticsEnabled } = user;
+  if (analyticsEnabled === undefined) return {};
+  if (analyticsEnabled !== null && !isBoolean(analyticsEnabled)) throw new Error("Invalid analyticsEnabled.");
+  return { analyticsEnabled };
 }
 
 function decodeCentralAuthIssue(value: unknown): CentralAuthIssue {
@@ -361,6 +378,34 @@ export function decodeAppBehaviorPreference(value: unknown): AppBehaviorPreferen
   };
 }
 
+export function decodeExternalLinkPreference(value: unknown): ExternalLinkPreference {
+  const target = decodeExternalLinkTarget(decodeRecord(value, "external link preference").target);
+  if (!target) throw new Error("Invalid external link target.");
+  return { target };
+}
+
+function decodeExternalLinkBrowser(value: unknown): ExternalLinkBrowser {
+  const browser = decodeRecord(value, "browser");
+  return { name: requiredString(browser, "name"), path: requiredString(browser, "path") };
+}
+
+export function decodeExternalLinkBrowserOrNull(value: unknown): ExternalLinkBrowser | null {
+  return value === null ? null : decodeExternalLinkBrowser(value);
+}
+
+export function decodeExternalLinkBrowsers(value: unknown): ExternalLinkBrowsers {
+  const list = decodeRecord(value, "browser list");
+  if (!Array.isArray(list.browsers)) throw new Error("Invalid browser list.");
+  return {
+    defaultBrowser: decodeExternalLinkBrowserOrNull(list.defaultBrowser),
+    browsers: list.browsers.map(decodeExternalLinkBrowser),
+  };
+}
+
+export function decodeExternalLinkFallback(value: unknown): ExternalLinkFallback {
+  return { name: requiredString(decodeRecord(value, "external link fallback"), "name") };
+}
+
 export function decodeRemoteSessionReusePreference(value: unknown): RemoteSessionReusePreference {
   return {
     keepBetweenRuns: requiredBoolean(decodeRecord(value, "remote session preference"), "keepBetweenRuns"),
@@ -452,6 +497,21 @@ export function decodeSpeechAudio(value: unknown): SpeechAudio {
     throw new Error("Invalid speech audio.");
   }
   return { pcm, sampleRate };
+}
+
+export function decodeVoiceServerSettings(value: unknown): VoiceServerSettings | null {
+  if (value === null) return null;
+  if (!isVoiceServerSettings(value)) throw new Error("Invalid voice server settings.");
+  const { address, hasApiKey, routes } = value;
+  const { dictation, speech, transcriptionModel, speechModel, voice } = routes;
+  return { address, hasApiKey, routes: { dictation, speech, transcriptionModel, speechModel, voice } };
+}
+
+export function decodeVoiceServerProbe(value: unknown): VoiceServerProbe {
+  if (!isVoiceServerProbe(value)) throw new Error("Invalid voice server test result.");
+  if (!value.ok) return { ok: false, field: value.field, message: value.message };
+  const { transcription, speech, voices } = value.models;
+  return { ok: true, models: { transcription: [...transcription], speech: [...speech], voices: [...voices] } };
 }
 
 export function decodeExportResult(value: unknown): ExportResult {

@@ -1,5 +1,12 @@
 import type { AgentTask } from "@openbot/contracts/ipc";
-import { plainTaskTitle, TASKS_CLOSED_SHOWN, taskSections, taskTone } from "@openbot/team-client/agent-tasks";
+import type { AppTextKey } from "@openbot/i18n";
+import {
+  plainTaskTitle,
+  TASKS_CLOSED_SHOWN,
+  type TasksSectionId,
+  taskSections,
+  taskTone,
+} from "@openbot/team-client/agent-tasks";
 import {
   ArrowLeft,
   ArrowUp,
@@ -17,9 +24,10 @@ import {
 import { SwapLabel, type SwapMotion } from "@openbot/ui/components/SwapLabel";
 import type { AgentProfile } from "@openbot/ui/data";
 import { AgentAvatar } from "@openbot/ui/features/agents/AgentAvatar";
-import { AgentTaskMark, agentTaskStatus } from "@openbot/ui/features/conversation/AgentTasks";
+import { AgentTaskMark, type AgentTaskWait, agentTaskStatus } from "@openbot/ui/features/conversation/AgentTasks";
 import { ComposerEditor } from "@openbot/ui/features/conversation/ComposerEditor";
 import { ComposerNotice } from "@openbot/ui/features/conversation/ComposerNotice";
+import type { SendShortcut } from "@openbot/ui/features/conversation/send-shortcut";
 import {
   type VoicePhase,
   VoiceRecordingMorph,
@@ -46,13 +54,13 @@ export interface TasksVoice {
 }
 
 /** The task of the last start, in the line under the composer. */
-export interface TasksTook {
+interface TasksTook {
   task: AgentTask;
   /** True while the start waits: Undo cancels it, and the agent can change. */
   pending: boolean;
 }
 
-export interface TasksPageProps {
+interface TasksPageProps {
   hostName: string;
   onBack?: (() => void) | undefined;
   /** Whether the agent list shows beside the page. */
@@ -86,8 +94,10 @@ export interface TasksPageProps {
   onSelect: (taskId: string | null) => void;
   /** The conversation of one task, for the side panel. */
   panel: (taskId: string) => JSX.Element;
-  /** Whether the task's running turn waits for an approval. */
-  waitsForApproval?: ((task: AgentTask) => boolean) | undefined;
+  /** What the task's running turn waits for from the person: an approval, or an answer in the chat. */
+  waitOf?: ((task: AgentTask) => AgentTaskWait) | undefined;
+  /** The user's send shortcut for the composer. */
+  sendShortcut?: SendShortcut | undefined;
 }
 
 const agentOf = (agents: readonly AgentProfile[], agentId: string) => agents.find((agent) => agent.id === agentId);
@@ -212,6 +222,7 @@ function TasksComposer(props: TasksPageProps) {
             disabled={phase() === "transcribing"}
             focusRequest={props.focusRequest}
             dictation={{ text: props.voice?.liveText ?? "", final: phase() === "transcribing" }}
+            sendShortcut={props.sendShortcut}
             onSubmit={start}
             onValueChange={props.onDraftChange}
           />
@@ -309,11 +320,11 @@ function TaskRow(props: {
   task: AgentTask;
   agent: AgentProfile | undefined;
   selected: boolean;
-  waitsForApproval: boolean;
+  wait: AgentTaskWait;
   onOpen: () => void;
 }) {
   const { t } = useText();
-  const status = () => agentTaskStatus(props.task, t, props.waitsForApproval);
+  const status = () => agentTaskStatus(props.task, t, props.wait);
   return (
     <Button
       type="button"
@@ -332,7 +343,7 @@ function TaskRow(props: {
       <span class="tasks-page-row-title" title={props.task.title}>
         {props.task.title}
       </span>
-      <span class="tasks-page-status" data-tone={taskTone(props.task)}>
+      <span class="tasks-page-status" data-tone={props.wait ? "attention" : taskTone(props.task)}>
         {status()}
       </span>
       <AgentAvatar agent={props.agent} class="tasks-page-avatar" />
@@ -344,15 +355,18 @@ const SECTION_TITLE = {
   needsYou: "conversation.tasks.section.needsYou",
   working: "conversation.tasks.section.working",
   waiting: "conversation.tasks.section.waiting",
-  closed: "conversation.tasks.section.closed",
-} as const;
+  unread: "conversation.tasks.section.unread",
+  read: "conversation.tasks.section.read",
+  closed: "conversation.threads.archived",
+} as const satisfies Record<TasksSectionId, AppTextKey>;
 
-/** The tasks by what they need, each section with its heading. The closed tasks are faded. */
+/** The tasks by what they need, each section with its heading. The archived tasks are faded. */
 function TasksList(props: TasksPageProps) {
   const { t } = useText();
   const ids = createUniqueId();
   const [view, setView] = createStore({ showAllClosed: false });
-  const sections = () => taskSections(props.tasks, view.showAllClosed);
+  const waitOf = (task: AgentTask) => props.waitOf?.(task);
+  const sections = () => taskSections(props.tasks, view.showAllClosed, undefined, (task) => waitOf(task) !== undefined);
   return (
     <For each={sections()} keyed={(section) => section.id}>
       {(section) => (
@@ -374,26 +388,29 @@ function TasksList(props: TasksPageProps) {
                       task={task()}
                       agent={agentOf(props.agents, task().agentId)}
                       selected={props.selectedId === task().id}
-                      waitsForApproval={props.waitsForApproval?.(task()) ?? false}
+                      wait={waitOf(task())}
                       onOpen={() => props.onSelect(props.selectedId === task().id ? null : task().id)}
                     />
                   </li>
                 )}
               </For>
             </ul>
-            <Show when={section().id === "closed" && !view.showAllClosed && section().count > TASKS_CLOSED_SHOWN}>
+            <Show when={section().id === "closed" && section().count > TASKS_CLOSED_SHOWN}>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 class="tasks-page-show-all"
+                aria-expanded={view.showAllClosed ? "true" : "false"}
                 onClick={() =>
                   setView((draft) => {
-                    draft.showAllClosed = true;
+                    draft.showAllClosed = !draft.showAllClosed;
                   })
                 }
               >
-                {t("conversation.tasks.showAll", { count: section().count })}
+                {view.showAllClosed
+                  ? t("conversation.tasks.showLess")
+                  : t("conversation.tasks.showAll", { count: section().count })}
               </Button>
             </Show>
           </section>
@@ -414,6 +431,7 @@ function TasksSidePanel(props: {
   tasks: readonly AgentTask[];
   taskId: string | null;
   panel: (taskId: string) => JSX.Element;
+  onClose: () => void;
 }) {
   const [view, setView] = createStore({ shownId: untrack(() => props.taskId), closing: false });
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -455,6 +473,25 @@ function TasksSidePanel(props: {
       {(taskId) => {
         onCleanup(() => {
           contentId = null;
+        });
+        // Escape closes the panel, as on the settings page: on the document and after the delegated
+        // handlers, so a control that handles Escape keeps it. An open popup or another text field also keeps it.
+        onSettled(() => {
+          const closeOnEscape = (event: KeyboardEvent) => {
+            if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
+            const target = event.target instanceof Element ? event.target : null;
+            if (target?.closest("[role=dialog], [role=alertdialog], [role=menu], [role=listbox]")) return;
+            if (
+              target &&
+              !target.closest(".tasks-page") &&
+              target.closest("input, textarea, select, [contenteditable]")
+            )
+              return;
+            event.preventDefault();
+            props.onClose();
+          };
+          document.addEventListener("keydown", closeOnEscape);
+          return () => document.removeEventListener("keydown", closeOnEscape);
         });
         return (
           <div
@@ -558,7 +595,12 @@ export function TasksPage(props: TasksPageProps) {
           </Show>
         </div>
       </div>
-      <TasksSidePanel tasks={props.tasks} taskId={props.selectedId} panel={props.panel} />
+      <TasksSidePanel
+        tasks={props.tasks}
+        taskId={props.selectedId}
+        panel={props.panel}
+        onClose={() => props.onSelect(null)}
+      />
     </section>
   );
 }

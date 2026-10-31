@@ -404,6 +404,11 @@ it, `bun run mobile:release:published ios` (or `android`) writes the date of tha
 `## [x.y.z] - 2026-10-14 (Android), 2026-10-16 (iOS)`. A date with no store is the date of both
 stores. `/changelog` shows each store, and a store that does not have the version as "In review".
 
+When a store makes a version available, also set that version for the store in
+`MOBILE_LATEST_VERSIONS` in `apps/auth-api/src/server/mobile-features-config.ts` and deploy the account
+service. An app with an older version then shows the update header on home. Set it only after the
+store has the build: before, Update opens a store page that cannot install the version.
+
 `scripts/check-release-notes.ts` stops a release when the section is missing, empty or appears two
 times, or when it has an unknown group, a group with no items, an item with no text or outside a
 group, a placeholder such as `TODO`, or a heading with no real date. These steps run it:
@@ -540,7 +545,8 @@ The workflow:
    these runner errors are not caused by the app;
 5. builds a signed Windows x64 NSIS installer on a GitHub Windows runner (unsigned in a dry run);
 6. builds unsigned Linux x64 and arm64 AppImages on GitHub Ubuntu 24.04 runners of each architecture,
-   with the launch check under `xvfb-run`;
+   with the launch check under `xvfb-run`. A further check mounts each AppImage with only `fusermount3`,
+   because its static runtime must start on systems with no libfuse2, such as Arch Linux and Omarchy;
 7. verifies all three unpacked applications, update metadata, included runtimes, provider control
    artifacts, licenses, checksums, platform signing contracts, launch behavior, and update artifact
    size limits;

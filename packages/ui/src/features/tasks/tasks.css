@@ -266,7 +266,7 @@ li[data-arrived] > .tasks-page-row {
  */
 .tasks-page-side {
   position: relative;
-  flex: 0 0 380px;
+  flex: 0 0 420px;
   overflow: hidden;
   transition:
     flex-basis var(--openbot-duration-overlay) var(--openbot-ease-out),
@@ -291,13 +291,23 @@ li[data-arrived] > .tasks-page-row {
   position: absolute;
   inset: 0 auto 0 0;
   display: flex;
-  width: 380px;
+  width: 420px;
   --browser-panel-width: 100%;
 }
 
 .tasks-page-side-content > * {
   flex: 1;
   min-width: 0;
+}
+
+.tasks-panel .file-preview-header {
+  --task-list-glyph: 16px;
+}
+
+/* A question or a browser takeover waits: the chat answers it. */
+.tasks-panel-answer-footer {
+  display: flex;
+  justify-content: flex-end;
 }
 
 /* A change to a different task: the new task fades in at its place. */

@@ -47,7 +47,7 @@ export const messages = {
   "provider.status.checking": "Проверка",
   "provider.status.off": "Выключено",
   "provider.gemini.hostSignIn":
-    "Чтобы подключить Gemini, откройте OpenBot на хосте и нажмите «Подключить» в разделе «Настройки» > «Провайдеры». Для входа в Google на этом хосте нужен браузер. Удалённый вход не поддерживается.",
+    "Чтобы подключить Gemini, откройте OpenBot на хосте и нажмите «Подключить» в разделе «Настройки сервера» > «Провайдеры». Для входа в Google на этом хосте нужен браузер. Удалённый вход не поддерживается.",
 
   "provider.key.free": "Бесплатно",
 
@@ -165,6 +165,14 @@ export const messages = {
   "provider.inceptionKey.description":
     "Сохраните ключ API Inception на этом компьютере, чтобы использовать модели Mercury. OpenBot запускает их в загруженном Pi CLI.",
   "provider.inceptionKey.label": "Ключ API Inception",
+  "provider.deepseekKey.title": "Ключ API DeepSeek",
+  "provider.deepseekKey.description":
+    "Сохраните ключ API DeepSeek на этом компьютере, чтобы использовать модели DeepSeek. OpenBot запускает их в загруженном Pi CLI.",
+  "provider.deepseekKey.label": "Ключ API DeepSeek",
+  "provider.openrouterKey.title": "Ключ API OpenRouter",
+  "provider.openrouterKey.description":
+    "Сохраните ключ API OpenRouter на этом компьютере, чтобы использовать модели OpenRouter. OpenBot запускает их в загруженном Pi CLI.",
+  "provider.openrouterKey.label": "Ключ API OpenRouter",
 
   "provider.openCodeKey.title": "Вход в OpenCode Go",
   "provider.openCodeKey.description": "Бесплатным моделям аккаунт не нужен. Ключ открывает платные модели Go.",
@@ -197,6 +205,7 @@ export const messages = {
   "provider.account.cancelSignIn": "Отменить вход",
   "provider.account.finishSignIn": "Завершите вход в браузере.",
   "provider.account.remove": "Удалить аккаунт",
+  "provider.account.disconnect": "Отключить",
   "provider.account.actionFailed": "Не удалось изменить аккаунт {name}.",
   "provider.account.resetUsage": "Сбросить использование",
   "provider.account.resetUsageTitle": "Сбросить использование {name}?",
@@ -213,10 +222,35 @@ export const messages = {
   "provider.account.resetUsageNoCredit": "У {name} не осталось кредитов сброса использования.",
   "provider.account.resetUsageAlreadyRedeemed": "Этот кредит сброса {name} уже использован.",
   "provider.account.resetUsageFailed": "Не удалось сбросить использование {name}.",
+  "provider.settings.disconnectTitle": "Отключить {name}?",
+  "provider.settings.disconnectOthers": "Другие аккаунты {provider} ждут, пока вы снова не подключите {provider}.",
+  "provider.settings.disconnectLocal":
+    "OpenBot выйдет из {provider} на этом компьютере. CLI {provider} в терминале тоже выйдет из аккаунта.",
+  "provider.settings.disconnectHost": "OpenBot выйдет из {provider} на сервере.",
   "provider.settings.cache": "Кэш",
   "provider.settings.promptCache": "Кэш промптов",
   "provider.settings.promptCacheDescription": "Как долго Claude хранит контекст агента в кэше между ходами.",
   "provider.settings.promptCacheHour": "1 час",
   "provider.settings.promptCacheDefault": "По умолчанию Claude Code",
   "provider.settings.promptCacheLoadFailed": "Не удалось загрузить время кэша промптов этого сервера.",
+  "provider.settings.download": "Загрузка",
+  "provider.settings.downloadedCli": "CLI {name}",
+  "provider.settings.downloadDetail": {
+    one: "{version} · {count} версия · {size}",
+    few: "{version} · {count} версии · {size}",
+    many: "{version} · {count} версий · {size}",
+    other: "{version} · {count} версии · {size}",
+  },
+  "provider.settings.downloadVersions": {
+    one: "{count} версия · {size}",
+    few: "{count} версии · {size}",
+    many: "{count} версий · {size}",
+    other: "{count} версии · {size}",
+  },
+  "provider.settings.downloadAgain": "Когда вы включите {name}, OpenBot снова загрузит CLI.",
+  "provider.settings.removeDownloadConfirm": "Удалить {size}?",
+  "provider.settings.removeDownloadKeeps": "Аккаунты, входы и агенты останутся.",
+  "provider.settings.removeDownload": "Удалить загрузку",
+  "provider.settings.removingDownload": "Удаление…",
+  "provider.settings.removeDownloadFailed": "Не удалось удалить загрузку.",
 } as const satisfies PartialTranslation<typeof source>;

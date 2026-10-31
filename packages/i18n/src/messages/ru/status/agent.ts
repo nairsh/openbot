@@ -5,6 +5,7 @@ export const messages = {
   "status.agent.claudeWriteOutside":
     "Запись в {path} — за пределами рабочего пространства агента, общей папки и временных папок.",
   "status.agent.contextCleared": "Контекст очищен. Здесь начинается новый чат.",
+  "status.agent.instructionsChanged": "Обновил свои инструкции",
   "status.agent.modelSwitchedForLimit": "Лимит использования исчерпан. Переключено на {model}.",
   "status.agent.modelReturnedAfterLimit": "Лимит использования обновился. Снова используется {model}.",
   "status.agent.modelSwitchedForError": "Ошибка провайдера. Переключено на {model}.",
@@ -25,6 +26,12 @@ export const messages = {
     "Сделать снимок области экрана {x}, {y}, {width} × {height} точек и отправить изображение модели агента.",
   "status.agent.screenCaptureProgress": "Запрос снимка экрана…",
   "status.agent.screenCaptureReviewing": "Просмотр снимка экрана…",
+  "status.agent.browserOpening": "Открытие веб-страницы…",
+  "status.agent.browserReading": "Чтение веб-страницы…",
+  "status.agent.browserClicking": "Нажатие на веб-странице…",
+  "status.agent.browserTyping": "Ввод на веб-странице…",
+  "status.agent.browserActing": "Работа с веб-страницей…",
+  "status.agent.browserReviewing": "Просмотр веб-страницы…",
   "status.agent.memoriesSearching": "Поиск в памяти…",
   "status.agent.memoriesSearched": {
     one: "Поиск в памяти: найдено {count}",
@@ -36,4 +43,8 @@ export const messages = {
   "status.agent.skillUsing": "Использование навыка {name}…",
   "status.agent.skillReading": "Чтение навыка…",
   "status.agent.memoryChanges": "Память: сохранено {saved}, обновлено {updated}, забыто {forgotten}.",
+  "status.agent.memoryChangesWithConflicts":
+    "Память: сохранено {saved}, обновлено {updated}, забыто {forgotten}, не изменено {notChanged}, потому что другая ветка изменила их раньше.",
+  "status.agent.planContinues": "В плане есть незавершённые шаги. Агент продолжает ({current} из {limit}).",
+  "status.agent.branchTitle": "Ответвлённый чат",
 } as const satisfies PartialTranslation<typeof source>;

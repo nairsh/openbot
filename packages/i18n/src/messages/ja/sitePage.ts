@@ -43,8 +43,7 @@ export const messages = {
   "sitePage.connect.failure.tabClosed":
     "{name} との接続を始めた OpenBot のタブが応答しませんでした。ブラウザーで OpenBot を開き、{name} をもう一度接続してください。",
   "sitePage.connect.failure.failed": "{name} が接続を完了しませんでした。もう一度お試しください。",
-  "sitePage.connect.restartHint":
-    "OpenBot で {serverSettings}、{connectors}、{name} の順に開き、{connect} を選択してください。",
+  "sitePage.connect.restartHint": "OpenBot で {marketplace}、{apps}、{name} の順に開き、{connect} を選択してください。",
   "sitePage.connect.notOpened":
     "OpenBot を起動してから、もう一度お試しください。このコンピューターに OpenBot がない場合は、ダウンロードしてアプリから {name} を接続してください。",
   "sitePage.openApp.title": "何も開きませんでしたか?",
@@ -76,4 +75,12 @@ export const messages = {
   "sitePage.report.sentTitle": "報告を送信しました",
   "sitePage.report.sentBody": "ありがとうございます。報告を受け付けました。",
   "sitePage.report.home": "ホームページへ",
+  "sitePage.pricing.title": "OpenBot の料金",
+  "sitePage.pricing.description":
+    "ホスト型サーバーとチーム向けライセンス。自分のコンピューターでの個人利用なら OpenBot は無料です。",
+  "sitePage.pricing.heading": "料金",
+  "sitePage.pricing.enterprise.title": "エンタープライズ",
+  "sitePage.pricing.enterprise.body":
+    "より大きなサーバー、{count} 人を超えるメンバー、そのほかのご要望にも対応します。エンタープライズサポート付きです。",
+  "sitePage.pricing.enterprise.contact": "営業に問い合わせる",
 } as const satisfies PartialTranslation<typeof source>;

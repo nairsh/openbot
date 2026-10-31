@@ -59,6 +59,8 @@ export const messages = {
   "app.rail.marketplace": "Marketplace",
   "app.rail.settings": "Impostazioni",
   "app.rail.settingsNotice": "Impostazioni. {notice}",
+  "app.rail.more": "Altro",
+  "app.rail.pinPage": "Fissa {name} nella barra",
   "app.page.serverFallback": "Server",
   "app.help.label": "Aiuto",
   "app.help.whatsNew": "Novità",

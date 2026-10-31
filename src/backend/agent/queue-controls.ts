@@ -26,7 +26,10 @@ import { providerForAgent } from "./thread-items";
 export interface QueueControlsHooks {
   /** The channel task that owns a delivery. Read late: the channel service is built after this. */
   channelAssignment(deliveryId: string): ChannelAssignment | null;
-  /** The thread of the open task that a delivery runs in, or null for the agent's own chat. */
+  /**
+   * The thread of the task that a delivery runs in, or null for the agent's own chat. It throws for a
+   * deleted task.
+   */
   taskThreadId(deliveryId: string): string | null;
 }
 
@@ -233,7 +236,7 @@ export class QueueControls {
         throw new Error(sourceText("error.backend.steerQueuedOnly"));
       const turnId = snapshot.activeTurnId;
       // Steering uses the running turn's endpoint even when the saved model has changed.
-      if (!this.#endpoints.serves(this.#drain.modelForTurn(agent.id, turnId) ?? agent.model))
+      if (!this.#endpoints.serves(this.#drain.modelForTurn(agent.id, turnId) ?? agent.model, client.provider))
         throw new Error(REMOVED_ENDPOINT_MESSAGE);
       return { client, session, snapshot, context, turnId, taskThreadId };
     });

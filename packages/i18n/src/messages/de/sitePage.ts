@@ -47,8 +47,7 @@ export const messages = {
   "sitePage.connect.failure.tabClosed":
     "Der OpenBot-Tab, der die Verbindung mit {name} gestartet hat, hat nicht geantwortet. Öffne OpenBot in deinem Browser und verbinde {name} erneut.",
   "sitePage.connect.failure.failed": "{name} hat die Verbindung nicht abgeschlossen. Versuche es erneut.",
-  "sitePage.connect.restartHint":
-    "Öffne in OpenBot {serverSettings}, dann {connectors}, dann {name}, und wähle {connect}.",
+  "sitePage.connect.restartHint": "Öffne in OpenBot {marketplace}, dann {apps}, dann {name}, und wähle {connect}.",
   "sitePage.connect.notOpened":
     "Starte OpenBot und versuche es dann erneut. Wenn OpenBot nicht auf diesem Computer ist, lade es herunter und verbinde {name} in der App.",
   "sitePage.openApp.title": "Nichts geöffnet?",
@@ -81,4 +80,12 @@ export const messages = {
   "sitePage.report.sentTitle": "Meldung gesendet",
   "sitePage.report.sentBody": "Danke. Wir haben deine Meldung erhalten.",
   "sitePage.report.home": "Zur Startseite",
+  "sitePage.pricing.title": "OpenBot-Preise",
+  "sitePage.pricing.description":
+    "Gehostete Server und eine Lizenz für Teams. OpenBot ist für die private Nutzung auf deinem eigenen Computer kostenlos.",
+  "sitePage.pricing.heading": "Preise",
+  "sitePage.pricing.enterprise.title": "Enterprise",
+  "sitePage.pricing.enterprise.body":
+    "Größere Server, mehr als {count} Mitglieder oder alles andere, was du brauchst. Mit Enterprise-Support.",
+  "sitePage.pricing.enterprise.contact": "Vertrieb kontaktieren",
 } as const satisfies PartialTranslation<typeof source>;

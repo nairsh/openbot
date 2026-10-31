@@ -7,6 +7,10 @@ export const messages = {
     "OpenBot 无法在 Codex 配置中注册 MCP 服务器。请确认 Codex 的 config.toml 有效且可写，然后重启 OpenBot。",
   "error.provider.computerUseConfig":
     "OpenBot 无法在 Codex 配置中注册 Computer Use。请确认 Codex 的 config.toml 有效且可写，然后重启 OpenBot。你可以在助手设置中关闭 Computer Use 以便继续。",
+  "error.provider.codexUnresponsive": "Codex 停止响应，OpenBot 已结束其进程。",
+  "error.provider.acpUnresponsive": "{provider} 未及时响应，OpenBot 已结束其进程。",
+  "error.provider.acpMcpNotLoaded":
+    "{provider} 没有加载 OpenBot 的工具，因此此智能体无法使用这些工具，也无法联系队友。{provider} 的团队策略可能会阻止本地 MCP 服务器。请让团队管理员允许它们，然后重试。",
   "error.provider.endpointsReadOnly":
     "已保存的端点由更新版本的 OpenBot 写入，或文件无法读取。请更新 OpenBot 后再修改。",
   "error.provider.endpointNoSecureStorage":
@@ -53,6 +57,10 @@ export const messages = {
   "error.provider.releaseSourcesUnreachable": "OpenBot 无法连接服务商的发布源。请检查网络连接后重试。",
   "error.provider.runtimesUnsupported": "该平台不支持服务商运行时。",
   "error.provider.closing": "OpenBot 正在关闭。",
+  "error.provider.removeWhileOn": "请先关闭服务商，再移除其下载。",
+  "error.provider.removeWhileDownloading": "请等待下载完成，然后再移除。",
+  "error.provider.removeIncomplete": "有程序正在使用此 CLI 的文件。请关闭该程序，然后重试。",
+  "error.provider.removeDownloadsFailed": "无法移除 {providers} 的 CLI 下载。",
   "error.provider.cliOverride": "请在 OpenBot 中更新之前，先移除显式指定的 CLI 路径。",
   "error.provider.runtimeUpdateIncomplete": "运行时更新未完成。",
   "error.provider.downloadHttp": "运行时下载失败，HTTP {status}。",
@@ -88,11 +96,13 @@ export const messages = {
   "error.provider.modelsTooMany": "模型数量过多。",
   "error.provider.modelIdCharacter": "某个模型 ID 含有不可用的字符。",
   "error.provider.modelIdDuplicate": "有两个模型的 ID 相同。",
+  "error.provider.contextWindowInvalid": "模型的上下文窗口必须是 {min} 到 {max} 之间的整数个 token。",
   "error.provider.headersTooMany": "请求头数量过多。",
   "error.provider.headerNameCharacter": "某个请求头名称含有 HTTP 不允许的字符。",
   "error.provider.headerNameTooLong": "某个请求头名称过长。",
   "error.provider.headerNameDuplicate": "有两个请求头的名称相同。",
   "error.provider.headerValueInvalid": "某个请求头的值为空或过长。",
+  "error.provider.headerValueMissing": "请填写请求头 {name} 的值。",
   "error.provider.apiKeyTooLong": "API 密钥过长。",
   "error.provider.localOnly": "只能在运行助手的电脑上更改服务商。",
   "error.provider.keyRequired": "需要服务商密钥。",
@@ -154,6 +164,7 @@ export const messages = {
   "error.provider.signInExpired": "你的 {provider} 登录已过期，请重新登录以继续。",
   "error.provider.cliActivateFailed": "OpenBot 无法激活托管的 CLI。",
   "error.provider.cliBusyReconnect": "{provider} CLI 正在处理对话，请等它结束后再重新连接。",
+  "error.provider.cliBusySignOut": "{provider} CLI 正在处理一轮对话。请等待其完成，然后断开连接。",
   "error.provider.opencodeCredentialsRejected":
     "模型服务商拒绝了该 API 密钥。请在设置中修正 OpenCode 密钥，或用 `opencode auth login` 修正服务商密钥，然后重试或改用其他模型。\n{detail}",
   "error.provider.opencodeAuthRequired":
@@ -233,11 +244,14 @@ export const messages = {
   "error.provider.acpSignInStopped": "登录在完成之前就停止了。",
   "error.provider.geminiBrowserUnavailable":
     "Gemini 无法打开登录页面。请安装浏览器与 xdg-utils，然后在该主机的桌面会话中连接。没有桌面的服务器无法完成该登录。",
+  "error.provider.geminiBrowserOpenFailed": "Gemini 无法在浏览器中打开登录页面。请检查默认浏览器，然后重新连接。",
   "error.provider.acpSignInFailed": "登录未完成。",
   "error.provider.acpSignInFailedReason": "登录未完成：{reason}",
   "error.provider.acpSignInMethodMissing": "该服务商在这台电脑上不提供该登录方式。请更新服务商后重试。",
   "error.provider.httpsSignInLinkOnly": "只有 HTTPS 登录链接才能在浏览器中打开。",
   "error.provider.geminiKeyRefused": "Gemini 拒绝了已保存的 API 密钥。请在设置中更换或移除该密钥，然后重新连接。",
+  "error.provider.keyProviderRefused": "{provider} 拒绝了已保存的 API 密钥。请在设置中更换或移除该密钥，然后重试。",
+  "error.provider.keyProviderNoBalance": "已保存 API 密钥的 {provider} 账户没有余额。请为账户充值，然后重试。",
   "error.provider.messageTooLarge": "由于 {provider} 发送了大于 {limit} MB 的消息，OpenBot 已将其停止。",
   "error.provider.customAgentIdInvalid": "助手 ID 只能包含小写字母、数字或 `-`，且不能与内置服务商的 ID 相同。",
   "error.provider.customAgentEnvInvalid":
@@ -269,6 +283,7 @@ export const messages = {
   "error.provider.accountsUnsupported": "{provider} 只能保存一个账号。",
   "error.provider.accountNeedsConnection": "请先连接 {provider}，再添加其他账号。",
   "error.provider.usageResetUnsupported": "{provider} 无法重置用量上限。",
+  "error.provider.signOutUnsupported": "OpenBot 无法断开 {provider} 的登录。",
   "error.provider.usageResetNotConnected": "重置用量前，请先重新登录该 {provider} 账号。",
   "error.provider.accountLimit": "{provider} 最多只能保存 {limit} 个账号。",
   "error.provider.accountNotFound": "该 {provider} 账号不在本电脑上。请刷新后重试。",
@@ -327,6 +342,8 @@ export const messages = {
   "error.provider.museAuthUnverified": "Muse 身份验证尚未确认。请在主机电脑上连接，或设置 Meta API 密钥。",
   "error.provider.museSignIn": "请在主机电脑上登录 Muse 以继续。",
   "error.provider.inceptionSignIn": "请添加 Inception API 密钥以继续。",
+  "error.provider.deepseekSignIn": "请添加 DeepSeek API 密钥以继续。",
+  "error.provider.openrouterSignIn": "请添加 OpenRouter API 密钥以继续。",
   "error.provider.terminalLoginFailed": "无法打开登录终端。请在这台主机上打开服务商 CLI 并在那里登录，然后刷新服务商。",
   "error.provider.nativeArchiveInvalid": "服务商下载内容中不包含有效的安装。",
   "error.provider.nativeChecksum": "服务商安装未通过完整性校验。",

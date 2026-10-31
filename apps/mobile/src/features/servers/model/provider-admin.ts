@@ -1,11 +1,23 @@
 import {
+  type AcpRegistryEntry,
+  type AcpRegistryInstallInput,
+  type AcpRegistryOperation,
   AGENT_PROVIDERS,
   type AgentProviderId,
   type AgentProviderStatus,
   type AgentStatus,
   agentProviderDescriptor,
   agentProviderName,
+  type CustomAgentResult,
+  type CustomAgentSummary,
+  type CustomProviderResult,
+  type CustomProviderSummary,
+  decodeRegistryEntries,
+  decodeRegistryInstallResult,
+  decodeRegistryOperations,
+  type HostProviderAccounts,
   isAgentStatus,
+  isKeyOnlyProvider,
   isLocalOnlyProvider,
   loopbackCallback,
   type ManagedProviderId,
@@ -13,10 +25,21 @@ import {
   type ProviderCodeLoginStart,
   type ProviderRuntimeSnapshot,
   type ProviderRuntimeStatus,
+  type SaveCustomAgentInput,
+  type SaveCustomProviderInput,
   type SignInRelayStatus,
 } from "@openbot/contracts/ipc";
 import { isOneOf } from "@openbot/contracts/runtime-values";
 import { TEAM_API_ROUTES } from "@openbot/contracts/team-api-routes";
+import { ACP_REGISTRY_CAPABILITY, ACP_REGISTRY_ROUTES } from "@openbot/contracts/team-protocol/acp-registry-v1";
+import { CUSTOM_AGENTS_CAPABILITY } from "@openbot/contracts/team-protocol/custom-agents-v1";
+import {
+  CUSTOM_PROVIDER_HARNESS_CAPABILITY,
+  CUSTOM_PROVIDER_HARNESS_ROUTES,
+} from "@openbot/contracts/team-protocol/custom-provider-harness-v1";
+import { providerAccountRelay } from "@openbot/contracts/team-protocol/provider-account-relays";
+import { PROVIDER_ACCOUNTS_CAPABILITY } from "@openbot/contracts/team-protocol/provider-accounts-v1";
+import { PROVIDER_DEFAULT_CAPABILITY } from "@openbot/contracts/team-protocol/provider-default-v1";
 import {
   PROVIDERS_ADMIN_CODE_SIGN_IN_PROVIDERS,
   PROVIDERS_ADMIN_ROUTES,
@@ -41,6 +64,7 @@ import {
   PROVIDERS_V5_ROUTES,
   PROVIDERS_V5_RUNTIME_PROVIDERS,
 } from "@openbot/contracts/team-protocol/providers-v5";
+import { PROVIDERS_V8_CAPABILITY, PROVIDERS_V8_ROUTES } from "@openbot/contracts/team-protocol/providers-v8";
 import { SIGN_IN_RELAY_CAPABILITY, SIGN_IN_RELAY_PROVIDERS } from "@openbot/contracts/team-protocol/sign-in-relay-v1";
 import type { MobileTextKey } from "@openbot/i18n/mobile";
 import {
@@ -50,11 +74,24 @@ import {
   checkProviderRuntimeUpdates,
   clearProviderApiKey,
   completeSignInRelay,
+  deleteCustomAgent,
+  deleteCustomProvider,
   downloadProviderRuntime,
+  getHostProviderDefault,
   getProviderApiKeyState,
   getProviderRuntimes,
+  type HostProviderDefault,
+  listCustomAgents,
+  listCustomProviders,
+  listProviderAccounts,
+  removeProviderAccount,
+  renameProviderAccount,
+  saveCustomAgent,
+  saveCustomProvider,
+  setHostProviderDefault,
   setProviderApiKey,
   signInRelayStatus,
+  startProviderAccountSignInRelay,
   startProviderCodeLogin,
   startProviderSignInRelay,
   submitProviderCodeLogin,
@@ -104,9 +141,13 @@ function runtimeProviders(capabilities: readonly string[]): readonly ManagedProv
   return V1_RUNTIME_PROVIDERS;
 }
 
-/** The providers whose API key the host saves: OpenCode Go, and Muse and Gemini from `providers-v5`. */
+/**
+ * The providers whose API key the host saves: OpenCode Go, Muse and Gemini from `providers-v5`, and
+ * Inception, DeepSeek and OpenRouter from `providers-v8`.
+ */
 function providerHasApiKey(provider: AgentProviderId, capabilities: readonly string[]): boolean {
   if (provider === "opencode") return true;
+  if (isKeyOnlyProvider(provider)) return capabilities.includes(PROVIDERS_V8_CAPABILITY);
   return capabilities.includes(PROVIDERS_V5_CAPABILITY) && (provider === "muse" || provider === "antigravity");
 }
 
@@ -196,6 +237,15 @@ export function providerStatusText(row: ProviderRow): { key: MobileTextKey } | {
   return { key: "mobile.server.providers.status.checking" };
 }
 
+/** The status text of an account. A newer host can send a state that this phone shows as an error. */
+export function providerAccountStateKey(state: string): MobileTextKey {
+  if (state === "connected") return "mobile.server.providers.status.connected";
+  if (state === "connecting") return "mobile.server.providers.status.connecting";
+  if (state === "checking") return "mobile.server.providers.status.checking";
+  if (state === "signed-out") return "mobile.server.providers.status.notConnected";
+  return "mobile.server.providers.status.unavailable";
+}
+
 /** A download or its setup step runs on the host. */
 export function providerRuntimeBusy(row: ProviderRow): boolean {
   return row.runtime?.phase === "downloading" || row.runtime?.phase === "finishing";
@@ -228,8 +278,10 @@ export function relayPage(
 }
 
 /**
- * The Providers admin of one host (`providers-v1` to `providers-v5`, `sign-in-relay-v1`), with the
- * newest route set that the host serves. The host checks the role on every route.
+ * The Providers admin of one host (`providers-v1` to `providers-v5`, the `providers-v8` key routes,
+ * `sign-in-relay-v1`, `provider-default-v1`, `custom-provider-harness-v1`, `provider-accounts-v1`,
+ * the account relays, `acp-registry-v1` and `custom-agents-v1`), with the newest route set that the host serves. The
+ * host checks the role on every route.
  */
 export function createProviderAdmin(request: TeamApiRequest, capabilities: readonly string[]) {
   const has = (capability: string) => capabilities.includes(capability);
@@ -245,7 +297,18 @@ export function createProviderAdmin(request: TeamApiRequest, capabilities: reado
     : has(PROVIDERS_SIGN_IN_V3_CAPABILITY)
       ? PROVIDERS_SIGN_IN_V3_ROUTES
       : PROVIDERS_ADMIN_ROUTES;
-  const keyRoutes = has(PROVIDERS_V5_CAPABILITY) ? PROVIDERS_V5_ROUTES : PROVIDERS_ADMIN_ROUTES;
+  // As on the web client: `providers-v8` keeps every key that `providers-v5` keeps, and the key-only providers.
+  const keyRoutes = has(PROVIDERS_V8_CAPABILITY)
+    ? PROVIDERS_V8_ROUTES
+    : has(PROVIDERS_V5_CAPABILITY)
+      ? PROVIDERS_V5_ROUTES
+      : PROVIDERS_ADMIN_ROUTES;
+  // As on the web client: the harness routes also name the provider that runs each endpoint.
+  const customRoutes = has(CUSTOM_PROVIDER_HARNESS_CAPABILITY)
+    ? CUSTOM_PROVIDER_HARNESS_ROUTES
+    : PROVIDERS_ADMIN_ROUTES;
+  const accountRelay = providerAccountRelay(has);
+  const ignore = () => undefined;
   return {
     capabilities,
     readStatus: (): Promise<AgentStatus> => request("GET", TEAM_API_ROUTES.agents.status, decodeAgentStatus),
@@ -286,6 +349,77 @@ export function createProviderAdmin(request: TeamApiRequest, capabilities: reado
       runTeamRequest(setProviderApiKey(request, { provider, key }, keyRoutes)),
     clearKey: (provider: AgentProviderId): Promise<AgentStatus> =>
       runTeamRequest(clearProviderApiKey(request, provider, keyRoutes)),
+    /** The endpoints of the host. A list says only whether an endpoint has a key. */
+    listCustom: (): Promise<CustomProviderSummary[]> => runTeamRequest(listCustomProviders(request, customRoutes)),
+    /**
+     * The key and the header values go to the host in the body, and no reply carries them. The host
+     * has no edit route: a save adds an endpoint, and the host runs it on OpenCode.
+     */
+    saveCustom: (input: SaveCustomProviderInput): Promise<CustomProviderResult> =>
+      runTeamRequest(saveCustomProvider(request, input, customRoutes)),
+    deleteCustom: (id: string): Promise<CustomProviderResult> =>
+      runTeamRequest(deleteCustomProvider(request, { id }, customRoutes)),
+    /**
+     * The accounts of the host's providers (`provider-accounts-v1`), or null when the host has none. A
+     * new account signs in on the page that the host relays (`provider-account-relay-v1` or `-v2`); the
+     * released `sign-in-relay-v1` routes then run the flow, as Connect does.
+     */
+    accounts: has(PROVIDER_ACCOUNTS_CAPABILITY)
+      ? {
+          list: (): Promise<HostProviderAccounts> => runTeamRequest(listProviderAccounts(request)),
+          rename: (provider: AgentProviderId, accountId: string, label: string | null): Promise<void> =>
+            runTeamRequest(renameProviderAccount(request, { provider, accountId, label })),
+          remove: (provider: AgentProviderId, accountId: string): Promise<void> =>
+            runTeamRequest(removeProviderAccount(request, { provider, accountId })),
+          /** The phone signs in an account of the provider only on a page that the host relays. */
+          canSignIn: (provider: AgentProviderId): boolean =>
+            accountRelay !== null && isOneOf(accountRelay.providers, provider),
+          /** `accountId: null` adds an account. A cancel removes a new account that did not sign in. */
+          startRelay: async (provider: AgentProviderId, accountId: string | null): Promise<string> => {
+            if (!accountRelay || !isOneOf(accountRelay.providers, provider))
+              throw new Error(currentText().t("mobile.server.providers.signInUnsupported"));
+            return (
+              await runTeamRequest(startProviderAccountSignInRelay(request, accountRelay, { provider, accountId }))
+            ).flowId;
+          },
+        }
+      : null,
+    /**
+     * The custom ACP agents of the host (`custom-agents-v1`), or null. The host starts each command on
+     * its computer. An environment value goes to the host only, and the phone does not keep it.
+     */
+    customAgents: has(CUSTOM_AGENTS_CAPABILITY)
+      ? {
+          list: (): Promise<CustomAgentSummary[]> => runTeamRequest(listCustomAgents(request)),
+          save: (input: SaveCustomAgentInput): Promise<CustomAgentResult> =>
+            runTeamRequest(saveCustomAgent(request, input)),
+          remove: (id: string): Promise<CustomAgentResult> => runTeamRequest(deleteCustomAgent(request, id)),
+        }
+      : null,
+    /** The ACP registry of the host (`acp-registry-v1`), or null. The host installs the command it names. */
+    registry: has(ACP_REGISTRY_CAPABILITY)
+      ? {
+          search: (query: string): Promise<AcpRegistryEntry[]> =>
+            request("POST", ACP_REGISTRY_ROUTES.search, decodeRegistryEntries, { query }),
+          status: (): Promise<AcpRegistryOperation[]> =>
+            request("POST", ACP_REGISTRY_ROUTES.status, decodeRegistryOperations, {}),
+          install: (input: AcpRegistryInstallInput): Promise<CustomAgentResult> =>
+            request("POST", ACP_REGISTRY_ROUTES.install, decodeRegistryInstallResult, { ...input }),
+          cancel: (registryId: string): Promise<void> =>
+            request("POST", ACP_REGISTRY_ROUTES.cancel, ignore, { registryId }),
+          remove: (registryId: string): Promise<void> =>
+            request("POST", ACP_REGISTRY_ROUTES.remove, ignore, { registryId }),
+        }
+      : null,
+    /** Null when the host does not serve `provider-default-v1`. */
+    defaultProvider: has(PROVIDER_DEFAULT_CAPABILITY)
+      ? {
+          read: (): Promise<HostProviderDefault> => runTeamRequest(getHostProviderDefault(request)),
+          /** The provider's own default model, as the desktop Settings choice of a provider. */
+          set: (provider: AgentProviderId): Promise<HostProviderDefault> =>
+            runTeamRequest(setHostProviderDefault(request, provider, null)),
+        }
+      : null,
   };
 }
 

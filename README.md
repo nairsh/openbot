@@ -55,6 +55,9 @@ or arm64 Linux as an AppImage.
 1. Download the latest `OpenBot-*-x86_64.AppImage` (or `OpenBot-*-arm64.AppImage` on arm64) from [GitHub Releases](https://github.com/nightly-labs/openbot/releases).
 2. Make it executable with `chmod +x OpenBot-*.AppImage`, then run it.
 
+The AppImage does not need libfuse2, so it also runs on Arch Linux and Omarchy. It mounts itself
+with `fusermount3` from the `fuse3` package.
+
 On Ubuntu 23.10 or newer and on Debian 13, unprivileged user namespaces are restricted by AppArmor
 and OpenBot exits during launch until you install an AppArmor profile:
 
@@ -175,7 +178,7 @@ OpenBot include it. Sign in opens Google's sign-in page in your browser. OpenBot
 that name. Set `OPENBOT_ANTIGRAVITY_PATH` to select a server executable yourself. Put it in a
 `bin/` folder, and put an `antigravity-package.json` file with its `version` in the folder above
 `bin/`. Keep `localharness_external` beside the server. When that path is set, OpenBot uses
-only it. Connect remains available in the host's local Settings > Providers screen. Remote
+only it. Connect remains available in the host's local Server settings > Providers screen. Remote
 settings cannot perform Google sign-in; use a browser on the host. See
 [Gemini setup and download recovery](docs/architecture/providers.md#gemini) for the required
 layout, the reported IPv6 download failure, and checks that do not change host networking.
@@ -514,8 +517,11 @@ Attach MP3 audio and MOV video through the file picker or drag and drop. The lim
 file, 250 MB per message, and 10 files per message. OpenBot gives the agent the original file; it does
 not play, decode, transcribe, or validate the recording during import. Damaged recordings can be
 attached for inspection. Analysis depends on the tools available to the agent. For other audio or
-video formats, export as MP3 or MOV, or attach a text transcript. Remote hosts must advertise the
+video formats, export as MP3, MOV, or MP4, or attach a text transcript. Remote hosts must advertise the
 `media-attachments` capability; update the host if this feature is unavailable.
+
+MP4 video uses the same limits and rules as MOV. Remote hosts must also advertise the
+`mp4-attachments` capability.
 
 ZIP archives use the same limits. OpenBot does not extract or inspect an archive: the agent gets the
 original file and extracts it with its own tools. An agent sends a ZIP archive back with
@@ -604,8 +610,8 @@ Copyright 2026 Synthetify Labs spółka z ograniczoną odpowiedzialnością.
 
 Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). You may use, modify, and
 distribute the code for permitted noncommercial purposes. Commercial use requires a separate license
-from the copyright owner. For a commercial license, contact
-[licenses@openbot.run](mailto:licenses@openbot.run). Versions up to and including 0.1.11 remain
+from the copyright owner. Buy a commercial license in Settings → Billing (Starter for 1 user, or
+Team for 2 to 10 users), or contact [licenses@openbot.run](mailto:licenses@openbot.run). Versions up to and including 0.1.11 remain
 available under Apache-2.0.
 See [NOTICE](NOTICE) for attribution and third-party notices.
 

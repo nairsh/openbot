@@ -23,6 +23,7 @@ import {
   routineConversationEvent,
   routineRunConversationEvent,
 } from "@openbot/contracts/ipc";
+import type { ConversationUiBlock } from "@openbot/contracts/ui-blocks";
 import type { MobileTextKey } from "@openbot/i18n/mobile";
 
 export type RoutineMarkerEvent = RoutineConversationEventAction | RoutineRunStatus;
@@ -52,7 +53,14 @@ export type ChatMessage =
   | { id: string; kind: "context-reset" }
   /** A routine created, changed, deleted, or run by the agent. The label matches the desktop marker. */
   | { id: string; kind: "routine"; event: RoutineMarkerEvent; label: MobileTextKey; routineName: string }
-  | { id: string; kind: "question"; turnId: string | undefined; prompt: ConversationQuestionPrompt }
+  | {
+      id: string;
+      kind: "question";
+      turnId: string | undefined;
+      prompt: ConversationQuestionPrompt;
+      /** The block that the prompt is the fallback of, when the host sends it. */
+      uiBlock?: ConversationUiBlock | undefined;
+    }
   | {
       id: string;
       kind: "message";
@@ -66,8 +74,8 @@ export type ChatMessage =
       status?: ConversationMessage["status"];
       replyToMessageId?: string | null;
       attachments?: AttachmentSummary[];
-      /** A visual reply: its one attachment is an HTML page that the chat shows. */
-      visual?: boolean;
+      /** A visual reply: its one attachment is an HTML page that the chat shows, at this height. */
+      visual?: { height?: number };
       /** An image the agent is generating or generated. Its first attachment is the image. */
       imageGeneration?: ImageGenerationInfo;
       /** Why the turn of a failed user message stopped, as the host reported it. */
@@ -357,6 +365,7 @@ export function projectChatMessages(
           kind: "question",
           turnId: message.turnId,
           prompt,
+          uiBlock: message.uiBlock,
         })),
       );
       continue;
@@ -393,7 +402,7 @@ export function projectChatMessages(
           streaming: message.status === "streaming",
           status: message.status,
           attachments: message.attachments,
-          ...(chatVisualReply(message) ? { visual: true } : {}),
+          ...visualReply(message),
           imageGeneration: message.imageGeneration,
           replyToMessageId: message.replyToMessageId,
           createdAt: message.createdAt,
@@ -487,6 +496,12 @@ export function withFailureReasons(messages: ChatMessage[], deliveries: readonly
   });
 }
 
+function visualReply(message: Parameters<typeof chatVisualReply>[0]): { visual?: { height?: number } } {
+  const visual = chatVisualReply(message);
+  if (!visual) return {};
+  return { visual: visual.height === undefined ? {} : { height: visual.height } };
+}
+
 /** Like the host read state, a plan or a visual page is not a readable message. */
 export function latestReadableMessage(messages: ConversationMessage[]) {
   return messages.findLast(
@@ -526,6 +541,7 @@ function projectChannelMessage(
       id: entry.id,
       kind: "question",
       turnId: entry.message.turnId,
+      uiBlock: entry.message.uiBlock,
       prompt:
         entry.superseded && !entry.message.questionPrompt.resolution
           ? { ...entry.message.questionPrompt, resolution: { status: "expired" } }
@@ -574,7 +590,7 @@ function projectChannelMessage(
     status: entry.message.status,
     replyToMessageId: entry.message.replyToMessageId,
     attachments: entry.message.attachments,
-    ...(chatVisualReply(entry.message) ? { visual: true } : {}),
+    ...visualReply(entry.message),
     imageGeneration: entry.message.imageGeneration,
     createdAt: entry.message.createdAt,
   };

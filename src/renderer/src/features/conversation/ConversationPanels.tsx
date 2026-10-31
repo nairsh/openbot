@@ -1,10 +1,9 @@
 import type { ServerSummary } from "@openbot/contracts/ipc";
+import { AGENT_NOTIFICATION_LEVELS_CAPABILITY } from "@openbot/contracts/team-protocol/agent-notification-levels-v1";
 import { BROWSER_PROFILES_CAPABILITY } from "@openbot/contracts/team-protocol/browser-profiles-v1";
 import { classifyFailure } from "@openbot/telemetry";
 import { SETTINGS_PANEL_DEFAULT, SETTINGS_PANEL_MAX } from "@openbot/ui/components/SettingsPanel";
-import type { AgentMessage } from "@openbot/ui/data";
 import { BROWSER_NEW_TAB_URL } from "@openbot/ui/features/browser/browser-suggestions";
-import { AgentTaskList, AgentTaskPanel } from "@openbot/ui/features/conversation/AgentTasks";
 import { SidePanelHeader, SidePanelLauncher, type SidePanelPane } from "@openbot/ui/features/conversation/SidePanel";
 import { SideQuestionPanel } from "@openbot/ui/features/conversation/SideQuestionPanel";
 import { SubagentPanel } from "@openbot/ui/features/conversation/Subagents";
@@ -12,16 +11,16 @@ import { VoicePanel } from "@openbot/ui/features/conversation/VoicePanel";
 import { McpSignInRelayDialog } from "@openbot/ui/features/settings/McpSignInPage";
 import { useText } from "@openbot/ui/text";
 import { actionToast } from "../../action-toast";
-import { toAgentMessages } from "../../app-message-projection";
 import { agentTemplatesPort } from "../agent-templates/agent-templates-port";
 import { createPublishAgent } from "../agent-templates/PublishAgent";
 import { desktopBrowserProfileCalls } from "../browser/browser-profiles-port";
 import type { AgentFilesOptions } from "../files/AgentFilesSettings";
 import { canManageStorage, serverHasStorage } from "../files/storage-usage";
 import { serverCanAdminister, serverSupportsCapability } from "../servers/server-capabilities";
+import { ConversationSideThread } from "./ConversationSideThread";
 import { htmlAttachmentPageHtml, htmlAttachmentPageUrl } from "./chat-visual-url";
 import { useConversationController } from "./conversation-controller-context";
-import { conversationRuntime } from "./conversation-runtime";
+import { type AgentNotificationLevelCalls, conversationRuntime } from "./conversation-runtime";
 import { useConversationViewScope } from "./conversation-scope";
 import { agentSkillsMode } from "./installed-skills-source";
 import { desktopChatEventRoutinesApi } from "./routine-webhooks-api";
@@ -33,7 +32,8 @@ const CONVERSATION_PANEL_MIN = 96;
 const loadAgentSettingsPanel = () => import("./AgentSettingsPanel");
 
 import { Portal } from "@solidjs/web";
-import { createEffect, createMemo, createProjection, Loading, lazy, onSettled, Show, untrack } from "solid-js";
+import { createEffect, createMemo, Loading, lazy, onSettled, Show, untrack } from "solid-js";
+import { agentFolderCalls, agentInstructionsCalls } from "./agent-folders-port";
 import { conversationPort } from "./conversation-port";
 
 /** The voice conversation with the agent that is open when the pane opens. */
@@ -90,6 +90,7 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
     openWorkspaceFolder,
     openWorkspaceFolderEntry,
     previewQuoteId,
+    previewFileKey,
     previewWorkspaceAgentId,
     sidebarFileBack,
     openSidebarFileBack,
@@ -101,6 +102,7 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
     sidebarFilePreview,
     settingsOpen,
     skillSettingsRequest,
+    instructionsSettingsRequest,
     routineSettingsRequest,
     settingsModel,
     settingsProvider,
@@ -110,12 +112,6 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
     openMessageLinkRelay,
     pasteMessageLinkRelay,
     cancelMessageLinkRelay,
-    attachmentAction,
-    taskPanelOpen,
-    taskPanelTaskId,
-    taskListOpen,
-    openTaskPanel,
-    showTaskList,
     activeRightPanel,
     sidePanel,
     sidePanelOpen,
@@ -126,8 +122,15 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
     sideQuestion,
     setSideQuestionDraft,
     askSideQuestion,
+    installedSkills,
+    installedSkillsLoadFailed,
+    mcpServers,
     voiceConversationAvailable,
     panelSubagentId,
+    shownPanelThreadId,
+    openPanelThread,
+    closePanelThread,
+    movePanelThreadToChat,
     channel,
   } = useConversationViewScope();
   const { t, errorMessage } = useText();
@@ -139,6 +142,16 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
   // own agents, for an owner or admin, when it serves `agent-publish-v1`.
   // A remote agent's host resolves its settings, so the account defaults of this computer do not apply.
   const localAgentDefaults = () => (props.server?.kind === "local" ? props.agentDefaults : undefined);
+  const folderCalls = agentFolderCalls();
+  /** An agent's folders are on the computer that runs it. The desktop does not use `agent-folders-v1` yet. */
+  const localFolderCalls = () => (props.server?.kind === "local" && !props.runtime ? folderCalls : undefined);
+  const instructionsCalls = {
+    ...agentInstructionsCalls(),
+    openLink: (url: string) => void openExternalMessageUrl(url),
+  };
+  /** The instruction file is in the agent's workspace on this computer. */
+  const localInstructionsCalls = () =>
+    props.server?.kind === "local" && !props.runtime ? instructionsCalls : undefined;
   const canPublish = () =>
     props.runtime
       ? props.runtime.admin !== undefined && serverCanAdminister(props.server, "agent-publish-v1")
@@ -153,13 +166,40 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
     const serverId = browserProfileServerId();
     return serverId === undefined ? undefined : desktopBrowserProfileCalls(serverId);
   });
+  // Any member keeps an own level for each agent. The calls follow the server id, as above, and a
+  // new server gets new calls, so its panel does not show the levels of the server before.
+  const notificationLevelServerId = createMemo(() =>
+    props.server && serverSupportsCapability(props.server, AGENT_NOTIFICATION_LEVELS_CAPABILITY)
+      ? props.server.id
+      : undefined,
+  );
+  const notificationLevelCalls = createMemo((): AgentNotificationLevelCalls | undefined => {
+    const serverId = notificationLevelServerId();
+    if (serverId === undefined) return undefined;
+    const remote = props.runtime;
+    if (remote) {
+      const calls = remote.agentNotificationLevels;
+      return calls ? { list: () => calls.list() } : undefined;
+    }
+    return {
+      list: () => conversationPort().agent.listAgentNotificationLevels(serverId),
+      subscribe: (listener) =>
+        conversationPort().agent.onScopedEvent((scoped) => {
+          if (scoped.serverId === serverId && scoped.event.type === "agent-notification-levels-changed")
+            listener({ server: scoped.event.server, agents: scoped.event.agents });
+        }),
+    };
+  });
+  const openNotificationSettings = (trigger: HTMLElement) => {
+    const serverId = props.server?.id;
+    if (serverId) props.onOpenNotificationSettings?.(serverId, trigger);
+  };
   let browserPreviewTrigger: HTMLButtonElement | undefined;
   /** The panes this chat can open. The web client has no Files pane, and a chat without a thread has no files. */
   const sidePanelPanes = createMemo((): SidePanelPane[] => [
     // A channel turn's takeover still shows as a card; the pane belongs to one agent's browser.
     ...(props.browserEnabled !== false && !channel ? (["browser"] as const) : []),
     ...(!props.runtime && props.agent?.threadId && serverHasStorage(props.server) ? (["files"] as const) : []),
-    ...(props.tasks ? (["tasks"] as const) : []),
     ...(props.agent || channel ? (["settings"] as const) : []),
     ...(props.agent && voiceConversationAvailable() ? (["voice"] as const) : []),
   ]);
@@ -173,35 +213,6 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
     }
     return undefined;
   });
-  const panelTask = createMemo(() => {
-    const taskId = taskPanelTaskId();
-    return taskId ? (props.tasks?.snapshot?.tasks.find((task) => task.id === taskId) ?? null) : null;
-  });
-  const panelApproval = () => {
-    const task = panelTask();
-    return task ? props.tasks?.approval(task) : undefined;
-  };
-  /** Reconciled by id, so a stream chunk redraws only the message that changed. */
-  const panelTaskMessages = createProjection<AgentMessage[]>(
-    () => {
-      const taskId = taskPanelTaskId();
-      const conversation = taskId ? props.tasks?.conversation(taskId) : undefined;
-      return conversation ? toAgentMessages(conversation.messages, props.agent?.id) : [];
-    },
-    [],
-    { key: "id" },
-  );
-  /** A message in a task steers or continues it. In a new task, the first message starts it. */
-  async function sendToTaskPanel(text: string): Promise<boolean> {
-    const tasks = props.tasks;
-    if (!tasks) return false;
-    const task = panelTask();
-    if (task) return tasks.onSend(task.id, text);
-    const created = await tasks.onStart(text);
-    if (!created) return false;
-    if (taskPanelOpen() && taskPanelTaskId() === null) openTaskPanel(created.id);
-    return true;
-  }
   const settingsMaxWidth = () =>
     Math.min(
       SETTINGS_PANEL_MAX,
@@ -253,23 +264,43 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
   createEffect(browserSidebarOpen, (open, previous) => {
     if (open && previous === false) onSettled(() => browserPreviewTrigger?.focus());
   });
+  /**
+   * A plain accessor, not a conditional in the prop: the compiler makes that a memo, and the tabs read
+   * it first in an effect callback when the last tab closes, which halts the reactive system.
+   */
+  const selectedPane = () => (activeRightPanel() === "side-panel" ? null : sidePanel().selected);
+  /** The side thread that shows, and whose tab is selected. */
+  const shownThread = () => (activeRightPanel() === "thread" ? shownPanelThreadId() : null);
+  /** With no side thread to show, the side panel lists the panes. */
+  const launcherShown = () =>
+    activeRightPanel() === "side-panel" || (activeRightPanel() === "thread" && shownPanelThreadId() === null);
+  const sideThreadTabs = () => props.threads?.side.tabs ?? [];
+  const moveSideThread = (id: string, index: number) => props.threads?.side.onMove(id, index);
   return (
     <>
       <Show when={sidePanelOpen()}>
         <SidePanelHeader
           panes={sidePanel().panes}
-          selected={activeRightPanel() === "side-panel" ? null : sidePanel().selected}
+          selected={selectedPane()}
           available={sidePanelPanes()}
           maximized={sidePanel().maximized}
           settingsLabel={channel ? t("channel.settings.title") : undefined}
           onSelect={openSidePanelPane}
           onClose={closeSidePanelPane}
+          threads={{
+            items: sideThreadTabs(),
+            selectedId: shownThread(),
+            onSelect: openPanelThread,
+            onClose: closePanelThread,
+            onMove: moveSideThread,
+            onToChat: movePanelThreadToChat,
+          }}
           onToggleMaximized={() => setSidePanelMaximized(!sidePanel().maximized)}
           onCollapse={toggleSidePanel}
         />
       </Show>
 
-      <Show when={activeRightPanel() === "side-panel"}>
+      <Show when={launcherShown()}>
         <aside class="browser-panel side-panel-empty" aria-label={t("conversation.sidePanel.label")}>
           <SidePanelLauncher
             available={sidePanelPanes()}
@@ -289,6 +320,7 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
             <Loading>
               <FilePreviewPanel
                 allowExternalOpen={!props.runtime}
+                macWindowControls={props.platform === "darwin"}
                 preview={file().preview}
                 directory={file().directory ?? null}
                 agents={props.agents}
@@ -313,6 +345,7 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
                 sourceUrl={attached()?.previewUrl ?? null}
                 pageUrl={htmlAttachmentPageUrl(attached()) ?? file().preview?.pageUrl}
                 pageHtml={props.runtime?.visualPage ? htmlAttachmentPageHtml(attached(), file().preview) : undefined}
+                fileKey={previewFileKey()}
                 selectionQuoteId={previewQuoteId()}
                 onOpenExternally={openSidebarFileExternally}
                 onDownload={downloadSidebarFile}
@@ -345,59 +378,15 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
         )}
       </Show>
 
-      <Show when={taskListOpen() && props.tasks}>
-        {(tasks) => (
-          <AgentTaskList
-            tasks={tasks().snapshot?.tasks ?? []}
-            onNew={() => openTaskPanel(null)}
-            onOpen={openTaskPanel}
-            onClosePanel={() => closeSidePanelPane("tasks")}
-            waitsForApproval={(task) => props.tasks?.approval(task) !== undefined}
-          />
-        )}
-      </Show>
-
-      <Show when={taskPanelOpen() && !taskListOpen() && props.tasks && props.agent}>
-        {(agent) => (
-          <AgentTaskPanel
-            task={panelTask()}
-            limit={props.tasks?.snapshot?.limit ?? 1}
-            agent={agent()}
-            agents={props.agents}
-            messages={panelTaskMessages}
-            onSend={sendToTaskPanel}
-            onStop={() => {
-              const task = panelTask();
-              if (task) props.tasks?.onStop(task.id);
-            }}
-            onCloseTask={() => {
-              const task = panelTask();
-              if (task) props.tasks?.onClose(task.id);
-            }}
-            onReopen={() => {
-              const task = panelTask();
-              if (task) props.tasks?.onReopen(task.id);
-            }}
-            onClosePanel={() => closeSidePanelPane("tasks")}
-            onBack={showTaskList}
-            onOpenLink={(url) => void openExternalMessageUrl(url)}
-            onPreview={(attachment) => void previewAttachment(attachment)}
-            onAttachmentAction={attachmentAction}
-            approval={panelApproval()}
-            onRespondApproval={async (decision) => {
-              const approval = panelApproval();
-              return approval && props.tasks ? props.tasks.onRespondApproval(approval, decision) : false;
-            }}
-          />
-        )}
-      </Show>
-
       <Show when={activeRightPanel() === "question" && props.agent}>
         {(agent) => (
           <SideQuestionPanel
             agent={agent()}
             agents={props.agents}
             exchanges={sideQuestion().exchanges}
+            skills={installedSkills()}
+            skillsLoadFailed={installedSkillsLoadFailed()}
+            mcpServers={mcpServers()}
             error={sideQuestion().error}
             draft={sideQuestion().draft}
             focusRequest={sideQuestion().focusRequest}
@@ -405,6 +394,7 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
             onAsk={askSideQuestion}
             onClosePanel={() => closeSidePanelPane("question")}
             onOpenLink={(url) => void openExternalMessageUrl(url)}
+            macWindowControls={props.platform === "darwin"}
           />
         )}
       </Show>
@@ -420,6 +410,11 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
         keyed
       >
         <VoiceConversationPane />
+      </Show>
+
+      {/* Keyed, so each side thread gets its own messages and read state. */}
+      <Show when={shownThread()} keyed>
+        {(threadId) => <ConversationSideThread threadId={threadId} />}
       </Show>
 
       <Show when={activeRightPanel() === "subagent"}>
@@ -481,6 +476,8 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
             <AgentSettingsPanel
               remoteClient={Boolean(props.runtime)}
               localHost={props.server?.kind === "local"}
+              folders={localFolderCalls()}
+              instructionsFile={localInstructionsCalls()}
               sessionSettingsEditable={serverCanAdminister(props.server, "agent-session-settings-v1")}
               adminCalls={props.runtime?.admin}
               skillsMarketplaceOpen={props.skillsMarketplaceOpen}
@@ -504,9 +501,10 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
                 props.server?.kind === "local" ||
                 (serverCanAdminister(props.server, "agent-host-settings-v1") && agent().allowAutomation !== undefined)
               }
-              busyMessageModeEditable={props.server?.kind === "local"}
+              busyMessageModeEditable={props.server?.kind === "local" || props.remoteBusyMessageModeLoaded === true}
+              busyMessageDefaultIsHost={props.server?.kind === "remote"}
               newChatEditable={props.server?.kind === "local"}
-              quickAcknowledgementEditable={props.server?.kind === "local"}
+              quickAcknowledgementEditable={props.server?.kind === "local" || props.remotePlanCardLoaded === true}
               taskLimitEditable={props.server?.kind === "local" || props.remoteTaskLimitLoaded === true}
               backupModelsEditable={props.server?.kind === "local" || props.remoteBackupModelsLoaded === true}
               usageLimited={props.usageLimited}
@@ -562,6 +560,11 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
                 serverCanAdminister(props.server, BROWSER_PROFILES_CAPABILITY) ? browserProfileCalls() : undefined
               }
               onManageBrowserProfiles={props.onManageBrowserProfiles}
+              notificationLevelCalls={notificationLevelCalls()}
+              serverNotificationLevel={props.server?.notificationLevel}
+              onOpenNotificationSettings={
+                props.onOpenNotificationSettings && props.server ? openNotificationSettings : undefined
+              }
               modelOptions={props.modelOptions}
               working={agentActivity() === "Working"}
               maxWidth={settingsMaxWidth}
@@ -571,6 +574,9 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
               onUpdateRuntimeSettings={updateRuntimeSettings}
               onSetAgentAvatar={props.onSetAgentAvatar}
               skillSelectionRequest={skillSettingsRequest()?.agentId === agent().id ? skillSettingsRequest() : null}
+              instructionsRequest={
+                instructionsSettingsRequest()?.agentId === agent().id ? instructionsSettingsRequest() : null
+              }
               routineSelectionRequest={
                 routineSettingsRequest()?.agentId === agent().id ? routineSettingsRequest() : null
               }

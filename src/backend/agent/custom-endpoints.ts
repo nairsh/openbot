@@ -8,8 +8,12 @@ import type {
 } from "@openbot/contracts/ipc";
 import {
   CUSTOM_AGENT_DEFAULT_MODEL,
+  CUSTOM_PROVIDER_HARNESSES,
+  type CustomProviderHarness,
   customAgentIdOfModel,
+  DEFAULT_CUSTOM_PROVIDER_HARNESS,
   defaultProviderModel,
+  isCustomProviderHarness,
   PICKER_PROVIDERS,
 } from "@openbot/contracts/ipc";
 import { sourceText } from "@openbot/i18n/source";
@@ -31,6 +35,10 @@ export interface CustomEndpointsHooks {
   applyAgentUpdate(
     input: UpdateAgentInput & { usageLimitReturn?: AgentUsageLimitReturn },
   ): Effect.Effect<AgentSummary, EndpointChangeFailed>;
+  /** The same update, but a provider change for a busy agent waits for its next turn. */
+  queueAgentUpdate(input: UpdateAgentInput): Effect.Effect<AgentSummary, EndpointChangeFailed>;
+  /** The harness that runs a saved endpoint, or null for an id no endpoint has. */
+  endpointHarness(endpointId: string): CustomProviderHarness | null;
   /** Tells the renderer to read the catalogue again. */
   modelsChanged(): void;
   stopProfileClients(): Effect.Effect<void>;
@@ -66,8 +74,12 @@ export class CustomEndpoints {
    * a restart it refused or failed leaves its catalogue as it was. The value is `#revision`
    * as it stood when the exclusion was taken, so a process that spawned before that number read the
    * old files and its catalogue says nothing about this endpoint.
+   *
+   * Kept for each harness: OpenCode and Pi each spawn with the endpoints, and each reads a change only
+   * when it restarts. An endpoint that moves to the other harness stays out of both catalogues until
+   * each has restarted.
    */
-  readonly #released = new Map<string, number>();
+  readonly #released: Record<CustomProviderHarness, Map<string, number>> = { opencode: new Map(), pi: new Map() };
   /**
    * Counts the endpoint changes, which puts an exclusion and a spawn in order. A CLI reads the files
    * once, at spawn, so a removal made while a process starts is not in the process that arrives.
@@ -86,6 +98,14 @@ export class CustomEndpoints {
    * notice. Both paths run here, so neither can start inside the other.
    */
   readonly #chain = Semaphore.makeUnsafe(1);
+  /**
+   * The agents an edit left on the harness their endpoint no longer runs on, with that endpoint and
+   * the harness it moved to. Taken when the edit is written, because an endpoint id can also name a
+   * provider of the harness's own: `openai/gpt-5` on OpenCode is not the `openai` endpoint's model
+   * when that endpoint is saved later. Kept in memory only: after a restart no harness lists the
+   * endpoint on its old provider, and the agent moves to a fallback of the provider it is on.
+   */
+  readonly #pendingMoves = new Map<string, { endpointId: string; harness: CustomProviderHarness }>();
 
   constructor(options: CustomEndpointsOptions) {
     this.#store = options.store;
@@ -106,9 +126,10 @@ export class CustomEndpoints {
    * and therefore not recorded yet.
    */
   available(): AgentModelOption[] {
-    if (this.#released.size === 0) return this.#providers.listModels();
+    if (CUSTOM_PROVIDER_HARNESSES.every((harness) => this.#released[harness].size === 0))
+      return this.#providers.listModels();
     // A custom agent id can be the same text as an endpoint id. Its models are not the endpoint's.
-    return this.#providers.listModels().filter((option) => option.provider === "acp" || this.serves(option.id));
+    return this.#providers.listModels().filter((option) => this.serves(option.id, option.provider));
   }
 
   /**
@@ -128,18 +149,49 @@ export class CustomEndpoints {
   }
 
   /**
-   * Whether the model id is one a save still defines. A model of no custom endpoint, and a model of
-   * an endpoint nothing removed, are served; a model an endpoint no longer lists is not.
+   * Whether `provider` serves the model id as a save defines it. A model of no custom endpoint, and a
+   * model of an endpoint nothing removed, are served; a model an endpoint no longer lists is not.
+   * Only OpenCode, Pi and Direct run endpoints, so the models of another provider are always served.
+   * Direct runs every endpoint, so it does not serve an endpoint that a harness excludes and no save keeps.
    */
-  serves(modelId: string): boolean {
+  serves(modelId: string, provider: AgentProvider): boolean {
+    if (!isCustomProviderHarness(provider) && provider !== "direct") return true;
     const separator = modelId.indexOf("/");
     if (separator <= 0) return true;
-    return !this.#released.has(modelId.slice(0, separator));
+    const endpoint = modelId.slice(0, separator);
+    if (isCustomProviderHarness(provider)) return !this.#released[provider].has(endpoint);
+    // A harness move also excludes the endpoint for a time, but Direct still runs it.
+    return (
+      this.#hooks.endpointHarness(endpoint) !== null ||
+      !CUSTOM_PROVIDER_HARNESSES.some((harness) => this.#released[harness].has(endpoint))
+    );
   }
 
   /** The newest revision a spawning process can read, taken when a provider client starts. */
   committedRevision(): number {
     return this.#committedRevision;
+  }
+
+  /**
+   * Takes the exclusion of one endpoint id on `harness` and on the harness that runs it now, and
+   * answers what it replaced. Only these two restart for the change, and only a restart gives an
+   * exclusion back. The id can also name a provider of the other harness's own, whose models stay.
+   */
+  #release(providerId: string, harness: CustomProviderHarness): Record<CustomProviderHarness, number | undefined> {
+    this.#revision += 1;
+    const previous = { opencode: this.#released.opencode.get(providerId), pi: this.#released.pi.get(providerId) };
+    const saved = this.#hooks.endpointHarness(providerId) ?? harness;
+    for (const target of new Set([harness, saved])) this.#released[target].set(providerId, this.#revision);
+    return previous;
+  }
+
+  /** Gives back what `#release` replaced, after a change that wrote nothing. */
+  #restore(providerId: string, previous: Record<CustomProviderHarness, number | undefined>): void {
+    for (const harness of CUSTOM_PROVIDER_HARNESSES) {
+      const revision = previous[harness];
+      if (revision !== undefined) this.#released[harness].set(providerId, revision);
+      else this.#released[harness].delete(providerId);
+    }
   }
 
   /** A failed change does not stop the next one, so the chain swallows what it re-throws here. */
@@ -166,14 +218,13 @@ export class CustomEndpoints {
   readonly save = Effect.fn("CustomEndpoints.save")(function* <T>(
     this: CustomEndpoints,
     providerId: string,
+    harness: CustomProviderHarness,
     persist: () => Effect.Effect<T, EndpointChangeFailed>,
   ) {
     return yield* this.#chain.withPermit(
       Effect.gen({ self: this }, function* () {
-        const previous = this.#released.get(providerId);
-        this.#revision += 1;
+        const previous = this.#release(providerId, harness);
         const revision = this.#revision;
-        this.#released.set(providerId, revision);
         this.#hooks.modelsChanged();
         // The same reason as a removal: a profile or channel client is a process of its own, holding
         // the endpoints it was spawned with, and no restart of the main client reaches it.
@@ -188,8 +239,7 @@ export class CustomEndpoints {
         );
         if (Exit.isSuccess(result)) return result.value;
         // Nothing was written, so the id is served exactly as it was before this call.
-        if (previous !== undefined) this.#released.set(providerId, previous);
-        else this.#released.delete(providerId);
+        this.#restore(providerId, previous);
         this.#hooks.modelsChanged();
         return yield* Effect.failCause(result.cause);
       }),
@@ -209,16 +259,16 @@ export class CustomEndpoints {
   readonly update = Effect.fn("CustomEndpoints.update")(function* <T>(
     this: CustomEndpoints,
     providerId: string,
+    harness: CustomProviderHarness,
     removedModelIds: readonly string[],
     persist: () => Effect.Effect<T, EndpointChangeFailed>,
   ) {
     return yield* this.#chain.withPermit(
       Effect.gen({ self: this }, function* () {
         yield* this.#moveOffRemovedModels(providerId, new Set(removedModelIds));
-        const previous = this.#released.get(providerId);
-        this.#revision += 1;
+        const from = this.#hooks.endpointHarness(providerId);
+        const previous = this.#release(providerId, harness);
         const revision = this.#revision;
-        this.#released.set(providerId, revision);
         this.#hooks.modelsChanged();
         yield* this.#hooks.stopProfileClients();
         const result = yield* Effect.exit(
@@ -228,14 +278,25 @@ export class CustomEndpoints {
             return persisted;
           }),
         );
-        if (Exit.isSuccess(result)) return result.value;
-        if (previous !== undefined) this.#released.set(providerId, previous);
-        else this.#released.delete(providerId);
+        if (Exit.isSuccess(result)) {
+          if (from !== null && from !== harness) this.#recordMoves(providerId, from, harness);
+          return result.value;
+        }
+        this.#restore(providerId, previous);
         this.#hooks.modelsChanged();
         return yield* Effect.failCause(result.cause);
       }),
     );
   }, Effect.uninterruptible);
+
+  /** The agents on the endpoint's models on `from`, which move to `harness` once it lists them. */
+  #recordMoves(endpointId: string, from: CustomProviderHarness, harness: CustomProviderHarness): void {
+    for (const agent of this.#store.list()) {
+      if (providerForAgent(agent) === from && endpointOfModel(agent.model) === endpointId) {
+        this.#pendingMoves.set(agent.id, { endpointId, harness });
+      }
+    }
+  }
 
   /**
    * The agents on `providerId/<removed>` go to a kept model of the same endpoint when the catalogue
@@ -249,30 +310,57 @@ export class CustomEndpoints {
   ) {
     if (removed.size === 0) return;
     const prefix = `${providerId}/`;
-    const affected = this.#store
-      .list()
-      .filter(
-        (agent) =>
-          runsEndpoints(providerForAgent(agent)) &&
-          agent.model.startsWith(prefix) &&
-          removed.has(agent.model.slice(prefix.length)),
-      );
-    if (affected.length === 0) return;
     const remaining = this.available().filter(
       (option) => !(option.id.startsWith(prefix) && removed.has(option.id.slice(prefix.length))),
     );
-    const fallback =
-      remaining.find((option) => runsEndpoints(option.provider) && option.id.startsWith(prefix)) ??
-      startingModel("direct", remaining, this.#hooks.preference()) ??
-      startingModel("opencode", remaining, this.#hooks.preference()) ??
+    // Each runner moves its own agents, so a kept model of the endpoint keeps the agent's provider.
+    for (const runner of ENDPOINT_RUNNERS) {
+      const affected = this.#store
+        .list()
+        .filter(
+          (agent) =>
+            providerForAgent(agent) === runner &&
+            agent.model.startsWith(prefix) &&
+            removed.has(agent.model.slice(prefix.length)),
+        );
+      if (affected.length === 0) continue;
+      const fallback =
+        remaining.find((option) => option.provider === runner && option.id.startsWith(prefix)) ??
+        this.#harnessFallback(runner, remaining);
+      if (!fallback) continue;
+      yield* this.#moveAgents(affected, runner, fallback);
+    }
+  }, Effect.uninterruptible);
+
+  /**
+   * The runner's own starting model, then the built-in default provider's while it is usable. Direct
+   * goes to another endpoint first, then to OpenCode.
+   */
+  #harnessFallback(runner: EndpointRunner, remaining: AgentModelOption[]): AgentModelOption | null {
+    return (
+      startingModel(runner, remaining, this.#hooks.preference()) ??
+      (runner === "direct" ? startingModel("opencode", remaining, this.#hooks.preference()) : null) ??
       (this.#hooks.providerAvailable(DEFAULT_AGENT_PROVIDER)
         ? startingModel(DEFAULT_AGENT_PROVIDER, remaining, this.#hooks.preference())
-        : null);
-    if (!fallback) return;
-    if (affected.some((agent) => fallback.provider !== providerForAgent(agent) && this.#hasWorkInFlight(agent))) {
+        : null)
+    );
+  }
+
+  /**
+   * Moves the agents of one runner to `fallback`. A move to another provider is a provider switch,
+   * which is refused during a turn or a queued delivery, so it stops the change before any agent moves.
+   */
+  readonly #moveAgents = Effect.fn("CustomEndpoints.moveAgents")(function* (
+    this: CustomEndpoints,
+    affected: readonly AgentSummary[],
+    runner: EndpointRunner,
+    fallback: AgentModelOption,
+  ) {
+    if (fallback.provider !== runner && affected.some((agent) => this.#hasWorkInFlight(agent))) {
       return yield* new EndpointChangeFailed({ cause: new Error(sourceText("error.provider.endpointRemoveBusy")) });
     }
     for (const agent of affected) {
+      // Not the public `updateAgent`: this already runs inside the chain that one takes.
       yield* this.#hooks
         .applyAgentUpdate({
           agentId: agent.id,
@@ -300,10 +388,11 @@ export class CustomEndpoints {
   ) {
     return yield* this.#chain.withPermit(
       Effect.gen({ self: this }, function* () {
-        const previous = this.#released.get(providerId);
-        this.#revision += 1;
+        const previous = this.#release(
+          providerId,
+          this.#hooks.endpointHarness(providerId) ?? DEFAULT_CUSTOM_PROVIDER_HARNESS,
+        );
         const revision = this.#revision;
-        this.#released.set(providerId, revision);
         this.#hooks.modelsChanged();
         // A profile or channel client is a process of its own, spawned with the endpoints as they
         // were, and no restart of the main client reaches it. It is one short request, so it is
@@ -311,7 +400,7 @@ export class CustomEndpoints {
         yield* this.#hooks.stopProfileClients();
         const result = yield* Effect.exit(
           Effect.gen({ self: this }, function* () {
-            yield* this.#releaseModels();
+            yield* this.#releaseModels(providerId);
             const persisted = yield* Effect.suspend(persist);
             // Only now is the removal on disk, so only now can a process read it. Removals run one at a
             // time on the chain, so this number never goes back.
@@ -320,8 +409,7 @@ export class CustomEndpoints {
           }),
         );
         if (Exit.isSuccess(result)) return result.value;
-        if (previous !== undefined) this.#released.set(providerId, previous);
-        else this.#released.delete(providerId);
+        this.#restore(providerId, previous);
         this.#hooks.modelsChanged();
         return yield* Effect.failCause(result.cause);
       }),
@@ -409,16 +497,96 @@ export class CustomEndpoints {
    * an id saved a second time may name another server, and the old process would take the message to
    * the one the user has just replaced.
    */
-  clearReleased(configRevision: number): void {
+  clearReleased(harness: CustomProviderHarness, configRevision: number): void {
     let changed = false;
-    for (const [providerId, revision] of this.#released) {
+    const released = this.#released[harness];
+    for (const [providerId, revision] of released) {
       // A removal made while this process started is not in the files it read, so its catalogue is
       // the one from before the removal and the endpoint stays out.
       if (revision > configRevision) continue;
-      this.#released.delete(providerId);
+      released.delete(providerId);
       changed = true;
     }
     if (changed) this.#hooks.modelsChanged();
+  }
+
+  /**
+   * Moves the agents on an endpoint that now runs on `harness` from the other harness to the same
+   * model here, once this harness lists it. The agent keeps its workspace and identity; its thread is
+   * handed over as for any provider change. A busy agent moves before its next turn.
+   */
+
+  readonly moveAgentsToHarness = Effect.fn("CustomEndpoints.moveAgentsToHarness")(function* (
+    this: CustomEndpoints,
+    harness: CustomProviderHarness,
+  ) {
+    const models = this.available().filter((model) => model.provider === harness);
+    for (const agent of this.#waitingFor(harness)) {
+      const target = models.find((model) => model.id === agent.model);
+      if (!target) continue;
+      this.#pendingMoves.delete(agent.id);
+      yield* this.#hooks
+        .queueAgentUpdate({
+          agentId: agent.id,
+          provider: harness,
+          model: target.id,
+          // The efforts are the harness's own: Pi registers an endpoint's models without reasoning.
+          reasoningEffort: target.defaultReasoningEffort,
+        })
+        .pipe(
+          Effect.catch((failure) =>
+            Effect.sync(() => this.#hooks.emitError("agent_model_fallback_failed", failure.cause, agent.id)),
+          ),
+        );
+    }
+  }, Effect.uninterruptible).bind(this);
+
+  /**
+   * Drops the moves that wait for `harness` when it did not start. Those agents are on a model that
+   * their harness no longer lists, so they move to a model that it lists, as after a restart of OpenBot.
+   * It runs in the chain, so an edit that moves the endpoint back drops the moves first.
+   */
+  abandonMovesTo(harness: CustomProviderHarness): Effect.Effect<void> {
+    return this.runExclusive(() =>
+      Effect.gen({ self: this }, function* () {
+        const dropped = new Map<AgentProvider, Set<string>>();
+        for (const agent of this.#waitingFor(harness)) {
+          this.#pendingMoves.delete(agent.id);
+          const provider = providerForAgent(agent);
+          dropped.set(provider, (dropped.get(provider) ?? new Set()).add(agent.id));
+        }
+        for (const [provider, agentIds] of dropped) yield* this.moveAgentsOffUnlistedModels(provider, agentIds);
+      }),
+    );
+  }
+
+  /** Whether agents wait for `harness` to start, to move there with `moveAgentsToHarness`. */
+  waitsForHarness(harness: CustomProviderHarness): boolean {
+    return this.#waitingFor(harness).length > 0;
+  }
+
+  /** The agents that an edit left on another harness, whose endpoint now runs on `harness`. */
+  #waitingFor(harness: CustomProviderHarness): AgentSummary[] {
+    return this.#store.list().filter((agent) => {
+      const move = this.#pendingMove(agent);
+      return move !== null && move.harness === harness;
+    });
+  }
+
+  /**
+   * The recorded move of an agent while it still applies. One the user overtook -- another model, a
+   * switch of provider, the endpoint removed or moved again -- is dropped.
+   */
+  #pendingMove(agent: AgentSummary): { endpointId: string; harness: CustomProviderHarness } | null {
+    const move = this.#pendingMoves.get(agent.id);
+    if (!move) return null;
+    const applies =
+      providerForAgent(agent) !== move.harness &&
+      endpointOfModel(agent.model) === move.endpointId &&
+      this.#hooks.endpointHarness(move.endpointId) === move.harness;
+    if (applies) return move;
+    this.#pendingMoves.delete(agent.id);
+    return null;
   }
 
   /**
@@ -432,46 +600,42 @@ export class CustomEndpoints {
    * and that is refused during a turn or a queued delivery. The check runs over all of them first,
    * so a refusal moves no agent at all.
    */
-  readonly #releaseModels = Effect.fn("CustomEndpoints.releaseModels")(function* (this: CustomEndpoints) {
+  readonly #releaseModels = Effect.fn("CustomEndpoints.releaseModels")(function* (
+    this: CustomEndpoints,
+    removedId: string,
+  ) {
     // Every endpoint already removed, not only this one. A removal during a turn leaves the running
     // CLI's catalogue as it was, so the models of an endpoint already taken out are still listed,
     // and choosing one here would move agents onto an endpoint that is gone.
-    const affected = this.#store
-      .list()
-      .filter((agent) => runsEndpoints(providerForAgent(agent)) && !this.serves(agent.model));
-    if (affected.length === 0) return;
-    // Direct and OpenCode declare no default model of their own -- their catalogue is whatever the CLI
-    // lists -- so the fallback is chosen from the live list with the endpoint being removed taken out
-    // of it: another endpoint in Direct first, then OpenCode. The built-in default provider comes
-    // last, because an agent left on a model the CLI no longer serves cannot answer, and a provider
-    // switch keeps its workspace, thread and identity.
     const remaining = this.available();
-    // The built-in default is offered only while it is usable: `#applyAgentUpdate` connects the
-    // provider it moves an agent to, and a Codex that is not installed or not signed in throws
-    // there. That would trap a user who runs custom endpoints only, because the last endpoint could
-    // never be removed while an agent still names one of its models.
-    const fallback =
-      startingModel("direct", remaining, this.#hooks.preference()) ??
-      startingModel("opencode", remaining, this.#hooks.preference()) ??
-      (this.#hooks.providerAvailable(DEFAULT_AGENT_PROVIDER)
-        ? startingModel(DEFAULT_AGENT_PROVIDER, remaining, this.#hooks.preference())
-        : null);
-    // Nothing is listed, so there is no model to move to. The removal still goes ahead: refusing it
-    // would trap the user on an endpoint that may be the reason no model is listed.
-    if (!fallback) return;
-    if (affected.some((agent) => fallback.provider !== providerForAgent(agent) && this.#hasWorkInFlight(agent))) {
-      return yield* new EndpointChangeFailed({ cause: new Error(sourceText("error.provider.endpointRemoveBusy")) });
-    }
-    for (const agent of affected) {
-      // Not the public `updateAgent`: this already runs inside the chain that one takes.
-      yield* this.#hooks
-        .applyAgentUpdate({
-          agentId: agent.id,
-          provider: fallback.provider,
-          model: fallback.id,
-          reasoningEffort: fallback.defaultReasoningEffort,
-        })
-        .pipe(toEndpointChangeFailed);
+    for (const runner of ENDPOINT_RUNNERS) {
+      const affected = this.#store.list().filter(
+        (agent) =>
+          providerForAgent(agent) === runner &&
+          // An agent that waits to move to the removed endpoint's harness is on a model that its
+          // harness no longer lists, and only the removed endpoint's harness restarts. Direct runs
+          // every endpoint, so its agents on the removed endpoint move too.
+          (!this.serves(agent.model, runner) ||
+            this.#pendingMove(agent)?.endpointId === removedId ||
+            (runner === "direct" && endpointOfModel(agent.model) === removedId)),
+      );
+      if (affected.length === 0) continue;
+      // OpenCode and Direct declare no default model of their own -- their catalogue is whatever the
+      // CLI lists -- so the fallback is chosen from the live list with the endpoint being removed taken
+      // out of it. The built-in default provider comes last, because an agent left on a model the CLI
+      // no longer serves cannot answer, and a provider switch keeps its workspace, thread and identity.
+      // The built-in default is offered only while it is usable: `#applyAgentUpdate` connects the
+      // provider it moves an agent to, and a Codex that is not installed or not signed in throws
+      // there. That would trap a user who runs custom endpoints only, because the last endpoint could
+      // never be removed while an agent still names one of its models.
+      const fallback = this.#harnessFallback(
+        runner,
+        runner === "direct" ? remaining.filter((option) => endpointOfModel(option.id) !== removedId) : remaining,
+      );
+      // Nothing is listed, so there is no model to move to. The removal still goes ahead: refusing it
+      // would trap the user on an endpoint that may be the reason no model is listed.
+      if (!fallback) continue;
+      yield* this.#moveAgents(affected, runner, fallback);
     }
   }, Effect.uninterruptible);
 
@@ -489,6 +653,8 @@ export class CustomEndpoints {
   readonly moveAgentsOffUnlistedModels = Effect.fn("CustomEndpoints.moveAgentsOffUnlistedModels")(function* (
     this: CustomEndpoints,
     provider: AgentProvider,
+    /** Only these agents, when given. */
+    agentIds?: ReadonlySet<string>,
   ) {
     const available = this.available();
     const models = available.filter((model) => model.provider === provider);
@@ -498,12 +664,15 @@ export class CustomEndpoints {
     // (`moveEndpointAgentsToDirect`), not to another OpenCode model.
     const onDirect = (agent: AgentSummary) =>
       provider === "opencode" && available.some((model) => model.provider === "direct" && model.id === agent.model);
-    const affected = this.#store
-      .list()
-      .filter(
-        (agent) =>
-          providerForAgent(agent) === provider && !models.some((model) => model.id === agent.model) && !onDirect(agent),
-      );
+    const affected = this.#store.list().filter(
+      (agent) =>
+        providerForAgent(agent) === provider &&
+        (agentIds === undefined || agentIds.has(agent.id)) &&
+        !models.some((model) => model.id === agent.model) &&
+        !onDirect(agent) &&
+        // An agent whose endpoint moved waits for `moveAgentsToHarness`, which keeps its model.
+        this.#pendingMove(agent) === null,
+    );
     for (const agent of affected) {
       // A custom agent is a program of its own, not a model: an agent moves only to another model of
       // the same custom agent. One that listed nothing, or did not answer, keeps its model. The router
@@ -606,15 +775,20 @@ export class CustomEndpoints {
   }
 }
 
-/** The providers that run the saved custom endpoints: OpenCode, and Direct in Pi. */
-function runsEndpoints(provider: AgentProvider): boolean {
-  return provider === "opencode" || provider === "direct";
-}
+/** The providers that run the saved custom endpoints: the harnesses, and Direct in Pi. */
+type EndpointRunner = CustomProviderHarness | "direct";
+const ENDPOINT_RUNNERS: readonly EndpointRunner[] = [...CUSTOM_PROVIDER_HARNESSES, "direct"];
 
 function sameChoice(left: AgentModelChoice, right: AgentModelChoice): boolean {
   return (
     left.provider === right.provider && left.model === right.model && left.providerAccountId === right.providerAccountId
   );
+}
+
+/** The endpoint id before a model id's first `/`, or null for a model id without one. */
+function endpointOfModel(model: string): string | null {
+  const separator = model.indexOf("/");
+  return separator > 0 ? model.slice(0, separator) : null;
 }
 
 function isCustomAgentDefaultModel(model: string): boolean {

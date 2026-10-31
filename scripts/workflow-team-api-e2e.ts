@@ -27,7 +27,7 @@ import {
   TEAM_PROTOCOL_VERSION_HEADER,
 } from "@openbot/contracts/team-protocol";
 import { AGENT_ACCESS_CODECS, AGENT_ACCESS_ROUTES } from "@openbot/contracts/team-protocol/agent-access-v1";
-import { TEAM_CURRENT_CAPABILITIES } from "@openbot/contracts/team-protocol/current";
+import { teamCapabilitiesForProtocol } from "@openbot/contracts/team-protocol/current";
 import { TEAM_PROTOCOL_V7 } from "@openbot/contracts/team-protocol/v7";
 import {
   WORKFLOW_STEP_TEXT_LIMIT,
@@ -37,6 +37,11 @@ import {
   workflowsEvent,
 } from "@openbot/contracts/team-protocol/workflows-v1";
 import { sourceText } from "@openbot/i18n/source";
+import {
+  decodeRemoteWorkflowDetail,
+  decodeRemoteWorkflowRunDetail,
+  decodeRemoteWorkflowVersions,
+} from "@openbot/team-client/workflow-decoding";
 import { plugin } from "bun";
 import { Effect } from "effect";
 import type { AgentBrowserHost } from "../src/backend/agent/turn-lifecycle";
@@ -50,11 +55,6 @@ import { WorkflowRunStore } from "../src/backend/workflows/workflow-run-store";
 import { WorkflowStore } from "../src/backend/workflows/workflow-store";
 import { workflowScheduleDueAt } from "../src/backend/workflows/workflow-triggers";
 import { createWorkflows, type WorkflowsHandle } from "../src/backend/workflows/workflows";
-import {
-  decodeRemoteWorkflowDetail,
-  decodeRemoteWorkflowRunDetail,
-  decodeRemoteWorkflowVersions,
-} from "../src/main/remote-workflow-decoding";
 import type { TeamApiBrowser } from "../src/main/team-api/dependencies";
 
 const OUT = resolve(import.meta.dirname, "../.openbot-build/workflow-team-api-e2e");
@@ -325,7 +325,7 @@ async function call(
     Accept: "application/json",
     [TEAM_PROTOCOL_VERSION_HEADER]: String(TEAM_PROTOCOL_V7),
     [TEAM_APP_VERSION_HEADER]: HOST_VERSION,
-    [TEAM_CAPABILITIES_HEADER]: (input.capabilities ?? TEAM_CURRENT_CAPABILITIES).join(","),
+    [TEAM_CAPABILITIES_HEADER]: (input.capabilities ?? teamCapabilitiesForProtocol(TEAM_PROTOCOL_V7)).join(","),
   };
   if (input.body !== undefined) headers["Content-Type"] = "application/json";
   if (input.token) headers.Authorization = `Bearer ${input.token}`;
@@ -534,7 +534,9 @@ try {
     const response = await call("POST", WORKFLOWS_ROUTES.list, {
       token: member,
       body: {},
-      capabilities: TEAM_CURRENT_CAPABILITIES.filter((capability) => capability !== WORKFLOWS_CAPABILITY),
+      capabilities: teamCapabilitiesForProtocol(TEAM_PROTOCOL_V7).filter(
+        (capability) => capability !== WORKFLOWS_CAPABILITY,
+      ),
     });
     assert.equal(response.status, 400, JSON.stringify(response.body));
     assert.ok(JSON.stringify(response.body).includes(sourceText("error.workflow.serverTooOld")));

@@ -15,13 +15,17 @@ import type {
   DynamicIslandPreference,
   DynamicIslandPresentation,
   ExternalDestination,
+  ExternalLinkPreference,
   HostUpdateSettingsChange,
   IdleRestartTarget,
   InstallMarketplaceAgentInput,
   InstallSkillInput,
+  MacAutomationTarget,
   MacPermissionId,
   MarketplaceAgentQuery,
   MarketplaceSkillQuery,
+  MarketplaceSkillSort,
+  MemoryReviewPreference,
   NotificationPreference,
   PublishHostedSiteInput,
   RemoteNetworkRoutePreference,
@@ -42,6 +46,7 @@ import type {
   VerifyEmailCodeInput,
 } from "@openbot/contracts/ipc";
 import {
+  decodeExternalLinkTarget,
   IDLE_RESTART_TARGETS,
   isAgentDefaults,
   isAgentMemoryLimit,
@@ -60,8 +65,10 @@ import {
   isDynamicIslandInteractive,
   isDynamicIslandPreference,
   isDynamicIslandPresentation,
+  isMemoryReviewInterval,
   isRemoteNetworkRoute,
   isSkillCategory,
+  MAC_AUTOMATION_TARGETS,
 } from "@openbot/contracts/ipc";
 import {
   type DynamicRecord,
@@ -93,7 +100,8 @@ export function parseProviderId(input: unknown): AgentProviderId {
 
 export function parseAnalyticsPreference(input: unknown): SetAnalyticsPreferenceInput {
   if (!isDynamicRecord(input) || !isBoolean(input.enabled)) throw new Error("Analytics preference is required.");
-  return { enabled: input.enabled };
+  if (input.chosen !== undefined && !isBoolean(input.chosen)) throw new Error("Analytics choice is not valid.");
+  return { enabled: input.enabled, ...(input.chosen ? { chosen: true } : {}) };
 }
 
 export function parseBusyMessageModePreference(input: unknown): BusyMessageModePreference {
@@ -122,9 +130,21 @@ export function parseAgentMemoryLimitPreference(input: unknown): AgentMemoryLimi
   return { limit: input.limit };
 }
 
+export function parseMemoryReviewPreference(input: unknown): MemoryReviewPreference {
+  if (!isDynamicRecord(input) || !isMemoryReviewInterval(input.interval))
+    throw new Error("Memory review interval is required.");
+  return { interval: input.interval };
+}
+
 export function parseChatWindowTarget(input: unknown): ChatWindowTarget {
   if (!isDynamicRecord(input)) throw new Error("A chat is required.");
   return { serverId: requireString(input.serverId, "Server"), agentId: requireString(input.agentId, "Agent") };
+}
+
+export function parseExternalLinkPreference(input: unknown): ExternalLinkPreference {
+  const target = isDynamicRecord(input) ? decodeExternalLinkTarget(input.target) : null;
+  if (!target) throw new Error("The external link setting is required.");
+  return { target };
 }
 
 export function parseRemoteSessionReusePreference(input: unknown): RemoteSessionReusePreference {
@@ -259,6 +279,14 @@ export function parseMacPermission(input: unknown): MacPermissionId {
   return input;
 }
 
+/** Each app once, in the order asked: macOS shows one prompt at a time. */
+export function parseMacAutomationTargets(input: unknown): readonly MacAutomationTarget[] {
+  if (!Array.isArray(input) || !input.every((target) => isOneOf(MAC_AUTOMATION_TARGETS, target))) {
+    throw new Error("Unknown Apple app.");
+  }
+  return [...new Set(input)];
+}
+
 export function parseExternalDestination(input: unknown): ExternalDestination {
   if (
     input !== "agent-setup" &&
@@ -298,23 +326,33 @@ export function parseProfileName(input: unknown): string {
 
 // The two marketplaces share query fields and validate their category filters at the boundary.
 // `query` is truncated rather than rejected, which is the behaviour these channels have always had.
-function parseMarketplaceQueryFields(input: DynamicRecord, sortError: string): MarketplaceAgentQuery {
-  if (input.sort !== undefined && input.sort !== "installs") throw new Error(sortError);
+function parseMarketplaceQueryFields(input: DynamicRecord) {
   return {
     ...(isString(input.query) ? { query: input.query.slice(0, 100) } : {}),
     ...(input.featured === true ? { featured: true } : {}),
-    ...(input.sort === "installs" ? { sort: "installs" as const } : {}),
     ...(isString(input.cursor) ? { cursor: input.cursor } : {}),
     ...(isNumber(input.limit) ? { limit: input.limit } : {}),
   };
 }
 
+function parseMarketplaceSort<T extends string>(value: unknown, sorts: readonly T[], error: string): { sort?: T } {
+  if (value === undefined) return {};
+  if (!isOneOf(sorts, value)) throw new Error(error);
+  return { sort: value };
+}
+
+const SKILL_SORTS = ["installs", "updated", "name"] as const satisfies readonly MarketplaceSkillSort[];
+
 export function parseMarketplaceSkillQuery(input: unknown): MarketplaceSkillQuery {
   if (!isObject(input)) throw new Error("Invalid marketplace query.");
   const category = input.category;
   if (category !== undefined && !isSkillCategory(category)) throw new Error("Unknown skill category.");
+  const verified = input.verified;
+  if (verified !== undefined && !isBoolean(verified)) throw new Error("Invalid skill source filter.");
   return {
-    ...parseMarketplaceQueryFields(input, "Unknown skill sort order."),
+    ...parseMarketplaceQueryFields(input),
+    ...parseMarketplaceSort(input.sort, SKILL_SORTS, "Unknown skill sort order."),
+    ...(verified === undefined ? {} : { verified }),
     ...(category ? { category } : {}),
   };
 }
@@ -323,7 +361,11 @@ export function parseMarketplaceAgentQuery(input: unknown): MarketplaceAgentQuer
   if (!isObject(input)) throw new Error("Invalid agent marketplace query.");
   const category = input.category;
   if (category !== undefined && !isSkillCategory(category)) throw new Error("Unknown agent category.");
-  return { ...parseMarketplaceQueryFields(input, "Unknown agent sort order."), ...(category ? { category } : {}) };
+  return {
+    ...parseMarketplaceQueryFields(input),
+    ...parseMarketplaceSort(input.sort, ["installs"] as const, "Unknown agent sort order."),
+    ...(category ? { category } : {}),
+  };
 }
 
 export function parseSubmitSkill(input: unknown): SubmitSkillInput {

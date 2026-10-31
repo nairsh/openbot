@@ -17,7 +17,7 @@ const CHAT_CHARACTERS = 60_000;
 const EARLIER_CHARACTERS = 60_000;
 
 /** Indented JSON for a prompt block, with `<` escaped as `tagSafe` does. */
-function promptJson(value: unknown): string {
+export function promptJson(value: unknown): string {
   return tagSafe(JSON.stringify(value, null, 2));
 }
 

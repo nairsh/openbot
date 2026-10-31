@@ -25,8 +25,8 @@ interface ResolvedCli {
   executable: string;
   version: string;
   /**
-   * The `PATH` that `--version` ran with, from `cliLaunchPath`. Each process of the CLI starts with
-   * it. Absent on Windows, which has no login shell, and when the CLI was not run.
+   * The `PATH` from `cliLaunchPath` that each process of the CLI starts with. `--version` runs with it
+   * too, when the resolver runs the CLI. Absent on Windows, which has no login shell.
    */
   launchPath?: string;
 }
@@ -315,7 +315,8 @@ export function antigravityHarnessName(target: string): "localharness_external" 
  * The Antigravity server is never looked for on `PATH`: the Antigravity IDE installs an
  * `antigravity` command that is an editor, not this server. Only the copy OpenBot downloaded, or the
  * path in `OPENBOT_ANTIGRAVITY_PATH`, is used. The server takes no `--version`, so the version comes
- * from the manifest two levels above the program, which a managed install writes.
+ * from the manifest two levels above the program, which a managed install writes. The server
+ * still gets `cliLaunchPath`: the MCP servers that it starts are commands such as bare `node` (#3418).
  *
  * A path the user set is the only candidate: when it cannot start, the error says so, and the
  * managed copy does not run in its place without a message.
@@ -342,7 +343,13 @@ export const resolveAntigravityCli: (input?: {
         Effect.gen(function* () {
           const manifest = join(dirname(dirname(candidate.executable)), ANTIGRAVITY_MANIFEST);
           const version = parseAntigravityVersion(yield* providerCall(() => readFile(manifest, "utf8")));
-          return { executable: candidate.executable, version, source: candidate.source };
+          const launchPath = yield* cliLaunchPath(candidate.executable, candidate.source);
+          return {
+            executable: candidate.executable,
+            version,
+            source: candidate.source,
+            ...(launchPath ? { launchPath } : {}),
+          };
         }).pipe(Effect.catchDefect((cause) => Effect.fail(providerFailure(cause)))),
       );
       if (Result.isSuccess(attempt)) return attempt.success;
@@ -631,7 +638,9 @@ const resolveNativeCli = Effect.fn("Cli.resolveNativeCli")(function* (
   return yield* Effect.fail(
     providerFailure(
       new CodexCliError(
-        sourceText(found ? "error.provider.nativeNotStarted" : "error.provider.nativeMissing", { provider }),
+        sourceText(found ? "error.provider.nativeNotStarted" : "error.provider.nativeMissing", {
+          provider: agentProviderName(provider),
+        }),
         found ? "invalid" : "missing",
       ),
     ),
@@ -656,6 +665,54 @@ export function parseMuseVersion(output: string): string {
   if (!match)
     throw new CodexCliError(sourceText("error.provider.nativeVersionUnreadable", { provider: "Muse" }), "invalid");
   return match[0];
+}
+
+export function isVersion(value: string): boolean {
+  return /^\d+\.\d+\.\d+(?:(?:-\d{2}-\d{2}-\d{2})?-[0-9a-f]{7,40})?$/u.test(value);
+}
+
+/**
+ * A commit orders nothing, so two Cursor builds of the same date and time, or of the same date with
+ * no time, are neither older nor newer.
+ */
+export function olderVersion(installed: string, target: string): boolean {
+  return isVersion(installed) && isVersion(target) && compareReleases(installed, target) < 0;
+}
+
+export function compareReleases(a: string, b: string): number {
+  const release = (version: string) => version.replace(/-[0-9a-f]{7,40}$/u, "").replaceAll("-", ".");
+  return release(a).localeCompare(release(b), "en", { numeric: true });
+}
+
+/**
+ * Resolve a provider's CLI with OpenBot's copy as `bundledExecutable`. The CLI the user installed
+ * wins over the copy when it is as new: the copy then runs nothing, and the Storage page can remove
+ * it. A version that cannot be compared keeps the copy, as before. An update passes
+ * `preferInstalled: false`, because it must start the copy it just downloaded.
+ */
+export function resolveInstalledFirst<Cli extends AgentCliInfo, E>(
+  resolve: (input: { bundledExecutable?: string | null }) => Effect.Effect<Cli, E>,
+  bundledExecutable: string | null | undefined,
+  preferInstalled: boolean,
+): Effect.Effect<Cli, E> {
+  const copy = resolve(bundledExecutable === undefined ? {} : { bundledExecutable });
+  if (!preferInstalled) return copy;
+  const installedCli = resolve({ bundledExecutable: null }).pipe(Effect.orElseSucceed(() => null));
+  const choose = (resolved: Cli, installed: Cli | null): Cli =>
+    resolved.source === "managed" &&
+    installed?.source === "system" &&
+    (installed.version === resolved.version || olderVersion(resolved.version, installed.version))
+      ? installed
+      : resolved;
+  return Effect.gen(function* () {
+    // With a copy, the two probes run at once: the user's CLI adds no wait unless it is the slower one.
+    if (bundledExecutable) {
+      const [resolved, installed] = yield* Effect.all([copy, installedCli], { concurrency: 2 });
+      return choose(resolved, installed);
+    }
+    const resolved = yield* copy;
+    return resolved.source === "managed" ? choose(resolved, yield* installedCli) : resolved;
+  });
 }
 
 /** The command name of a provider's CLI on `PATH`. */

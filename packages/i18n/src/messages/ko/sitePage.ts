@@ -43,7 +43,7 @@ export const messages = {
     "{name} 연결을 시작한 OpenBot 탭이 응답하지 않았어요. 브라우저에서 OpenBot을 열고 {name}을(를) 다시 연결해 주세요.",
   "sitePage.connect.failure.failed": "{name} 연결을 완료하지 못했어요. 다시 시도해 주세요.",
   "sitePage.connect.restartHint":
-    "OpenBot에서 {serverSettings}, {connectors}, {name}을(를) 차례로 열고 {connect}을(를) 선택해 주세요.",
+    "OpenBot에서 {marketplace}, {apps}, {name}을(를) 차례로 열고 {connect}을(를) 선택해 주세요.",
   "sitePage.connect.notOpened":
     "OpenBot을 실행한 다음 다시 시도해 주세요. 이 컴퓨터에 OpenBot이 없다면 다운로드해서 앱에서 {name}을(를) 연결해 주세요.",
   "sitePage.openApp.title": "아무것도 열리지 않았나요?",
@@ -75,4 +75,11 @@ export const messages = {
   "sitePage.report.sentTitle": "신고를 보냈어요",
   "sitePage.report.sentBody": "감사합니다. 신고를 받았어요.",
   "sitePage.report.home": "홈 페이지로 이동",
+  "sitePage.pricing.title": "OpenBot 요금",
+  "sitePage.pricing.description": "호스팅 서버와 팀용 라이선스. 내 컴퓨터에서 개인용으로 사용하면 OpenBot은 무료예요.",
+  "sitePage.pricing.heading": "요금",
+  "sitePage.pricing.enterprise.title": "Enterprise",
+  "sitePage.pricing.enterprise.body":
+    "더 큰 서버, {count}명이 넘는 멤버 등 필요한 것은 무엇이든 제공해요. 엔터프라이즈 지원도 포함돼요.",
+  "sitePage.pricing.enterprise.contact": "영업팀에 문의",
 } as const satisfies PartialTranslation<typeof source>;

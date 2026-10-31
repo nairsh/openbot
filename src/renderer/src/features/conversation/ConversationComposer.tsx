@@ -1,37 +1,27 @@
-import { isKnownAgentProvider, providerDisplayName } from "@openbot/contracts/agent-providers";
+import { isKnownAgentProvider, providerSteersTurns } from "@openbot/contracts/agent-providers";
 import { supportedAttachmentExtensions } from "@openbot/contracts/attachment-files";
 import {
+  type AccountUsageLimit,
   type AgentWait,
   accountUsageCoversModel,
   canPreviewAttachment,
+  DEFAULT_PROVIDER_ACCOUNT_ID,
   type QueueSnapshot,
   usageQuotaForModel,
 } from "@openbot/contracts/ipc";
 import {
   TEAM_EML_ATTACHMENTS_CAPABILITY,
   TEAM_MEDIA_ATTACHMENTS_CAPABILITY,
+  TEAM_MP4_ATTACHMENTS_CAPABILITY,
   TEAM_ZIP_ATTACHMENTS_CAPABILITY,
 } from "@openbot/contracts/team-protocol/current";
 import { sourceText } from "@openbot/i18n/source";
-import {
-  ArrowUp,
-  AudioLines,
-  Button,
-  DropdownMenu,
-  File,
-  Image,
-  ImageRemoveButton,
-  Input,
-  LoaderCircle,
-  MessageCircleQuestionMark,
-  Mic,
-  Plus,
-  Puzzle,
-} from "@openbot/ui";
+import { Button, ImageRemoveButton, Input } from "@openbot/ui";
 import { fileBadge } from "@openbot/ui/features/conversation/AttachmentCards";
 import { attachmentReferenceTone } from "@openbot/ui/features/conversation/AttachmentReference";
 import { AwaitingReplies, type AwaitingReplyItem } from "@openbot/ui/features/conversation/AwaitingReplies";
 import { agentActivityExitDuration } from "@openbot/ui/features/conversation/activity-timing";
+import { ComposerAddMenu } from "@openbot/ui/features/conversation/ComposerAddMenu";
 import { ComposerEditor } from "@openbot/ui/features/conversation/ComposerEditor";
 import { ComposerErrorBanner } from "@openbot/ui/features/conversation/ComposerErrorBanner";
 import {
@@ -40,12 +30,13 @@ import {
   ComposerUpdateNotice,
   ComposerUsageLimitNotice,
 } from "@openbot/ui/features/conversation/ComposerNotice";
+import { ComposerSendControl } from "@openbot/ui/features/conversation/ComposerSendControl";
 import { ComposerCompactionNotice } from "@openbot/ui/features/conversation/ContextUsage";
-import { CloseIcon, StopIcon } from "@openbot/ui/features/conversation/ConversationIcons";
+import { CloseIcon } from "@openbot/ui/features/conversation/ConversationIcons";
 import { type OpenWaitItem, OpenWaits } from "@openbot/ui/features/conversation/OpenWaits";
 import { ReplyQuote } from "@openbot/ui/features/conversation/ReplyQuote";
 import { SpeakingBar } from "@openbot/ui/features/conversation/SpeakingBar";
-import { VoiceRecordingMorph, voiceButtonLabel } from "@openbot/ui/features/conversation/VoiceRecordingMorph";
+import { ComposerVoiceControls } from "@openbot/ui/features/conversation/VoiceRecordingMorph";
 import { useText } from "@openbot/ui/text";
 import { prefersReducedMotion } from "@openbot/ui/utils";
 import {
@@ -64,8 +55,10 @@ import { reportErrorBanner, reportNotification } from "../../error-reports";
 import { deviceSendShortcut, sendShortcutAriaKey, sendShortcutHintKey } from "../../send-shortcut-preference";
 import { speechReading } from "../speech/speech-playback";
 import { stopSpokenReply } from "../speech/speech-replies";
+import { copyComposerSelection, readComposerCopy } from "./composer-clipboard";
 import { conversationPort } from "./conversation-port";
 import { useConversationViewScope } from "./conversation-scope";
+import { currentConversationTarget } from "./stores/composer-store";
 
 // Module scope: the composer remounts on navigation, and a dismissed notice must stay dismissed.
 const [dismissedCompactions, setDismissedCompactions] = createSignal<Record<string, string>>({});
@@ -98,13 +91,14 @@ export function ConversationComposer() {
     editingDeliveryId,
     editingPendingSave,
     openAttachmentPicker,
-    openAttachmentPickerFromKey,
+    pasteFiles,
     presentedQueueDeliveries,
     previewAttachment,
     props,
     quoteRequest,
     openQuote,
     queuePanelVisible,
+    releaseCutAttachments,
     removeAttachment,
     reorderPresentedQueue,
     replyTarget,
@@ -116,6 +110,8 @@ export function ConversationComposer() {
     stopVoiceRecording,
     cancelVoiceRecording,
     submitComposer,
+    steerComposer,
+    composerAnswersPrompt,
     submitting,
     unreferencedDraftAttachments,
     updateCurrentDraft,
@@ -135,6 +131,8 @@ export function ConversationComposer() {
     channel,
     providerSilentMinutes,
     providerOffline,
+    agentProviderName,
+    sideThreadOpen,
   } = useConversationViewScope();
   const { t, format, sourceText: localizeSourceText } = useText();
   const messageLabel = () =>
@@ -145,7 +143,22 @@ export function ConversationComposer() {
         : t("composer.placeholder.messageAgent");
   const [pickerOpen, setPickerOpen] = createSignal(false);
   const [skillPickerRequest, setSkillPickerRequest] = createSignal(0);
-  let skillPickerChosen = false;
+  /** A skill belongs to one agent, and a channel message goes to the agents it routes to. */
+  const pickSkill = () => (channel ? undefined : () => setSkillPickerRequest((current) => current + 1));
+  /**
+   * The draft goes to the side question, so that the chat gets nothing of it. A draft with attachments
+   * stays: the side question cannot send files.
+   */
+  const askSideQuestion = () => {
+    if (channel || !sideQuestionAvailable()) return undefined;
+    return () => {
+      const draft = currentDraft();
+      const text = draft.attachments.length === 0 ? draft.text : "";
+      if (text) updateCurrentDraft({ text: "" });
+      openSideQuestion(text);
+    };
+  };
+  const openVoiceConversation = () => (voiceConversationAvailable() ? () => openSidePanelPane("voice") : undefined);
   // A pending Save keeps its exact request for retry. Block changes until retry or cancel.
   const savePending = () => Boolean(editingDeliveryId() && editingPendingSave());
   // A provider start, restart or server reconnect is short. Keys typed in it must not drop, so only a
@@ -155,6 +168,13 @@ export function ConversationComposer() {
     !((props.agent || channel) && (props.agentStatus.phase === "starting" || props.agentStatus.phase === "restarting"));
   // The mention picker grows out of the same edge as the queue, so only one of them holds it.
   const queueVisible = () => queuePanelVisible() && !pickerOpen();
+  // Each chat gets its own queue panel. One shared panel animated the rows and the height of the
+  // previous chat's queue into this one, and the chat jumped while it resized (#3770). The keyed
+  // <Show> builds its child again only when the child function takes the key as a parameter.
+  const queueOwner = () => {
+    const target = currentConversationTarget(props);
+    return target && `${target.serverId}:${target.agentId}`;
+  };
   const awaitingVisible = () => awaitingReplies().length > 0 && !pickerOpen();
   // The rows stay while the slot closes, so the block slides away with it instead of vanishing.
   const [shownAwaiting, setShownAwaiting] = createSignal<readonly AwaitingReplyItem[]>([]);
@@ -274,11 +294,25 @@ export function ConversationComposer() {
     const expired = localizeSourceText(sourceText("error.provider.opencodeKeyExpired"));
     return currentChatError() === expired ? props.onManageProviders : undefined;
   };
+  /** An ACP provider has no steer request, so its queued messages wait for the turn to end (#3689). */
+  const steers = () => !props.agent || providerSteersTurns(props.agent.provider);
+  /** Tab sends the draft into the running turn, in place of Send and then Steer on its queue row. */
+  const steerOnTab = () =>
+    props.activeTurnId &&
+    !channel &&
+    steers() &&
+    !editingDeliveryId() &&
+    composerHasContent() &&
+    voicePhase() === "idle" &&
+    agentReady() &&
+    !attachmentBusy() &&
+    !submitting()
+      ? steerComposer
+      : undefined;
   /** Why the running turn has no reply: the computer is offline, or the provider sends nothing. */
   const providerWaitNotice = createMemo(() => {
-    const agent = props.agent;
-    if (!agent) return null;
-    const provider = providerDisplayName(agent.provider);
+    const provider = agentProviderName();
+    if (!provider) return null;
     if (providerOffline())
       return { title: t("composer.providerWait.offlineTitle"), body: t("composer.providerWait.offline", { provider }) };
     const minutes = providerSilentMinutes();
@@ -295,6 +329,10 @@ export function ConversationComposer() {
    * something asks the provider again. So the clock is part of the state, not only the percentage.
    */
   const [now, setNow] = createSignal(Date.now());
+  const agentAccountId = () => props.agent?.providerAccountId ?? DEFAULT_PROVIDER_ACCOUNT_ID;
+  /** A reading of another account of the same provider says nothing about the quota this agent uses. */
+  const agentUsageLimit = (limit: AccountUsageLimit) =>
+    limit.id === props.agent?.provider && (limit.accountId ?? DEFAULT_PROVIDER_ACCOUNT_ID) === agentAccountId();
   /**
    * The first plan window that is spent and has not ended yet. `usedPercent` is what the provider
    * reports, so it can pass 100 slightly. A spent plan does not say whether paid credits remain.
@@ -304,7 +342,7 @@ export function ConversationComposer() {
     // The usage of a provider that this build does not know has no notice.
     if (!provider || !isKnownAgentProvider(provider)) return null;
     for (const limit of props.accountUsage?.limits ?? []) {
-      if (limit.id !== provider) continue;
+      if (!agentUsageLimit(limit)) continue;
       // A provider that names quota groups limits each group apart: only the agent's model's group
       // can stop it, and a model that no group lists has no notice.
       const model = props.agent?.model;
@@ -325,11 +363,11 @@ export function ConversationComposer() {
     }
     return null;
   });
-  const usageNoticeAccount = () =>
-    JSON.stringify([
-      props.agent?.provider,
-      props.agentStatus.providers?.find((status) => status.id === props.agent?.provider)?.email,
-    ]);
+  const usageNoticeAccount = () => {
+    const status = props.agentStatus.providers?.find((provider) => provider.id === props.agent?.provider);
+    const email = status?.accounts?.find((account) => account.id === agentAccountId())?.email ?? status?.email;
+    return JSON.stringify([props.agent?.provider, agentAccountId(), email]);
+  };
   const usageNotice = () => {
     const spent = usageExhausted();
     return spent &&
@@ -346,7 +384,7 @@ export function ConversationComposer() {
       account: usageNoticeAccount(),
       spent: usageExhausted(),
       loaded: props.accountUsage?.limits.some(
-        (limit) => limit.id === props.agent?.provider && (limit.primary !== null || limit.secondary !== null),
+        (limit) => agentUsageLimit(limit) && (limit.primary !== null || limit.secondary !== null),
       ),
     }),
     ({ account, spent, loaded }) => {
@@ -375,63 +413,44 @@ export function ConversationComposer() {
       eml: local || capabilities.includes(TEAM_EML_ATTACHMENTS_CAPABILITY),
       media: local || capabilities.includes(TEAM_MEDIA_ATTACHMENTS_CAPABILITY),
       zip: local || capabilities.includes(TEAM_ZIP_ATTACHMENTS_CAPABILITY),
+      mp4: local || capabilities.includes(TEAM_MP4_ATTACHMENTS_CAPABILITY),
     })
       .map((extension) => `.${extension}`)
       .join(",");
   };
+  const sendLabel = () => {
+    if (editingDeliveryId()) return t("composer.send.saveQueued");
+    if (voicePhase() === "recording") return t("composer.send.voice");
+    return composerAnswersPrompt() ? t("composer.send.answer") : t("composer.send.message");
+  };
+  const sendKeyShortcuts = () =>
+    voicePhase() === "recording" ? undefined : sendShortcutAriaKey(deviceSendShortcut(props.platform));
+  const sendTitle = () =>
+    voicePhase() === "recording"
+      ? undefined
+      : t(sendShortcutHintKey(deviceSendShortcut(props.platform), editingDeliveryId() ? "save" : "send"));
   /** Send, or Stop while the agent works and the message box is empty. */
   const SendControl = () => (
-    <Show
-      when={props.activeTurnId && !editingDeliveryId() && !composerHasContent() && voicePhase() !== "recording"}
-      fallback={
-        <Button
-          variant="ghost"
-          type="button"
-          class="voice-button"
-          aria-label={
-            editingDeliveryId()
-              ? t("composer.send.saveQueued")
-              : voicePhase() === "recording"
-                ? t("composer.send.voice")
-                : t("composer.send.message")
-          }
-          aria-keyshortcuts={
-            voicePhase() === "recording" ? undefined : sendShortcutAriaKey(deviceSendShortcut(props.platform))
-          }
-          title={
-            voicePhase() === "recording"
-              ? undefined
-              : t(sendShortcutHintKey(deviceSendShortcut(props.platform), editingDeliveryId() ? "save" : "send"))
-          }
-          data-cuelume-emphasis="normal"
-          disabled={
-            attachmentBusy() ||
-            submitting() ||
-            !agentReady() ||
-            Boolean(providerUpdateRequired()) ||
-            voicePhase() === "preparing" ||
-            voicePhase() === "requesting" ||
-            voicePhase() === "transcribing"
-          }
-          onClick={submitComposer}
-        >
-          <Show when={submitting()} fallback={<ArrowUp aria-hidden="true" />}>
-            <LoaderCircle class="composer-spinner" aria-hidden="true" />
-          </Show>
-        </Button>
+    <ComposerSendControl
+      stop={Boolean(
+        props.activeTurnId && !editingDeliveryId() && !composerHasContent() && voicePhase() !== "recording",
+      )}
+      onStop={props.onStop}
+      label={sendLabel()}
+      keyShortcuts={sendKeyShortcuts()}
+      title={sendTitle()}
+      disabled={
+        attachmentBusy() ||
+        submitting() ||
+        !agentReady() ||
+        Boolean(providerUpdateRequired()) ||
+        voicePhase() === "preparing" ||
+        voicePhase() === "requesting" ||
+        voicePhase() === "transcribing"
       }
-    >
-      <Button
-        variant="ghost"
-        type="button"
-        class="voice-button voice-button-active"
-        aria-label={t("composer.send.stop")}
-        data-cuelume-tap="close"
-        onClick={props.onStop}
-      >
-        <StopIcon />
-      </Button>
-    </Show>
+      busy={submitting()}
+      onSend={submitComposer}
+    />
   );
   return (
     <Show
@@ -443,7 +462,7 @@ export function ConversationComposer() {
   );
   function ComposerBody() {
     return (
-      <div class="composer-wrap">
+      <div class={["composer-wrap", { "conversation-covered": sideThreadOpen() }]} inert={sideThreadOpen()}>
         {channel ? <channel.AboveComposer /> : null}
         <Show when={speaking() && props.agent}>
           {(agent) => (
@@ -470,6 +489,8 @@ export function ConversationComposer() {
                   title={channel ? t("chat.awaiting.subtasks") : undefined}
                   onDismiss={dismissAwaitingReplies}
                   onOpenAgent={props.onSelectAgent}
+                  // A channel's rows are its sub-tasks, not queued replies.
+                  onSteer={props.activeTurnId && !channel && steers() ? props.onSteerQueuedMessage : undefined}
                 />
               </Show>
               <Show when={waitsVisible() && props.onCancelWait}>
@@ -488,25 +509,27 @@ export function ConversationComposer() {
                   />
                 )}
               </Show>
-              <Show when={queueVisible()}>
-                <Loading>
-                  <QueuePanel
-                    deliveries={presentedQueueDeliveries()}
-                    // Only for an agent that is waiting. When the channel work is this agent's own,
-                    // the activity line above already shows it working, and naming it twice reads as
-                    // two different waits.
-                    hold={props.queue?.hold?.agentId === props.agent?.id ? null : props.queue?.hold}
-                    agents={props.agents}
-                    skills={installedSkills()}
-                    editingDeliveryId={editingDeliveryId()}
-                    canSteer={Boolean(props.activeTurnId)}
-                    onSteer={props.onSteerQueuedMessage}
-                    onRunAsTask={props.tasks?.onRunQueuedMessage}
-                    onCancel={props.onCancelQueuedMessage}
-                    onEdit={editQueuedMessage}
-                    onReorder={reorderPresentedQueue}
-                  />
-                </Loading>
+              <Show when={queueVisible() ? queueOwner() : undefined} keyed>
+                {(_owner) => (
+                  <Loading>
+                    <QueuePanel
+                      deliveries={presentedQueueDeliveries()}
+                      // Only for an agent that is waiting. When the channel work is this agent's own,
+                      // the activity line above already shows it working, and naming it twice reads as
+                      // two different waits.
+                      hold={props.queue?.hold?.agentId === props.agent?.id ? null : props.queue?.hold}
+                      agents={props.agents}
+                      skills={installedSkills()}
+                      editingDeliveryId={editingDeliveryId()}
+                      canSteer={Boolean(props.activeTurnId)}
+                      onSteer={steers() ? props.onSteerQueuedMessage : undefined}
+                      onRunAsTask={props.threads?.onRunQueuedMessage}
+                      onCancel={props.onCancelQueuedMessage}
+                      onEdit={editQueuedMessage}
+                      onReorder={reorderPresentedQueue}
+                    />
+                  </Loading>
+                )}
               </Show>
             </div>
           </div>
@@ -726,6 +749,7 @@ export function ConversationComposer() {
               <ComposerEditor
                 agentId={props.agent?.id}
                 agents={props.mentionAgents ?? props.agents}
+                everyoneMention={Boolean(channel) && (props.mentionAgents ?? props.agents).length > 1}
                 skills={installedSkills()}
                 skillsLoadFailed={installedSkillsLoadFailed()}
                 mcpServers={mcpServers()}
@@ -747,7 +771,9 @@ export function ConversationComposer() {
                         : t("composer.placeholder.cliSetup")
                     : replyTarget()
                       ? t("composer.placeholder.reply")
-                      : messageLabel()
+                      : composerAnswersPrompt()
+                        ? t("composer.placeholder.answer")
+                        : messageLabel()
                 }
                 ariaLabel={channel ? t("channel.composer.label") : messageLabel()}
                 focusRequest={composerFocusRequest()}
@@ -759,15 +785,22 @@ export function ConversationComposer() {
                   updateTeamTyping(text);
                 }}
                 onSubmit={submitComposer}
+                onSteer={steerOnTab()}
                 sendShortcut={deviceSendShortcut(props.platform)}
                 onPickerOpenChange={setPickerOpen}
                 dictation={{ text: voiceLiveText(), final: voicePhase() === "transcribing" }}
                 correctWord={props.runtime ? undefined : (word) => conversationPort().spelling.correction(word)}
-                onPasteFiles={(files) => {
-                  if (props.runtime?.importFiles) void props.runtime.importFiles(files);
-                }}
                 suggestion={channel || replyTarget() ? undefined : props.composerSuggestion}
                 onSuggestionClose={() => props.onComposerSuggestionClose?.()}
+                onPasteFiles={pasteFiles}
+                onCopyAttachments={(clipboard, text, attachments, remaining) => {
+                  const copied = copyComposerSelection(clipboard, text, attachments, props.runtime?.previewAttachment);
+                  if (remaining !== undefined) releaseCutAttachments(attachments, remaining, copied);
+                }}
+                onPasteAttachments={(clipboard, selection) => {
+                  const copy = readComposerCopy(clipboard);
+                  return copy ? pasteFiles(copy.files, selection, copy) : undefined;
+                }}
                 onOpenAttachment={(attachment) =>
                   canPreviewAttachment(attachment)
                     ? void previewAttachment(attachment)
@@ -789,106 +822,18 @@ export function ConversationComposer() {
                     void props.runtime.importFiles(Array.from(event.currentTarget.files ?? []));
                 }}
               />
-              <DropdownMenu.Root
+              <ComposerAddMenu
                 open={showComposerActions()}
-                onOpenChange={(open) => {
-                  setShowComposerActions(open);
-                  const chosen = skillPickerChosen;
-                  skillPickerChosen = false;
-                  if (open || !chosen) return;
-                  // The menu gives the focus back to its trigger two frames after it closes; open the picker after that.
-                  requestAnimationFrame(() =>
-                    requestAnimationFrame(() =>
-                      requestAnimationFrame(() => setSkillPickerRequest((current) => current + 1)),
-                    ),
-                  );
-                }}
-                placement="top-start"
-                gutter={8}
-                modal={false}
-              >
-                <DropdownMenu.Trigger
-                  class="composer-button"
-                  aria-label={t("composer.add.label")}
-                  disabled={
-                    attachmentBusy() ||
-                    submitting() ||
-                    voicePhase() === "transcribing" ||
-                    !agentReady() ||
-                    savePending()
-                  }
-                >
-                  <Plus aria-hidden="true" />
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Portal>
-                  <DropdownMenu.Content aria-label={t("composer.add.label")}>
-                    <DropdownMenu.Item
-                      disabled={attachmentBusy()}
-                      onPointerDown={(event) => {
-                        if (event.button === 0) openAttachmentPicker();
-                      }}
-                      onKeyDown={(event) => openAttachmentPickerFromKey(event)}
-                    >
-                      <Image aria-hidden="true" />
-                      <span>{t("composer.add.image")}</span>
-                    </DropdownMenu.Item>
-                    {/* A skill belongs to one agent, and a channel message goes to the agents it routes to. */}
-                    <Show when={!channel}>
-                      <DropdownMenu.Item
-                        onPointerDown={(event) => {
-                          if (event.button === 0) skillPickerChosen = true;
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") skillPickerChosen = true;
-                        }}
-                      >
-                        <Puzzle aria-hidden="true" />
-                        <span>{t("composer.add.skill")}</span>
-                      </DropdownMenu.Item>
-                    </Show>
-                    <DropdownMenu.Item
-                      disabled={attachmentBusy()}
-                      onPointerDown={(event) => {
-                        if (event.button === 0) openAttachmentPicker();
-                      }}
-                      onKeyDown={(event) => openAttachmentPickerFromKey(event)}
-                    >
-                      <File aria-hidden="true" />
-                      <span>{t("composer.add.context")}</span>
-                    </DropdownMenu.Item>
-                    <Show when={!channel && sideQuestionAvailable()}>
-                      <DropdownMenu.Separator />
-                      <DropdownMenu.Item
-                        onSelectAfterClose={() => {
-                          // The draft goes to the side question, so that the chat gets nothing of it. A draft
-                          // with attachments stays: the side question cannot send files.
-                          const draft = currentDraft();
-                          const text = draft.attachments.length === 0 ? draft.text : "";
-                          if (text) updateCurrentDraft({ text: "" });
-                          // The menu gives the focus back first. A side panel tab that gets it selects its
-                          // pane, so open the side question after that.
-                          requestAnimationFrame(() => openSideQuestion(text));
-                        }}
-                      >
-                        <MessageCircleQuestionMark aria-hidden="true" />
-                        <span>{t("conversation.sidePanel.pane.question")}</span>
-                      </DropdownMenu.Item>
-                    </Show>
-                    {/* Only where a side question is: after its separator. */}
-                    <Show when={voiceConversationAvailable()}>
-                      <DropdownMenu.Item
-                        onSelectAfterClose={() => {
-                          // As for the side question: open the pane after the menu gives the focus back.
-                          requestAnimationFrame(() => openSidePanelPane("voice"));
-                        }}
-                      >
-                        <AudioLines aria-hidden="true" />
-                        <span>{t("conversation.sidePanel.pane.voice")}</span>
-                      </DropdownMenu.Item>
-                    </Show>
-                  </DropdownMenu.Content>
-                </DropdownMenu.Portal>
-              </DropdownMenu.Root>
+                onOpenChange={setShowComposerActions}
+                disabled={
+                  attachmentBusy() || submitting() || voicePhase() === "transcribing" || !agentReady() || savePending()
+                }
+                attachDisabled={attachmentBusy()}
+                onAttach={openAttachmentPicker}
+                onPickSkill={pickSkill()}
+                onSideQuestion={askSideQuestion()}
+                onVoice={openVoiceConversation()}
+              />
               <div class="composer-primary-actions">
                 <Show when={attachmentBusy() && props.runtime?.cancelImportFiles} keyed>
                   {(cancelImportFiles) => (
@@ -897,45 +842,18 @@ export function ConversationComposer() {
                     </Button>
                   )}
                 </Show>
-                <Show when={voiceAvailable() && voicePhase() === "preparing"}>
-                  <span class="voice-model-progress" role="status">
-                    {t("composer.voice.progress", { progress: voiceModelProgress() ?? 0 })}
-                  </span>
-                </Show>
                 <Show when={voiceAvailable()} fallback={<SendControl />}>
-                  <VoiceRecordingMorph
-                    recording={voicePhase() === "recording"}
+                  <ComposerVoiceControls
+                    phase={voicePhase()}
                     levels={voiceLevels()}
                     elapsedSeconds={voiceElapsedSeconds()}
+                    modelProgress={voiceModelProgress()}
+                    blocked={!props.agent || !agentReady()}
+                    onStart={() => void startVoiceRecording()}
                     onCancel={cancelVoiceRecording}
                     onFinish={stopVoiceRecording}
                     send={<SendControl />}
-                  >
-                    <Button
-                      variant="ghost"
-                      type="button"
-                      class="dictation-button"
-                      aria-label={t(voiceButtonLabel(voicePhase()))}
-                      disabled={
-                        voicePhase() === "requesting" ||
-                        voicePhase() === "preparing" ||
-                        voicePhase() === "transcribing" ||
-                        (voicePhase() === "idle" && (!props.agent || !agentReady()))
-                      }
-                      onClick={() => void startVoiceRecording()}
-                    >
-                      <Show
-                        when={
-                          voicePhase() === "preparing" ||
-                          voicePhase() === "requesting" ||
-                          voicePhase() === "transcribing"
-                        }
-                        fallback={<Mic aria-hidden="true" />}
-                      >
-                        <LoaderCircle class="composer-spinner" aria-hidden="true" />
-                      </Show>
-                    </Button>
-                  </VoiceRecordingMorph>
+                  />
                 </Show>
               </div>
             </div>

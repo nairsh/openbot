@@ -25,6 +25,10 @@ import { isAvatarMimeType } from "@openbot/contracts/avatar-images";
 import { AVATAR_IMAGE_LIMITS, INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import { type CreateAgentInput, type DuplicateAgentResult, WORKFLOWS_USAGE_ID } from "@openbot/contracts/ipc";
 import { TEAM_API_ROUTES } from "@openbot/contracts/team-api-routes";
+import {
+  BROWSER_SECRET_VAULT_CAPABILITY,
+  BROWSER_SECRET_VAULT_ROUTES,
+} from "@openbot/contracts/team-protocol/browser-secret-vault-v1";
 import { V5_AGENT_MODEL } from "@openbot/contracts/team-protocol/v5-adapter";
 import { V6_AGENT_MODEL } from "@openbot/contracts/team-protocol/v6-adapter";
 import { WORKFLOWS_CAPABILITY } from "@openbot/contracts/team-protocol/workflows-v1";
@@ -50,6 +54,7 @@ import {
   promptRequestId,
   readBinary,
   readJson,
+  requireAdmin,
   requireAgentLevel,
   stringField,
 } from "./request-helpers";
@@ -239,7 +244,8 @@ export async function routeAgents(
     if (method === "PATCH" && !action) {
       const input = agentUpdate(await readJson(request), agentId);
       if (input.provider !== undefined) requireVisibleProvider({ provider: input.provider });
-      return json(200, await runCauseEffect(agents.updateAgent(input)));
+      // The released protocol has no `pendingRuntime`, so a provider change during work is refused.
+      return json(200, await runCauseEffect(agents.updateAgent(input, undefined, false)));
     }
     if (method === "POST" && action === "duplicate") {
       const body = await readJson(request);
@@ -323,6 +329,19 @@ export async function routeAgents(
     requireRequestAgent(input.agentId);
     await runCauseEffect(agents.respondToBrowserSecret(input));
     return empty(204);
+  }
+  if (method === "POST" && url.pathname === BROWSER_SECRET_VAULT_ROUTES.respond) {
+    // The submit has the gates of the released route; the save adds its own.
+    if (!capabilities.has("browser-secret-handoff"))
+      throw new HttpError(400, sourceText("error.team.secureAuthUnsupported"));
+    if (!capabilities.has(BROWSER_SECRET_VAULT_CAPABILITY))
+      throw new HttpError(400, sourceText("error.team.vaultUnsupported"));
+    // The Vault is the owner's and the admins', as on the `vault-v1` routes.
+    requireAdmin(member);
+    const input = parseBrowserSecretResponse({ ...(await readJson(request)), decision: "submit" });
+    requireRequestAgent(input.agentId);
+    await runCauseEffect(agents.respondToBrowserSecret({ ...input, saveToVault: true }));
+    return json(200, {});
   }
   if (method === "POST" && url.pathname === TEAM_API_ROUTES.respond.browserTakeover) {
     const body = await readJson(request);

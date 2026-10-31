@@ -35,7 +35,7 @@ export const messages = {
   "provider.status.checking": "检查中",
   "provider.status.off": "已关闭",
   "provider.gemini.hostSignIn":
-    "要连接 Gemini，请在主机上打开 OpenBot，然后在“设置 > 服务商”中选择“连接”。Google 登录需要该主机上有浏览器，不支持远程登录。",
+    "要连接 Gemini，请在主机上打开 OpenBot，然后在“服务器设置 > 服务商”中选择“连接”。Google 登录需要该主机上有浏览器，不支持远程登录。",
 
   // Which account tier the OpenCode row runs on. It shows only while it adds to the runtime
   // badge: a saved key leaves the runtime "Connected" to speak for the row.
@@ -157,6 +157,14 @@ export const messages = {
   "provider.inceptionKey.description":
     "在这台电脑上保存 Inception API 密钥，即可使用 Mercury 模型。OpenBot 会在它下载的 Pi CLI 中运行这些模型。",
   "provider.inceptionKey.label": "Inception API 密钥",
+  "provider.deepseekKey.title": "DeepSeek API 密钥",
+  "provider.deepseekKey.description":
+    "在这台电脑上保存 DeepSeek API 密钥，即可使用 DeepSeek 模型。OpenBot 会在它下载的 Pi CLI 中运行这些模型。",
+  "provider.deepseekKey.label": "DeepSeek API 密钥",
+  "provider.openrouterKey.title": "OpenRouter API 密钥",
+  "provider.openrouterKey.description":
+    "在这台电脑上保存 OpenRouter API 密钥，即可使用 OpenRouter 提供的模型。OpenBot 会在它下载的 Pi CLI 中运行这些模型。",
+  "provider.openrouterKey.label": "OpenRouter API 密钥",
 
   // The optional OpenCode Go key dialog.
   "provider.openCodeKey.title": "登录 OpenCode Go",
@@ -184,6 +192,7 @@ export const messages = {
   "provider.account.cancelSignIn": "取消登录",
   "provider.account.finishSignIn": "请在浏览器中完成登录。",
   "provider.account.remove": "移除账号",
+  "provider.account.disconnect": "断开连接",
   "provider.account.actionFailed": "无法更改 {name} 账号。",
   "provider.account.resetUsage": "重置用量",
   "provider.account.resetUsageTitle": "重置 {name} 的用量？",
@@ -221,6 +230,10 @@ export const messages = {
   "provider.settings.removeMoves": "{agents} 将改用 {name}。",
   "provider.settings.removeUnused": "没有助手使用该账号。",
   "provider.settings.removeCredentials": "OpenBot 会从这台电脑删除该账号的登录凭据。",
+  "provider.settings.disconnectTitle": "断开 {name}？",
+  "provider.settings.disconnectOthers": "在你重新连接 {provider} 之前，其他 {provider} 账号会等待。",
+  "provider.settings.disconnectLocal": "OpenBot 会在这台电脑上退出 {provider}。终端中的 {provider} CLI 也会退出。",
+  "provider.settings.disconnectHost": "OpenBot 会在服务器上退出 {provider}。",
   "provider.settings.usageLow": "剩余 {percent} · {window}",
   "provider.settings.usageOf": "{name} 的用量",
   "provider.settings.signIn": "登录",
@@ -251,6 +264,19 @@ export const messages = {
   "provider.settings.turnOnFirst": "请先开启 {name}。",
   "provider.settings.makeDefault": "设为默认",
   "provider.settings.useTitle": "使用 {name}",
+  "provider.settings.download": "下载",
+  "provider.settings.downloadedCli": "{name} CLI",
+  "provider.settings.downloadDetail": {
+    one: "{version} · 1 个版本 · {size}",
+    other: "{version} · {count} 个版本 · {size}",
+  },
+  "provider.settings.downloadVersions": { one: "1 个版本 · {size}", other: "{count} 个版本 · {size}" },
+  "provider.settings.downloadAgain": "开启 {name} 时，OpenBot 会重新下载其 CLI。",
+  "provider.settings.removeDownloadConfirm": "要移除 {size} 吗？",
+  "provider.settings.removeDownloadKeeps": "账户、登录和智能体会保留。",
+  "provider.settings.removeDownload": "移除下载",
+  "provider.settings.removingDownload": "正在移除…",
+  "provider.settings.removeDownloadFailed": "无法移除下载。",
   "provider.settings.endpoints": "端点",
   "provider.settings.noEndpoints": "没有端点。",
   "provider.settings.endpointModels": { other: "{url} · {count} 个模型" },

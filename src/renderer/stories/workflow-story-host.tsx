@@ -176,10 +176,11 @@ export function WorkflowInAppStory(props: { workflows: readonly StoryWorkflow[];
       <PageRail
         hidden={false}
         current={page()}
+        pinned={["routines", "workflows", "usage"]}
+        onPinChange={fn()}
         usageRows={usageRows}
         onAgents={() => setPage("agents")}
         onRoutines={() => setPage("routines")}
-        onTasks={() => setPage("tasks")}
         onSchedule={() => setPage("schedule")}
         onUsage={() => setPage("usage")}
         onMarketplace={fn()}

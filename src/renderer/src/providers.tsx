@@ -2,14 +2,17 @@ import {
   type AgentProviderId,
   type AgentStatus,
   agentProviderDescriptor,
+  isManagedRuntimeProvider,
   LOCAL_SERVER_ID,
+  type ProviderRuntimeDownload,
 } from "@openbot/contracts/ipc";
 import { CLAUDE_API_KEY_CAPABILITY } from "@openbot/contracts/team-protocol/claude-api-key-v1";
 import {
-  PROVIDER_ACCOUNT_RELAY_CAPABILITY,
-  PROVIDER_ACCOUNT_RELAY_PROVIDERS,
-} from "@openbot/contracts/team-protocol/provider-account-relay-v1";
+  type ProviderAccountRelay,
+  providerAccountRelay,
+} from "@openbot/contracts/team-protocol/provider-account-relays";
 import { PROVIDER_ACCOUNTS_CAPABILITY } from "@openbot/contracts/team-protocol/provider-accounts-v1";
+import { PROVIDER_SIGN_OUT_CAPABILITY } from "@openbot/contracts/team-protocol/provider-sign-out-v1";
 import { PROVIDER_USAGE_RESET_CAPABILITY } from "@openbot/contracts/team-protocol/provider-usage-reset-v1";
 import { classifyFailure } from "@openbot/telemetry";
 import { toast } from "@openbot/ui";
@@ -252,10 +255,29 @@ const Providers = createSimpleContext({
       if (activeServer()?.id === server.id) flush(() => applyAgentStatus(status));
     }
 
+    /**
+     * The downloaded CLI of a provider of this computer that is off. A joined host has no such call,
+     * so its providers offer no removal.
+     */
+    async function measureProviderDownload(provider: AgentProviderId): Promise<ProviderRuntimeDownload> {
+      if (activeServer()?.kind !== "local" || !isManagedRuntimeProvider(provider)) return { bytes: 0, versions: 0 };
+      return await providersPort().providerRuntimes.measureDownload(provider);
+    }
+
+    /** Removes the downloaded CLI of a provider of this computer that is off. */
+    async function removeProviderDownload(provider: AgentProviderId): Promise<void> {
+      const server = activeServer();
+      if (server?.kind !== "local" || !isManagedRuntimeProvider(provider)) return;
+      const snapshot = await providersPort().providerRuntimes.removeDownload(provider);
+      if (activeServer()?.id === server.id) flush(() => runtimes.applyProviderRuntimeSnapshot(snapshot));
+    }
+
     /** The joined server whose host's provider accounts this window manages (`provider-accounts-v1`). */
     const accountsAdminServerId = createMemo(() => remoteAdminServer(activeServer(), PROVIDER_ACCOUNTS_CAPABILITY)?.id);
     /** The joined server whose host spends the usage reset credits of its accounts (`provider-usage-reset-v1`). */
     const usageResetServerId = createMemo(() => remoteAdminServer(activeServer(), PROVIDER_USAGE_RESET_CAPABILITY)?.id);
+    /** The joined server whose host signs its own provider sign-ins out (`provider-sign-out-v1`). */
+    const signOutServerId = createMemo(() => remoteAdminServer(activeServer(), PROVIDER_SIGN_OUT_CAPABILITY)?.id);
 
     /**
      * The accounts of the providers of this computer, or of a joined server's host that serves
@@ -289,6 +311,9 @@ const Providers = createSimpleContext({
                 },
               }
             : {}),
+          ...(signOutServerId() === hostServerId
+            ? { signOut: (provider: AgentProviderId) => changed(providerAdmin().signOut(provider, hostServerId)) }
+            : {}),
         };
       }
       if (activeServer()?.kind !== "local") return undefined;
@@ -311,6 +336,8 @@ const Providers = createSimpleContext({
         remove: (provider, accountId) => apply(providersPort().removeProviderAccount({ provider, accountId })),
         usageResets: (provider) => providersPort().providerUsageResets(provider),
         resetUsage: (provider, accountId) => providersPort().resetProviderUsage({ provider, accountId }),
+        signOut: (provider) => apply(providersPort().signOutProvider(provider)),
+        local: true,
       };
     });
 
@@ -371,12 +398,13 @@ const Providers = createSimpleContext({
     }
 
     /**
-     * An account sign-in that the host relays to this computer's browser (`provider-account-relay-v1`).
-     * The other relay requests run it by its provider, and the accounts are read again when it ends.
+     * An account sign-in that the host relays to this computer's browser (`provider-account-relay-v1`
+     * or `-v2`). The other relay requests run it by its provider, and the accounts are read again when
+     * it ends.
      */
-    function accountRelay(serverId: string) {
+    function accountRelay(serverId: string, relayed: ProviderAccountRelay) {
       return {
-        providers: PROVIDER_ACCOUNT_RELAY_PROVIDERS,
+        providers: relayed.providers,
         hostName: activeServer()?.name ?? "",
         start: (provider: AgentProviderId, accountId: string | null) =>
           providerAdmin().startAccountRelaySignIn({ provider, accountId }, serverId),
@@ -405,6 +433,10 @@ const Providers = createSimpleContext({
       applyStatus: applyAgentStatus,
       target: () => {
         const serverId = providerAdminServerId();
+        const relayed =
+          serverId && accountsAdminServerId() === serverId
+            ? providerAccountRelay((capability) => serverSupportsCapability(activeServer(), capability))
+            : null;
         return serverId
           ? {
               start: (provider) => providerAdmin().startCodeLogin(provider, serverId),
@@ -419,10 +451,7 @@ const Providers = createSimpleContext({
                 cancel: (provider) => providerAdmin().cancelHostSignIn(provider, serverId),
               },
               ...(accountsAdminServerId() === serverId ? { accountSignIn: accountSignIn(serverId) } : {}),
-              ...(accountsAdminServerId() === serverId &&
-              serverSupportsCapability(activeServer(), PROVIDER_ACCOUNT_RELAY_CAPABILITY)
-                ? { accountRelay: accountRelay(serverId) }
-                : {}),
+              ...(relayed ? { accountRelay: accountRelay(serverId, relayed) } : {}),
               relay: {
                 hostName: activeServer()?.name ?? "",
                 start: (provider) => providerAdmin().startRelaySignIn(provider, serverId),
@@ -469,6 +498,8 @@ const Providers = createSimpleContext({
       openProviderInstallGuide,
       refreshAgentProviders,
       setProviderOn,
+      measureProviderDownload,
+      removeProviderDownload,
       providerAccounts,
       restartProvider,
       cancelProviderRestart,

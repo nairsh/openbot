@@ -60,6 +60,8 @@ export const messages = {
   "app.rail.marketplace": "市场",
   "app.rail.settings": "设置",
   "app.rail.settingsNotice": "设置。{notice}",
+  "app.rail.more": "更多",
+  "app.rail.pinPage": "将{name}固定到侧栏",
   "app.page.serverFallback": "服务器",
   "app.help.label": "帮助",
   "app.help.whatsNew": "新功能",

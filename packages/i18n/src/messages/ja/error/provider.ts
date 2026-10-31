@@ -6,6 +6,10 @@ export const messages = {
     "OpenBot は Codex の設定に MCP サーバーを登録できませんでした。Codex の config.toml が有効で書き込み可能であることを確認してから、OpenBot を再起動してください。",
   "error.provider.computerUseConfig":
     "OpenBot は Codex の設定に Computer Use を登録できませんでした。Codex の config.toml が有効で書き込み可能であることを確認してから、OpenBot を再起動してください。Computer Use なしで続行するには、エージェントの設定で Computer Use をオフにできます。",
+  "error.provider.codexUnresponsive": "Codex が応答しなくなったため、OpenBot がそのプロセスを終了しました。",
+  "error.provider.acpUnresponsive": "{provider} が時間内に応答しなかったため、OpenBot がそのプロセスを終了しました。",
+  "error.provider.acpMcpNotLoaded":
+    "{provider} が OpenBot のツールを読み込まなかったため、このエージェントはツールを使えず、チームメイトにも連絡できません。{provider} のチームポリシーがローカル MCP サーバーをブロックしている可能性があります。チーム管理者に許可を依頼してから、もう一度お試しください。",
   "error.provider.endpointsReadOnly":
     "保存されたエンドポイントは新しいバージョンの OpenBot で書き込まれたか、ファイルを読み取れません。変更するには OpenBot を更新してください。",
   "error.provider.endpointNoSecureStorage":
@@ -57,6 +61,11 @@ export const messages = {
     "OpenBot はプロバイダーのリリース元に接続できませんでした。接続を確認して、もう一度お試しください。",
   "error.provider.runtimesUnsupported": "このプラットフォームではプロバイダーのランタイムを使用できません。",
   "error.provider.closing": "OpenBot を終了しています。",
+  "error.provider.removeWhileOn": "ダウンロードを削除する前に、プロバイダーをオフにしてください。",
+  "error.provider.removeWhileDownloading": "ダウンロードが終わってから削除してください。",
+  "error.provider.removeIncomplete":
+    "この CLI のファイルを別のプログラムが使用しています。閉じてから、もう一度お試しください。",
+  "error.provider.removeDownloadsFailed": "{providers} の CLI のダウンロードを削除できませんでした。",
   "error.provider.cliOverride": "OpenBot で更新する前に、明示的な CLI パスの指定を削除してください。",
   "error.provider.runtimeUpdateIncomplete": "ランタイムの更新が完了しませんでした。",
   "error.provider.downloadHttp": "ランタイムのダウンロードが HTTP {status} で失敗しました。",
@@ -95,11 +104,14 @@ export const messages = {
   "error.provider.modelsTooMany": "モデルが多すぎます。",
   "error.provider.modelIdCharacter": "モデル ID に使用できない文字が含まれています。",
   "error.provider.modelIdDuplicate": "2 つのモデルの ID が同じです。",
+  "error.provider.contextWindowInvalid":
+    "モデルのコンテキストウィンドウは {min} から {max} までの整数のトークン数にしてください。",
   "error.provider.headersTooMany": "ヘッダーが多すぎます。",
   "error.provider.headerNameCharacter": "ヘッダー名に HTTP で使用できない文字が含まれています。",
   "error.provider.headerNameTooLong": "ヘッダー名が長すぎます。",
   "error.provider.headerNameDuplicate": "2 つのヘッダーの名前が同じです。",
   "error.provider.headerValueInvalid": "ヘッダーの値がないか、長すぎます。",
+  "error.provider.headerValueMissing": "ヘッダー {name} の値を入力してください。",
   "error.provider.apiKeyTooLong": "API キーが長すぎます。",
   "error.provider.localOnly": "プロバイダーは、エージェントを実行しているコンピューターでのみ変更できます。",
   "error.provider.keyRequired": "プロバイダーキーが必要です。",
@@ -180,6 +192,7 @@ export const messages = {
     "{provider} のサインインの有効期限が切れました。続けるには、もう一度サインインしてください。",
   "error.provider.cliActivateFailed": "OpenBot は管理対象 CLI を有効にできませんでした。",
   "error.provider.cliBusyReconnect": "{provider} CLI はターンを処理中です。終わるまで待ってから再接続してください。",
+  "error.provider.cliBusySignOut": "{provider} CLI はターンを処理中です。終わるまで待ってから切断してください。",
   "error.provider.opencodeCredentialsRejected":
     "モデルプロバイダーが API キーを拒否しました。設定で OpenCode のキーを修正するか、`opencode auth login` でプロバイダーのキーを修正してください。その後、もう一度お試しいただくか、別のモデルを選択してください。\n{detail}",
   "error.provider.opencodeAuthRequired":
@@ -265,6 +278,8 @@ export const messages = {
   "error.provider.acpSignInStopped": "サインインが完了する前に停止しました。",
   "error.provider.geminiBrowserUnavailable":
     "Gemini はサインインページを開けませんでした。ブラウザーと xdg-utils をインストールしてから、このホストのデスクトップセッションで接続してください。デスクトップのないサーバーではこのサインインを完了できません。",
+  "error.provider.geminiBrowserOpenFailed":
+    "Gemini はブラウザーでサインインページを開けませんでした。既定のブラウザーを確認してから、もう一度接続してください。",
   "error.provider.acpSignInFailed": "サインインが完了しませんでした。",
   "error.provider.acpSignInFailedReason": "サインインが完了しませんでした: {reason}",
   "error.provider.acpSignInMethodMissing":
@@ -272,6 +287,10 @@ export const messages = {
   "error.provider.httpsSignInLinkOnly": "ブラウザーで開けるのは HTTPS のサインインリンクだけです。",
   "error.provider.geminiKeyRefused":
     "Gemini は保存された API キーを拒否しました。設定でキーを置き換えるか削除してから、もう一度接続してください。",
+  "error.provider.keyProviderRefused":
+    "{provider} は保存された API キーを拒否しました。設定でキーを置き換えるか削除してから、もう一度お試しください。",
+  "error.provider.keyProviderNoBalance":
+    "保存された API キーの {provider} アカウントに残高がありません。アカウントにクレジットを追加してから、もう一度お試しください。",
   "error.provider.messageTooLarge":
     "{limit} MB を超えるメッセージを送信したため、OpenBot は {provider} を停止しました。",
   "error.provider.customAgentIdInvalid":
@@ -314,6 +333,7 @@ export const messages = {
   "error.provider.accountsUnsupported": "{provider} で使えるアカウントは 1 つだけです。",
   "error.provider.accountNeedsConnection": "別のアカウントを追加する前に {provider} に接続してください。",
   "error.provider.usageResetUnsupported": "{provider} は使用量の上限をリセットできません。",
+  "error.provider.signOutUnsupported": "OpenBot は {provider} のサインインを切断できません。",
   "error.provider.usageResetNotConnected":
     "使用量をリセットする前に、この {provider} アカウントにもう一度サインインしてください。",
   "error.provider.accountLimit": "{provider} で使えるアカウントは最大 {limit} 個です。",
@@ -381,6 +401,8 @@ export const messages = {
     "Muse の認証が確認されていません。ホストコンピューターで接続するか、Meta API キーを設定してください。",
   "error.provider.museSignIn": "続行するには、ホストコンピューターで Muse にサインインしてください。",
   "error.provider.inceptionSignIn": "続行するには、Inception API キーを追加してください。",
+  "error.provider.deepseekSignIn": "続けるには DeepSeek API キーを追加してください。",
+  "error.provider.openrouterSignIn": "続けるには OpenRouter API キーを追加してください。",
   "error.provider.terminalLoginFailed":
     "サインイン用のターミナルを開けませんでした。このホストでプロバイダーの CLI を開いてサインインしてから、プロバイダーを更新してください。",
   "error.provider.nativeArchiveInvalid": "プロバイダーのダウンロードに有効なインストールが含まれていません。",

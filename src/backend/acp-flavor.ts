@@ -1,5 +1,6 @@
 import { win32 } from "node:path";
 import type { RequestError } from "@agentclientprotocol/sdk";
+import { enableCursorMcpServers } from "./cursor-mcp-disabled";
 import { isRecord } from "./protocol";
 
 /**
@@ -35,6 +36,21 @@ export interface AcpFlavor {
   restoreFailure?(error: unknown, method: "load" | "resume"): "wait-for-start" | "list-sessions" | null;
   /** A failed model refresh keeps the last list that the agent gave. */
   keepModelsOnRefreshFailure?: true;
+  /**
+   * The model belongs to the agent's process, not to one session: a model set moves every session
+   * to it. A set of the model the process already runs on is not sent again.
+   */
+  processWideModel?: true;
+  /**
+   * The agent frees what a session holds only when its process ends, not at `session/close`. Model
+   * discovery then resumes one probe session for each process rather than opening another.
+   */
+  closeKeepsSession?: true;
+  /**
+   * Each session gets a process of its own, and an idle session is closed by ending that process.
+   * For an agent with `closeKeepsSession`.
+   */
+  sessionProcesses?: true;
   /** An agent that sends a failed prompt as answer text and ends the turn as a success. */
   sdkHarness?: {
     /** The session whose prompt failed, from a stderr line. */
@@ -45,6 +61,8 @@ export interface AcpFlavor {
     turnFailure(text: string): string;
     /** The message of an answer chunk that reports an exhausted quota, or `null`. */
     quota(text: string): string | null;
+    /** The MCP server whose failed start ended the turn, from the failure text, or `null`. */
+    mcpLoadFailure(text: string): { name: string; reason: string } | null;
   };
   /** A stop finishes the turn locally, and the next prompt opens the session again first. */
   cancelLocallyThenResume?: true;
@@ -53,17 +71,40 @@ export interface AcpFlavor {
   /** Answer text is shown at once, not only when `session/prompt` answers. */
   streamAnswerBeforePromptReturns?: true;
   /**
+   * A model can stream its reasoning between the tokens of one answer, so a thought does not end
+   * the answer text. A tool call or the end of the turn still does.
+   */
+  thoughtsInsideAnswer?: true;
+  /**
    * `session/prompt` stays open with no update while background tasks run, so a silent turn is not
    * stalled and OpenBot does not end it (`ACP_TURN_STALL_MS`).
    */
   promptOpenForBackgroundTasks?: true;
   /**
+   * The agent answers a finished background task in a turn of its own and sends no session update
+   * for it. Only its `session/load` replays that turn. A tool call that leaves a task running ends
+   * with `rawOutput.metadata.status` "running" and the task's `sessionID`.
+   */
+  unsentBackgroundTurns?: true;
+  /** Each answer message has its own `messageId`, so text of a new ID is a new message, not more text. */
+  messagePerId?: true;
+  /**
    * The agent keeps one MCP server of each name for a directory, and a session that opens there
    * replaces the server that the others in it use. Their OpenBot servers then share one token.
    */
   mcpServersPerDirectory?: true;
+  /**
+   * The agent connects to each MCP server of a session before it answers `session/new` or
+   * `session/load`, and leaves out a server that did not load with no error. A session that OpenBot's
+   * servers did not reach then fails, as the agent cannot use OpenBot's tools.
+   */
+  mcpServersLoadWithSession?: true;
+  /** Turns OpenBot's servers back on where the agent's own settings for `cwd` turned them off. */
+  enableMcpServers?(cwd: string, names: readonly string[]): void;
   /** OpenBot compacts by replacing the session, for an agent that reports `usage_update` and has no compact request. */
   contextCompaction?: "handoff";
+  /** A whole answer chunk that is the agent's own transport error, not answer text. OpenBot drops it. */
+  noiseChunk?: RegExp;
 }
 
 /** The protocol's own behavior: Grok and Cline. */
@@ -76,6 +117,16 @@ export const DEFAULT_ACP_FLAVOR: AcpFlavor = {};
 export const CURSOR_ACP_FLAVOR: AcpFlavor = {
   sessionNotFound: (error, sessionId) =>
     error.code === -32602 ? isRecord(error.data) && error.data.message === `Session "${sessionId}" not found` : null,
+  // Cursor 2026.10.22-27dcf5f sends "\n\nError: RetriableError: WritableIterable is closed" as one
+  // chunk after a turn that succeeded, and then ends the turn (#3334). Only the full chunk matches.
+  noiseChunk: /^\s*Error: (?:[\w$]+: )?WritableIterable is closed\s*$/u,
+  // Cursor 2026.10.22-27dcf5f asks its server for the model list on each model set, and reports a
+  // failed request as "Invalid model value" (#3800). One set per change, not one per turn.
+  processWideModel: true,
+  // Cursor 2026.10.22-27dcf5f leaves out a disabled or blocked server, and the agent turn then
+  // finds no OpenBot tools (#3058).
+  mcpServersLoadWithSession: true,
+  enableMcpServers: enableCursorMcpServers,
 };
 
 /**

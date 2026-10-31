@@ -72,6 +72,8 @@ export const messages = {
   "error.backend.channelRoutingTooLong":
     "Esta solicitud supera el límite de contexto de asignación. Selecciona un miembro o envía una solicitud más corta.",
   "error.backend.channelTaskMemberRequired": "Elige un miembro para esta tarea.",
+  "error.backend.channelTaskStopped": "Detenida. Continúa o reasigna esta tarea.",
+  "error.backend.channelRoutingUnreadable": "El líder no pudo dirigir este mensaje. Reasígnalo a un miembro.",
   "error.backend.channelRoutingFailed": "La asignación falló. Elige un miembro o inténtalo de nuevo.",
   "error.backend.channelLeadTimedOut":
     "El coordinador del canal no respondió a tiempo. Elige un miembro o inténtalo de nuevo.",
@@ -81,6 +83,8 @@ export const messages = {
   "error.backend.channelDeliveryNotCreated": "No se creó la entrega del canal.",
   "error.backend.channelAssignmentStopped": "Esta asignación del canal se detuvo o se reemplazó.",
   "error.backend.channelAssigneeUnavailable": "El agente asignado no está disponible.",
+  "error.backend.channelAssigneeRemoved": "Se quitó al miembro asignado.",
+  "error.backend.channelAssigneeReassign": "El miembro asignado no está disponible. Reasigna esta tarea.",
   "error.backend.channelAssignmentChanged": "Esta asignación del canal cambió.",
   "error.backend.channelMemberRequired": "Selecciona un miembro disponible de este canal.",
   "error.backend.memoryEssentialBudget":
@@ -194,11 +198,16 @@ export const messages = {
     "Solo una ejecución de una de tus rutinas despierta una espera, y no tienes ninguna rutina. Crea una con openbot.create_routine y luego abre la espera.",
   "error.backend.agentWaitRemoteUnsupported":
     "Las esperas abiertas solo están disponibles para agentes en este equipo.",
+  "error.backend.markUnreadRemoteUnsupported":
+    "Marcar un mensaje como no leído solo está disponible para agentes en este equipo.",
   "error.backend.routineFlowHandoffFailed": "La rutina no pudo pasar el trabajo a este agente.",
   "error.backend.mcpServerLimit": "OpenBot mantiene hasta {limit} servidores MCP.",
   "error.backend.mcpServerNameTaken": "Ya existe un servidor MCP llamado {name}.",
+  "error.backend.mcpServerInvalid": "OpenBot no puede guardar esta configuración del servidor MCP.",
   "error.backend.mcpServerNoAnswer": "El servidor no respondió en {seconds} segundos.",
   "error.backend.mcpSignInNotAccepted": "El servidor no aceptó ese inicio de sesión.",
+  "error.backend.mcpSignInClientRefused":
+    "El servidor de inicio de sesión no aceptó a OpenBot al completar el inicio de sesión. Inicia sesión de nuevo: OpenBot se registra otra vez en el servidor.",
   "error.backend.mcpCommandNotFound": "No se encontró el comando: {command}",
   "error.backend.mcpRegistrationRefused":
     "El servidor de inicio de sesión aún no acepta OpenBot como aplicación. Tu cuenta no es la causa. Usa otra forma de conexión, como un servidor MCP local.",
@@ -220,6 +229,7 @@ export const messages = {
     "OpenBot no pudo leer la información de inicio de sesión de este servidor. Revisa la dirección del servidor y vuelve a intentarlo.",
   "error.backend.mcpServerExited":
     "El servidor se detuvo antes de responder. Ejecuta el comando en una terminal para ver su error.",
+  "error.backend.mcpServerFailedToStart": "El servidor no se inició: {reason}",
   "error.backend.mcpOAuthProxyUnavailable":
     "OpenBot no pudo iniciar su conexión local de inicio de sesión para este servidor. Reinicia OpenBot y vuelve a intentarlo.",
   "error.backend.mcpOAuthSignInNeeded":
@@ -328,6 +338,18 @@ export const messages = {
   "error.backend.taskNotFound": "Esta tarea no está disponible.",
   "error.backend.taskClosed": "Esta tarea está cerrada. Vuelve a abrirla para enviar un mensaje.",
   "error.backend.taskStillRunning": "Esta tarea sigue en ejecución. Espera a que se detenga y después ciérrala.",
+  "error.backend.threadNotFound": "Este hilo no está disponible.",
+  "error.backend.threadStillRunning": "Este hilo sigue en ejecución. Detenlo y vuelve a intentarlo.",
+  "error.backend.threadArchived": "Este hilo está archivado. Restáuralo para enviar un mensaje.",
+  "error.backend.threadTitleRequired": "Dale al hilo un título corto.",
+  "error.backend.threadOpenLimitReached":
+    "Este agente tiene {count} hilos abiertos. Archiva un hilo y después inicia o restaura otro.",
+  "error.backend.threadRemoteUnsupported": "Los hilos solo están disponibles para los agentes de este equipo.",
+  "error.backend.branchSourceBusy": "Detén el turno actual antes de crear una rama de este chat.",
+  "error.backend.branchMessageNotFound": "Solo puedes crear una rama desde una respuesta terminada del agente.",
+  "error.backend.branchRemoteUnsupported": "Las ramas solo están disponibles para los agentes de este equipo.",
+  "error.backend.threadMoveRefused":
+    "Solo un mensaje que enviaste únicamente a este agente puede ejecutarse en un hilo nuevo.",
   "error.backend.taskTitleRequired": "Dale a la tarea un título corto.",
   "error.backend.taskToolInvalid":
     "Dale a la tarea un título de 120 caracteres como máximo y una descripción que diga qué hay que hacer.",

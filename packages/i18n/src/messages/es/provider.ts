@@ -40,7 +40,7 @@ export const messages = {
   "provider.status.checking": "Comprobando",
   "provider.status.off": "Desactivado",
   "provider.gemini.hostSignIn":
-    "Para conectar Gemini, abre OpenBot en el host y selecciona Conectar en Ajustes > Proveedores. El inicio de sesión de Google necesita un navegador en ese host. No se admite el inicio de sesión remoto.",
+    "Para conectar Gemini, abre OpenBot en el host y selecciona Conectar en Ajustes del servidor > Proveedores. El inicio de sesión de Google necesita un navegador en ese host. No se admite el inicio de sesión remoto.",
   "provider.key.free": "Gratis",
   "provider.action.connect": "Conectar",
   "provider.action.reconnect": "Reconectar",
@@ -152,6 +152,14 @@ export const messages = {
   "provider.inceptionKey.description":
     "Guarda una clave de API de Inception en este equipo para usar los modelos Mercury. OpenBot los ejecuta en la CLI de Pi que descarga.",
   "provider.inceptionKey.label": "Clave de API de Inception",
+  "provider.deepseekKey.title": "Clave de API de DeepSeek",
+  "provider.deepseekKey.description":
+    "Guarda una clave de API de DeepSeek en este equipo para usar los modelos de DeepSeek. OpenBot los ejecuta en la CLI de Pi que descarga.",
+  "provider.deepseekKey.label": "Clave de API de DeepSeek",
+  "provider.openrouterKey.title": "Clave de API de OpenRouter",
+  "provider.openrouterKey.description":
+    "Guarda una clave de API de OpenRouter en este equipo para usar los modelos que ofrece OpenRouter. OpenBot los ejecuta en la CLI de Pi que descarga.",
+  "provider.openrouterKey.label": "Clave de API de OpenRouter",
   "provider.openCodeKey.title": "Iniciar sesión en OpenCode Go",
   "provider.openCodeKey.description":
     "Los modelos gratuitos no requieren una cuenta. Una clave permite usar los modelos Go de pago.",
@@ -179,6 +187,7 @@ export const messages = {
   "provider.account.cancelSignIn": "Cancelar inicio de sesión",
   "provider.account.finishSignIn": "Termina de iniciar sesión en el navegador.",
   "provider.account.remove": "Eliminar cuenta",
+  "provider.account.disconnect": "Desconectar",
   "provider.account.actionFailed": "No se pudo cambiar la cuenta de {name}.",
   "provider.account.resetUsage": "Restablecer uso",
   "provider.account.resetUsageTitle": "¿Restablecer el uso de {name}?",
@@ -193,6 +202,12 @@ export const messages = {
   "provider.account.resetUsageNoCredit": "{name} no tiene más créditos de restablecimiento de uso.",
   "provider.account.resetUsageAlreadyRedeemed": "Este crédito de restablecimiento de {name} ya se usó.",
   "provider.account.resetUsageFailed": "No se pudo restablecer el uso de {name}.",
+  "provider.settings.disconnectTitle": "¿Desconectar {name}?",
+  "provider.settings.disconnectOthers":
+    "Las otras cuentas de {provider} esperan hasta que vuelvas a conectar {provider}.",
+  "provider.settings.disconnectLocal":
+    "OpenBot cierra la sesión de {provider} en este ordenador. La CLI de {provider} de tu terminal también cierra la sesión.",
+  "provider.settings.disconnectHost": "OpenBot cierra la sesión de {provider} en el servidor.",
   "provider.settings.cache": "Caché",
   "provider.settings.promptCache": "Caché de prompts",
   "provider.settings.promptCacheDescription":
@@ -200,4 +215,17 @@ export const messages = {
   "provider.settings.promptCacheHour": "1 hora",
   "provider.settings.promptCacheDefault": "Predeterminado de Claude Code",
   "provider.settings.promptCacheLoadFailed": "No se pudo cargar la duración de la caché de prompts de este servidor.",
+  "provider.settings.download": "Descarga",
+  "provider.settings.downloadedCli": "CLI de {name}",
+  "provider.settings.downloadDetail": {
+    one: "{version} · 1 versión · {size}",
+    other: "{version} · {count} versiones · {size}",
+  },
+  "provider.settings.downloadVersions": { one: "1 versión · {size}", other: "{count} versiones · {size}" },
+  "provider.settings.downloadAgain": "Al activar {name}, OpenBot descarga su CLI de nuevo.",
+  "provider.settings.removeDownloadConfirm": "¿Quitar {size}?",
+  "provider.settings.removeDownloadKeeps": "Las cuentas, los inicios de sesión y los agentes se mantienen.",
+  "provider.settings.removeDownload": "Quitar descarga",
+  "provider.settings.removingDownload": "Quitando…",
+  "provider.settings.removeDownloadFailed": "No se pudo quitar la descarga.",
 } as const satisfies PartialTranslation<typeof source>;

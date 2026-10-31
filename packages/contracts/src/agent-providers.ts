@@ -1,4 +1,5 @@
 import type { AgentModelId } from "./ipc-agent-identity";
+import type { AgentInstructionFileName } from "./ipc-agent-instructions";
 import type { AccountUsageLimit, AgentAuthState } from "./ipc-agent-status";
 import type { ExternalDestination } from "./ipc-app-auth";
 import { isOneOf, isString } from "./runtime-values";
@@ -30,6 +31,8 @@ export const AGENT_PROVIDERS = [
   "pi",
   "muse",
   "inception",
+  "deepseek",
+  "openrouter",
   "direct",
   "acp",
 ] as const;
@@ -127,6 +130,21 @@ export interface AgentProviderDescriptor {
    */
   readonly skillFolders: readonly [string, ...string[]];
   /**
+   * How the CLI gets the user's skills in `~/.agents/skills`. `native`: the CLI reads that folder by
+   * itself. `plugin`: OpenBot gives the folder to Claude as a session plugin
+   * (`claudeHomeSkillPlugin`). `instructions`: the CLI does not read it, so the developer instructions
+   * name each skill and its `SKILL.md`. Sources: the strings and docs of the installed Codex, Grok,
+   * OpenCode, Cursor, Cline and Pi CLIs; the Antigravity ACP server reads only `$GEMINI_HOME`; Muse
+   * and a custom ACP agent are not known to read it.
+   */
+  readonly homeSkills: "native" | "plugin" | "instructions";
+  /**
+   * The agent instruction files that the CLI reads by itself from its working directory, the agent's
+   * workspace. OpenBot adds the agent's file to the developer instructions only when its name is not
+   * in this list, so that the CLI does not read it twice.
+   */
+  readonly workspaceInstructionFiles: readonly AgentInstructionFileName[];
+  /**
    * How a Workspace only agent is held to its folders. `tool-sandbox`: the client checks each tool
    * and asks before an edit. `command-sandbox`: the CLI runs each command in a sandbox.
    * `confined-process`: the CLI runs in a sandboxed process of its own (`process-confinement.ts`).
@@ -159,6 +177,13 @@ export interface AgentProviderDescriptor {
    * to ask.
    */
   readonly approvalsInFullAccess: boolean;
+  /**
+   * Whether the added folders apply in Full access too. `true`: the CLI's own file tools reach only
+   * the workspace, the shared folder and the added folders in every access level, so the user can add
+   * folders in Full access. Antigravity 1.4.5 limits them to `cwd` and `additionalDirectories` for
+   * every session that is not a Google admin session (#3843).
+   */
+  readonly foldersInFullAccess: boolean;
 }
 
 /**
@@ -180,11 +205,14 @@ const AGENT_PROVIDER_DESCRIPTOR_TABLE = {
     localCodeSignIn: "device",
     signInPageEnd: "callback",
     skillFolders: [".agents/skills"],
+    homeSkills: "native",
+    workspaceInstructionFiles: ["AGENTS.md"],
     workspaceEnforcement: "command-sandbox",
     steer: "native",
     concurrentTurns: true,
     reportsUsage: true,
     approvalsInFullAccess: true,
+    foldersInFullAccess: false,
   },
   claude: {
     id: "claude",
@@ -200,11 +228,14 @@ const AGENT_PROVIDER_DESCRIPTOR_TABLE = {
     localCodeSignIn: "paste",
     signInPageEnd: "callback",
     skillFolders: [".claude/skills"],
+    homeSkills: "plugin",
+    workspaceInstructionFiles: ["CLAUDE.md"],
     workspaceEnforcement: "tool-sandbox",
     steer: "native",
     concurrentTurns: true,
     reportsUsage: true,
     approvalsInFullAccess: false,
+    foldersInFullAccess: false,
   },
   grok: {
     id: "grok",
@@ -220,11 +251,14 @@ const AGENT_PROVIDER_DESCRIPTOR_TABLE = {
     localCodeSignIn: "device",
     signInPageEnd: "callback",
     skillFolders: [".agents/skills"],
+    homeSkills: "native",
+    workspaceInstructionFiles: [],
     workspaceEnforcement: "confined-process",
     steer: "native",
     concurrentTurns: true,
     reportsUsage: true,
     approvalsInFullAccess: true,
+    foldersInFullAccess: false,
   },
   opencode: {
     id: "opencode",
@@ -242,11 +276,14 @@ const AGENT_PROVIDER_DESCRIPTOR_TABLE = {
     localCodeSignIn: null,
     signInPageEnd: "callback",
     skillFolders: [".opencode/skills", ".agents/skills", ".claude/skills"],
+    homeSkills: "native",
+    workspaceInstructionFiles: ["AGENTS.md"],
     workspaceEnforcement: "confined-process",
     steer: "deferred",
     concurrentTurns: true,
     reportsUsage: true,
     approvalsInFullAccess: true,
+    foldersInFullAccess: false,
   },
   // Google moved Google AI Pro and Ultra accounts from Gemini CLI to Antigravity on 18 June 2026,
   // so the plan runs through Google's Antigravity ACP server. The account and the models are Gemini.
@@ -264,11 +301,14 @@ const AGENT_PROVIDER_DESCRIPTOR_TABLE = {
     localCodeSignIn: null,
     signInPageEnd: "callback",
     skillFolders: [".gemini/skills", ".agents/skills"],
+    homeSkills: "instructions",
+    workspaceInstructionFiles: [],
     workspaceEnforcement: "confined-process",
     steer: "deferred",
     concurrentTurns: true,
     reportsUsage: true,
     approvalsInFullAccess: true,
+    foldersInFullAccess: true,
   },
   // The Cursor CLI (`cursor-agent acp`) with the user's Cursor plan. Sign-in is the ACP
   // `cursor_login` method, which opens a browser. `CURSOR_API_KEY` in the environment also signs in.
@@ -286,11 +326,14 @@ const AGENT_PROVIDER_DESCRIPTOR_TABLE = {
     localCodeSignIn: "device",
     signInPageEnd: "callback",
     skillFolders: [".cursor/skills", ".claude/skills", ".agents/skills"],
+    homeSkills: "native",
+    workspaceInstructionFiles: ["AGENTS.md", "CLAUDE.md"],
     workspaceEnforcement: "confined-process",
     steer: "deferred",
     concurrentTurns: true,
     reportsUsage: true,
     approvalsInFullAccess: true,
+    foldersInFullAccess: false,
   },
   // The Cline CLI (`cline --acp`). Sign-in is the ACP `cline` method, which opens a browser. A Cline
   // account runs the free models; `CLINE_API_KEY` in the environment also signs in.
@@ -308,11 +351,14 @@ const AGENT_PROVIDER_DESCRIPTOR_TABLE = {
     localCodeSignIn: "device",
     signInPageEnd: "callback",
     skillFolders: [".cline/skills", ".clinerules/skills", ".agents/skills"],
+    homeSkills: "native",
+    workspaceInstructionFiles: ["AGENTS.md"],
     workspaceEnforcement: "confined-process",
     steer: "deferred",
     concurrentTurns: true,
     reportsUsage: false,
     approvalsInFullAccess: true,
+    foldersInFullAccess: false,
   },
   pi: {
     id: "pi",
@@ -328,11 +374,14 @@ const AGENT_PROVIDER_DESCRIPTOR_TABLE = {
     localCodeSignIn: null,
     signInPageEnd: "callback",
     skillFolders: [".agents/skills"],
+    homeSkills: "native",
+    workspaceInstructionFiles: ["AGENTS.md", "CLAUDE.md"],
     workspaceEnforcement: "confined-process",
     steer: "native",
     concurrentTurns: true,
     reportsUsage: false,
     approvalsInFullAccess: true,
+    foldersInFullAccess: false,
   },
   muse: {
     id: "muse",
@@ -348,11 +397,14 @@ const AGENT_PROVIDER_DESCRIPTOR_TABLE = {
     localCodeSignIn: "device",
     signInPageEnd: "page",
     skillFolders: [".agents/skills"],
+    homeSkills: "instructions",
+    workspaceInstructionFiles: ["AGENTS.md"],
     workspaceEnforcement: "confined-process",
     steer: "native",
     concurrentTurns: true,
     reportsUsage: true,
     approvalsInFullAccess: true,
+    foldersInFullAccess: false,
   },
   // Inception's Mercury models run in the Pi CLI that OpenBot downloads for Pi, with a key the user
   // saves here. Pi's own sign-in and models stay on the Pi row.
@@ -370,11 +422,64 @@ const AGENT_PROVIDER_DESCRIPTOR_TABLE = {
     localCodeSignIn: null,
     signInPageEnd: "callback",
     skillFolders: [".agents/skills"],
+    homeSkills: "native",
+    workspaceInstructionFiles: ["AGENTS.md", "CLAUDE.md"],
     workspaceEnforcement: "confined-process",
     steer: "native",
     concurrentTurns: true,
     reportsUsage: false,
     approvalsInFullAccess: true,
+    foldersInFullAccess: false,
+  },
+  // DeepSeek's models run in the Pi CLI that OpenBot downloads for Pi, which has a built-in DeepSeek
+  // provider. The user saves the key here. Pi's own sign-in and models stay on the Pi row.
+  deepseek: {
+    id: "deepseek",
+    displayName: "DeepSeek",
+    cliName: "Pi CLI",
+    onboardingDescription: "DeepSeek models with a DeepSeek API key",
+    signInMessage: "Add a DeepSeek API key to continue.",
+    installGuideLink: null,
+    defaultModel: "deepseek-v4-pro",
+    legacyModelPrefix: null,
+    authKind: "deepseek",
+    pickerOrder: 10,
+    localCodeSignIn: null,
+    signInPageEnd: "callback",
+    skillFolders: [".agents/skills"],
+    homeSkills: "native",
+    workspaceInstructionFiles: ["AGENTS.md", "CLAUDE.md"],
+    workspaceEnforcement: "confined-process",
+    steer: "native",
+    concurrentTurns: true,
+    reportsUsage: false,
+    approvalsInFullAccess: true,
+    foldersInFullAccess: false,
+  },
+  // OpenRouter's models run in the Pi CLI that OpenBot downloads for Pi, which has a built-in OpenRouter
+  // provider. The user saves the key here. Pi's own sign-in and models stay on the Pi row.
+  openrouter: {
+    id: "openrouter",
+    displayName: "OpenRouter",
+    cliName: "Pi CLI",
+    onboardingDescription: "Many models with an OpenRouter API key",
+    signInMessage: "Add an OpenRouter API key to continue.",
+    installGuideLink: null,
+    defaultModel: "anthropic/claude-sonnet-5.5",
+    legacyModelPrefix: null,
+    authKind: "openrouter",
+    pickerOrder: 11,
+    localCodeSignIn: null,
+    signInPageEnd: "callback",
+    skillFolders: [".agents/skills"],
+    homeSkills: "native",
+    workspaceInstructionFiles: ["AGENTS.md", "CLAUDE.md"],
+    workspaceEnforcement: "confined-process",
+    steer: "native",
+    concurrentTurns: true,
+    reportsUsage: false,
+    approvalsInFullAccess: true,
+    foldersInFullAccess: false,
   },
   // The user's own OpenAI-compatible endpoints, run in the Pi CLI that OpenBot downloads for Pi, with
   // only the tools a coding agent needs. The endpoints are the ones saved under Custom endpoints.
@@ -388,15 +493,18 @@ const AGENT_PROVIDER_DESCRIPTOR_TABLE = {
     defaultModel: "",
     legacyModelPrefix: null,
     authKind: "direct",
-    pickerOrder: 10,
+    pickerOrder: 12,
     localCodeSignIn: null,
     signInPageEnd: "callback",
     skillFolders: [".agents/skills"],
+    homeSkills: "native",
+    workspaceInstructionFiles: ["AGENTS.md", "CLAUDE.md"],
     workspaceEnforcement: "confined-process",
     steer: "native",
     concurrentTurns: true,
     reportsUsage: true,
     approvalsInFullAccess: true,
+    foldersInFullAccess: false,
   },
   // One provider for every Agent Client Protocol agent the user adds by command. The model id names
   // the agent (`<customAgentId>/<agentModel>`), so one provider row serves them all and the shipped
@@ -415,11 +523,14 @@ const AGENT_PROVIDER_DESCRIPTOR_TABLE = {
     localCodeSignIn: null,
     signInPageEnd: "callback",
     skillFolders: [".agents/skills"],
+    homeSkills: "instructions",
+    workspaceInstructionFiles: [],
     workspaceEnforcement: "confined-process",
     steer: "deferred",
     concurrentTurns: false,
     reportsUsage: false,
     approvalsInFullAccess: true,
+    foldersInFullAccess: false,
   },
 } as const satisfies Record<AgentProviderId, AgentProviderDescriptor>;
 
@@ -429,6 +540,14 @@ export const AGENT_PROVIDER_DESCRIPTORS: readonly AgentProviderDescriptor[] = AG
 
 export function agentProviderDescriptor(provider: AgentProviderId): AgentProviderDescriptor {
   return AGENT_PROVIDER_DESCRIPTOR_TABLE[provider];
+}
+
+/**
+ * Whether the provider can take a queued message into its running turn. A provider that this build
+ * does not know can: its host decides, and refuses the message when it cannot.
+ */
+export function providerSteersTurns(provider: AgentProviderRef): boolean {
+  return !isKnownAgentProvider(provider) || agentProviderDescriptor(provider).steer === "native";
 }
 
 /** The provider name to put in front of a user. */
@@ -476,8 +595,8 @@ export function isManagedRuntimeProvider(provider: AgentProviderId): provider is
 
 /**
  * The providers that only newer Team API protocols carry: Gemini and custom ACP agents from protocol
- * 5, Cursor and Cline from protocol 6, Pi and Muse from protocol 7. No protocol carries Inception or
- * Direct yet.
+ * 5, Cursor and Cline from protocol 6, Pi and Muse from protocol 7, Inception, DeepSeek and OpenRouter
+ * from protocol 8. No protocol carries Direct yet.
  * A joined server's settings list one only when the host's status names it.
  */
 export const LOCAL_ONLY_PROVIDERS = [
@@ -487,12 +606,25 @@ export const LOCAL_ONLY_PROVIDERS = [
   "pi",
   "muse",
   "inception",
+  "deepseek",
+  "openrouter",
   "direct",
   "acp",
 ] as const satisfies readonly AgentProviderId[];
 
 export function isLocalOnlyProvider(provider: AgentProviderId): boolean {
   return isOneOf(LOCAL_ONLY_PROVIDERS, provider);
+}
+
+/**
+ * The providers that sign in only with an API key that the user saves in OpenBot. They run in the Pi
+ * CLI, so their Connect and Reconnect open the key dialog.
+ */
+export const KEY_ONLY_PROVIDERS = ["inception", "deepseek", "openrouter"] as const satisfies readonly AgentProviderId[];
+export type KeyOnlyProviderId = (typeof KEY_ONLY_PROVIDERS)[number];
+
+export function isKeyOnlyProvider(provider: AgentProviderRef): provider is KeyOnlyProviderId {
+  return isOneOf(KEY_ONLY_PROVIDERS, provider);
 }
 
 /**

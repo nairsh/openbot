@@ -1,4 +1,9 @@
-import { PROVIDER_USAGE_RESET_OUTCOMES, type ProviderUsageResetOutcome } from "@openbot/contracts/ipc";
+import {
+  type AgentProviderId,
+  isAgentProvider,
+  PROVIDER_USAGE_RESET_OUTCOMES,
+  type ProviderUsageResetOutcome,
+} from "@openbot/contracts/ipc";
 import { decodeRecord, requiredString } from "@openbot/contracts/ipc-decoding";
 import {
   type DynamicRecord,
@@ -70,6 +75,14 @@ export interface AppServerRequest {
 /** The account type of Claude's own sign-in when it runs on the saved key, with no claude.ai account. */
 export const CLAUDE_API_KEY_ACCOUNT_TYPE = "claude-api-key";
 
+/**
+ * Whether Codex can run on a login of this type: a ChatGPT plan, or an OpenAI API key that Codex
+ * keeps in its own home (`codex login --with-api-key`). Turns on a key use API credits.
+ */
+export function isCodexLoginType(type: string | undefined): boolean {
+  return type === "chatgpt" || type === "apiKey";
+}
+
 export interface AccountReadResult {
   account: null | {
     type: string;
@@ -131,6 +144,8 @@ export interface AccountRateLimitsReadResult {
   rateLimits?: AccountRateLimitResult | null | undefined;
   /** Antigravity only: every quota group of the plan. `rateLimits` is one of them. */
   groups?: AccountRateLimitGroupResult[] | undefined;
+  /** Cursor only: the provider whose plan quota this reading also counts, such as Grok on a merged plan. */
+  sharedQuotaWith?: AgentProviderId | undefined;
   rateLimitsByLimitId?: Record<string, AccountRateLimitResult | undefined> | null | undefined;
   /** Codex only: the usage reset credits of the account. Null when Codex could not count them. */
   rateLimitResetCredits?: { availableCount: number } | null | undefined;
@@ -293,10 +308,14 @@ export function decodeAccountRateLimitsReadResult(value: unknown): AccountRateLi
   const rateLimitsByLimitId = decodeRateLimitsById(record.rateLimitsByLimitId);
   const rateLimitResetCredits = decodeRateLimitResetCredits(record.rateLimitResetCredits);
   const groups = decodeRateLimitGroups(record.groups);
+  const { sharedQuotaWith } = record;
+  if (sharedQuotaWith !== undefined && !isAgentProvider(sharedQuotaWith))
+    throw new Error("Invalid rate limit shared quota provider.");
   return {
     ...(rateLimits === undefined ? {} : { rateLimits }),
     ...(rateLimitsByLimitId === undefined ? {} : { rateLimitsByLimitId }),
     ...(groups === undefined ? {} : { groups }),
+    ...(sharedQuotaWith === undefined ? {} : { sharedQuotaWith }),
     ...(rateLimitResetCredits === undefined ? {} : { rateLimitResetCredits }),
   };
 }

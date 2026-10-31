@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { ClientSideConnection, InitializeResponse } from "@agentclientprotocol/sdk";
@@ -6,7 +6,9 @@ import {
   type AgentAuthState,
   type AgentModelOption,
   type AgentProviderId,
+  customProviderOfModel,
   DEFAULT_PROMPT_CACHE_TTL,
+  type KeyOnlyProviderId,
   type PromptCacheTtl,
 } from "@openbot/contracts/ipc";
 import { sourceText } from "@openbot/i18n/source";
@@ -51,6 +53,7 @@ import type { McpDropReporter, McpEndpointSource, McpServerSource, McpToolRuntim
 import { MuseAgentClient } from "./muse-client";
 import {
   type CustomProviderSource,
+  customProvidersOn,
   OPENCODE_PROFILE_CONFIG,
   openCodeConfigEnv,
   openCodeModelName,
@@ -73,7 +76,7 @@ import {
   piStatePaths,
   type SpawnTarget,
 } from "./process-confinement";
-import type { AccountReadResult, ModelListResponse } from "./protocol";
+import { type AccountReadResult, isCodexLoginType, type ModelListResponse } from "./protocol";
 import { type ProviderClientOperationError, providerCall, providerFailure } from "./provider-client-effects";
 
 /** One command OpenBot runs against a provider's own CLI, waiting for the process to exit. */
@@ -334,6 +337,11 @@ export interface ProviderClientContext {
    */
   readonly mcpOAuthProxySettings?: McpOAuthProxySettingsStore;
   /**
+   * The OpenBot version that the OAuth proxy names to a server it signed in to. Optional: without it
+   * the proxy passes on the provider's own `clientInfo`.
+   */
+  readonly appVersion?: string;
+  /**
    * Whether this model may still be used. A removed endpoint stays in the running process, with the
    * credentials it started with, until that process restarts, and the restart waits for the work in
    * flight. Read at the last moment before a prompt leaves, because everything above it awaits.
@@ -358,6 +366,15 @@ export interface ProviderClientContext {
    * provider process can outlive the token. Read at each spawn; empty while nothing is connected.
    */
   readonly agentEnvironment?: (inherited?: NodeJS.ProcessEnv) => Readonly<Record<string, string>>;
+  /**
+   * Variables that every provider process gets, and so every program an agent starts: the marker that
+   * the server memory guard and `src/main/background-processes.ts` find leftover processes by, and on
+   * a server the CPU limit module for Node (`agentProcessEnvironment` in `src/main/server-memory.ts`).
+   * Fixed while the app runs. They are not part of `agentEnvironment`: Codex gets that in each thread
+   * configuration and replaces a session whose variables change, so Codex gets these in the spawn
+   * environment of its app-server instead.
+   */
+  readonly serverEnvironment?: Readonly<Record<string, string>>;
   /**
    * The home folder variable of a provider account after the first, for a driver with `accounts`.
    * Every process the client starts gets it, the account check included, so the client signs in
@@ -483,18 +500,9 @@ export interface BuiltInProviderDriver {
   validateAccount(account: NonNullable<AccountReadResult["account"]>): void;
 }
 
-/**
- * Pi, Inception and Direct run the same Pi client. Inception adds its key and Direct the saved
- * custom endpoints, which load their extension.
- */
-function piModels(provider: "pi" | "inception" | "direct", context: ProviderClientContext) {
-  if (provider === "inception") return { inceptionApiKey: () => context.apiKey("inception") };
-  if (provider === "direct") return { directEndpoints: context.customProviders };
-  return {};
-}
-
+/** Pi, the key-only providers and Direct run the same Pi client. A key-only provider adds its key extension. */
 function piClient(
-  provider: "pi" | "inception" | "direct",
+  provider: "pi" | KeyOnlyProviderId | "direct",
   cli: AgentCliInfo,
   timeout: number,
   context: ProviderClientContext,
@@ -508,12 +516,18 @@ function piClient(
           confine: (target) => {
             const paths = piStatePaths();
             for (const path of paths.writable) mkdirSync(path, { recursive: true, mode: 0o700 });
+            // Pi writes an empty `auth.json` before it reads one, and the confined process cannot.
+            try {
+              writeFileSync(join(piAgentDirectory(), "auth.json"), "{}", { flag: "wx", mode: 0o600 });
+            } catch (error) {
+              if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+            }
             return confineSpawnTarget(target, confinement, paths);
           },
         }
       : {}),
     extraEnv: () => ({ ...context.agentEnvironment?.() }),
-    ...piModels(provider, context),
+    ...piKeyProvider(provider, context),
     // The server's prompt cache time, which the Claude settings set, also asks Pi for its long cache.
     longPromptCache: () => (context.promptCacheTtl?.() ?? DEFAULT_PROMPT_CACHE_TTL.ttl) === "1h",
     ...(context.providerStateDirectory ? { providerStateDirectory: context.providerStateDirectory } : {}),
@@ -525,8 +539,24 @@ function piClient(
   });
 }
 
+/**
+ * The main Pi client runs the custom endpoints saved on Pi. A key-only provider runs its key. Direct
+ * runs every saved custom endpoint, whichever harness it names.
+ */
+function piKeyProvider(provider: "pi" | KeyOnlyProviderId | "direct", context: ProviderClientContext) {
+  if (provider === "direct") return { directEndpoints: context.customProviders };
+  return provider === "pi"
+    ? { customEndpoints: customProvidersOn(context.customProviders, "pi") }
+    : { keyProvider: { id: provider, apiKey: () => context.apiKey(provider) } };
+}
+
+/** The custom endpoints that OpenCode runs. The others run on Pi. */
+function openCodeEndpoints(context: ProviderClientContext): CustomProviderSource {
+  return customProvidersOn(context.customProviders, "opencode");
+}
+
 function piProfileClient(
-  provider: "pi" | "inception" | "direct",
+  provider: "pi" | KeyOnlyProviderId | "direct",
   cli: AgentCliInfo,
   timeout: number,
   context: ProviderClientContext,
@@ -534,7 +564,7 @@ function piProfileClient(
   return new PiAgentClient(cli, {
     requestTimeoutMs: timeout,
     profileGeneration: true,
-    ...piModels(provider, context),
+    ...piKeyProvider(provider, context),
     ...(context.providerStateDirectory ? { providerStateDirectory: context.providerStateDirectory } : {}),
   });
 }
@@ -570,6 +600,28 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
     createClient: (cli, timeout, context, confinement) => piClient("direct", cli, timeout, context, confinement),
     createProfileClient: (cli, timeout, context) => piProfileClient("direct", cli, timeout, context),
     authState: (account) => ({ kind: "direct", email: account?.email ?? null }),
+    validateAccount: () => undefined,
+  },
+  {
+    id: "deepseek",
+    // The key is pasted into OpenBot. Pi's own sign-in stays on the Pi row.
+    signIn: { kind: "external" },
+    cliProvider: "pi",
+    resolveCli: resolvePiCli,
+    createClient: (cli, timeout, context, confinement) => piClient("deepseek", cli, timeout, context, confinement),
+    createProfileClient: (cli, timeout, context) => piProfileClient("deepseek", cli, timeout, context),
+    authState: (account) => ({ kind: "deepseek", email: account?.email ?? null }),
+    validateAccount: () => undefined,
+  },
+  {
+    id: "openrouter",
+    // The key is pasted into OpenBot. Pi's own sign-in stays on the Pi row.
+    signIn: { kind: "external" },
+    cliProvider: "pi",
+    resolveCli: resolvePiCli,
+    createClient: (cli, timeout, context, confinement) => piClient("openrouter", cli, timeout, context, confinement),
+    createProfileClient: (cli, timeout, context) => piProfileClient("openrouter", cli, timeout, context),
+    authState: (account) => ({ kind: "openrouter", email: account?.email ?? null }),
     validateAccount: () => undefined,
   },
   {
@@ -627,11 +679,13 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
     createClient: (cli, requestTimeoutMs, context) =>
       new CodexAppServerClient(cli.executable, requestTimeoutMs, {
         ...cliPathEnvironment(cli),
+        ...context.serverEnvironment,
         ...context.accountEnvironment,
       }),
     authState: (account) => ({ kind: "chatgpt", email: account?.email ?? null }),
+    // An API-key login has no plan usage to read.
     validateAccount: (account) => {
-      if (account.type !== "chatgpt") {
+      if (!isCodexLoginType(account.type)) {
         throw new Error(sourceText("error.provider.codexLoginRequired"));
       }
     },
@@ -717,7 +771,18 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
         withAccountEnvironment(context),
         context.history?.("grok"),
       ),
-    createProfileClient: (cli, requestTimeoutMs) => new GrokAgentClient(cli, requestTimeoutMs, true),
+    createProfileClient: (cli, requestTimeoutMs, { accountEnvironment }) =>
+      new GrokAgentClient(
+        cli,
+        requestTimeoutMs,
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        accountEnvironment && (() => accountEnvironment),
+      ),
     authState: (account) => ({ kind: "grok", email: account?.email ?? null }),
     validateAccount: () => undefined,
   },
@@ -748,11 +813,13 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
         extraEnv: () => ({
           ...context.agentEnvironment?.(),
           ...opencodeEnv(cli, context),
-          ...openCodeConfigEnv({}, context.customProviders, context.apiKey("opencode")),
+          ...openCodeConfigEnv({}, openCodeEndpoints(context), context.apiKey("opencode")),
           ...(confinement ? OPENCODE_CONFINED_ENV : {}),
         }),
-        signInMessage: openCodeSignInMessage(context.customProviders().length),
-        modelName: (id, name) => openCodeModelName(id, name, context.customProviders),
+        signInMessage: openCodeSignInMessage(openCodeEndpoints(context)().length),
+        modelName: (id, name) => openCodeModelName(id, name, openCodeEndpoints(context)),
+        // A stalled turn on a custom endpoint names the endpoint, not OpenCode (#3234).
+        providerName: (modelId) => customProviderOfModel(modelId, openCodeEndpoints(context)())?.name ?? null,
         servesModel: context.servesModel,
         mcpServers: context.mcpServers,
         reportMcpDrops: context.reportMcpDrops,
@@ -773,10 +840,10 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
         env: {},
         extraEnv: () => ({
           ...opencodeEnv(cli, context),
-          ...openCodeConfigEnv(OPENCODE_PROFILE_CONFIG, context.customProviders, context.apiKey("opencode")),
+          ...openCodeConfigEnv(OPENCODE_PROFILE_CONFIG, openCodeEndpoints(context), context.apiKey("opencode")),
         }),
-        signInMessage: openCodeSignInMessage(context.customProviders().length),
-        modelName: (id, name) => openCodeModelName(id, name, context.customProviders),
+        signInMessage: openCodeSignInMessage(openCodeEndpoints(context)().length),
+        modelName: (id, name) => openCodeModelName(id, name, openCodeEndpoints(context)),
         servesModel: context.servesModel,
       }),
     authState: (account) => ({ kind: "opencode", email: account?.email ?? null }),
@@ -793,6 +860,9 @@ export const BUILT_IN_PROVIDER_DRIVERS: readonly BuiltInProviderDriver[] = [
       // Each new Antigravity session keeps a conversation database in the account's folder.
       usageLeavesSession: true,
     },
+    // `model/list` opens a probe session and then probes the efforts of each model. On a busy
+    // computer the two together pass 5 s, and the picker then had no Gemini models (#3546).
+    catalog: { slowList: true },
     resolveCli: resolveAntigravityCli,
     createClient: (cli, timeout, context, confinement) =>
       new AcpAgentClient(cli, timeout, {

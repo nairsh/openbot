@@ -110,6 +110,7 @@ interface TextPresentation {
   mentionOffset: number;
   fontScale: number;
   t: MobileTranslate;
+  linkFavicons: boolean;
 }
 
 /** The HeroUI font size of each text type, in points, which inline math is sized against. */
@@ -445,21 +446,23 @@ function inline(tokens: Token[], parentPresentation: TextPresentation): ReactNod
         ? token.text || presentation.t("mobile.chat.markdown.image")
         : inline(token.tokens, { ...presentation, agents: [] });
       if (!url) return <Fragment key={offset}>{label}</Fragment>;
+      const open = () => openMessageLink(url);
       return (
-        <Text
-          key={offset}
-          style={{ ...presentation.style, textDecorationLine: "underline" }}
-          accessibilityRole="link"
-          accessibilityHint={url}
-          onPress={() => openMessageLink(url)}
-        >
+        <Text key={offset} style={presentation.style} accessibilityRole="link" accessibilityHint={url} onPress={open}>
           {tokenIs(token, "link") ? (
             <>
-              <ChatLinkIcon color={presentation.style.color} compact={presentation.type === "body-sm"} />
+              <ChatLinkIcon
+                url={url}
+                favicon={presentation.linkFavicons}
+                color={presentation.style.color}
+                compact={presentation.type === "body-sm"}
+              />
               {NO_BREAK_SPACE}
             </>
           ) : null}
-          {label}
+          <Text style={{ ...presentation.style, textDecorationLine: "underline" }} onPress={open}>
+            {label}
+          </Text>
         </Text>
       );
     }
@@ -512,7 +515,17 @@ function selectableInline(tokens: Token[], presentation: TextPresentation, segme
     segments.push({ length: value.length, text: value });
     nodes.push(value);
   };
+  // The native text view takes the line height of a line from its first character, and an inline view
+  // has no line height. A line that starts with one became taller than the view measured it, and its
+  // end was cut with an ellipsis. A word joiner before the view gives the line the text's line height.
+  const startLine = (target: ReactNode[] = nodes) => {
+    const last = segments.at(-1);
+    if (last && !(last.length === last.text.length && last.text.endsWith("\n"))) return;
+    segments.push({ length: 1, text: "" });
+    target.push(WORD_JOINER);
+  };
   const inlineView = (node: ReactNode, quote: string) => {
+    startLine();
     segments.push({ length: 1, text: quote });
     nodes.push(node);
   };
@@ -568,6 +581,7 @@ function selectableInline(tokens: Token[], presentation: TextPresentation, segme
     } else if (tokenIs(token, "codespan")) {
       // `CodeSpan` draws one chip per piece, and each chip is one inline view.
       const pieces = isFileReference(token.text.trim()) ? [token.text.trim()] : codePieces(token.text);
+      startLine();
       for (const piece of pieces) segments.push({ length: 1, text: piece });
       nodes.push(<CodeSpan key={offset} text={token.text} presentation={presentation} />);
     } else if (tokenIs(token, "strong") || tokenIs(token, "em") || tokenIs(token, "del")) {
@@ -586,11 +600,19 @@ function selectableInline(tokens: Token[], presentation: TextPresentation, segme
       );
     } else if (tokenIs(token, "link") || tokenIs(token, "image")) {
       const url = webLink(token.href);
+      const icon: ReactNode[] = [];
       const label: ReactNode[] = [];
       if (url && tokenIs(token, "link")) {
+        startLine(icon);
         segments.push({ length: 1, text: "" }, { length: 1, text: NO_BREAK_SPACE });
-        label.push(
-          <ChatLinkIcon key="icon" color={presentation.style.color} compact={presentation.type === "body-sm"} />,
+        icon.push(
+          <ChatLinkIcon
+            key="icon"
+            url={url}
+            favicon={presentation.linkFavicons}
+            color={presentation.style.color}
+            compact={presentation.type === "body-sm"}
+          />,
           NO_BREAK_SPACE,
         );
       }
@@ -604,13 +626,13 @@ function selectableInline(tokens: Token[], presentation: TextPresentation, segme
       if (!url) {
         nodes.push(...label);
       } else {
+        const open = () => openMessageLink(url);
         nodes.push(
-          <UITextView
-            key={offset}
-            style={{ ...presentation.style, textDecorationLine: "underline" }}
-            onPress={() => openMessageLink(url)}
-          >
-            {label}
+          <UITextView key={offset} style={presentation.style} onPress={open}>
+            {icon}
+            <UITextView key="label" style={{ ...presentation.style, textDecorationLine: "underline" }} onPress={open}>
+              {label}
+            </UITextView>
           </UITextView>,
         );
       }
@@ -914,6 +936,7 @@ export const ChatMarkdown = memo(function ChatMarkdown({
   agents = NO_AGENTS,
   nativeSelection,
   finished = false,
+  linkFavicons = true,
 }: {
   body: string;
   color: ColorValue | undefined;
@@ -930,6 +953,11 @@ export const ChatMarkdown = memo(function ChatMarkdown({
    * or an empty string when the selection ends. A new `generation` ends a selection from outside.
    */
   nativeSelection?: { generation: number; onSelect: (selected: string) => void };
+  /**
+   * False shows only the link symbol, so that no linked site is asked for its favicon. Use it for
+   * text that another person wrote, such as the instructions of a marketplace skill.
+   */
+  linkFavicons?: boolean;
 }) {
   const textReveal = useMotionPreference("textReveal");
   const { fontScale } = useWindowDimensions();
@@ -974,25 +1002,43 @@ export const ChatMarkdown = memo(function ChatMarkdown({
       },
     };
   }, [generation, onSelect]);
+  const animateTail = (streaming || (Boolean(playback?.enabled) && !flushed)) && animationEnabled && textReveal;
+  const nativeSelectionTarget = revealed ? nativeTarget : undefined;
+  // One object while its values stay, so each block keeps its memo when the message renders again.
+  const presentation = useMemo<TextPresentation>(
+    () => ({
+      selectable,
+      type: compact ? "body-sm" : "body",
+      style: { color: color ?? codeColor },
+      codeColor,
+      agents,
+      mentionOffset: 4 * fontScale,
+      fontScale,
+      t,
+      streaming,
+      finished,
+      animateTail,
+      nativeSelection: nativeSelectionTarget,
+      linkFavicons,
+    }),
+    [
+      linkFavicons,
+      selectable,
+      compact,
+      color,
+      codeColor,
+      agents,
+      fontScale,
+      t,
+      streaming,
+      finished,
+      animateTail,
+      nativeSelectionTarget,
+    ],
+  );
   return (
     <StreamRevealProvider>
-      <MarkdownBlocks
-        tokens={visibleTokens}
-        presentation={{
-          selectable,
-          type: compact ? "body-sm" : "body",
-          style: { color: color ?? codeColor },
-          codeColor,
-          agents,
-          mentionOffset: 4 * fontScale,
-          fontScale,
-          t,
-          streaming,
-          finished,
-          animateTail: (streaming || (Boolean(playback?.enabled) && !flushed)) && animationEnabled && textReveal,
-          nativeSelection: revealed ? nativeTarget : undefined,
-        }}
-      />
+      <MarkdownBlocks tokens={visibleTokens} presentation={presentation} />
     </StreamRevealProvider>
   );
 });

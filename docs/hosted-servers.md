@@ -59,6 +59,13 @@ when a server is idle or boat stops a sandbox; and `error` and `deleted`. The Wo
    `{name, plan, interval, currency}` and an `Idempotency-Key`. The Worker stores a row in
    `awaiting_payment` with no claim and no sandbox, makes the Stripe customer, and returns a Stripe
    Checkout URL (35 minutes). A repeated request expires the old Checkout and returns a new one.
+   An optional `license: {tier, users}` adds the commercial license at the bundle price to the same
+   page, so one payment buys both. The first sync moves the license to its own subscription that
+   renews on the same day as the server ([Commercial license](architecture/servers.md#commercial-license)).
+   While the license promotion (`LICENSE_TRIAL_END`) runs, the page has the server line only, and the
+   license starts with a free trial until the promotion ends.
+   Refunds are by email only: email licenses@openbot.run within 24 hours of the first payment for a
+   refund less a €3 / $3.60 / 13.20 zł fee, once per account. There are no refunds for later changes.
    The desktop main process opens the URL only when it is an `https://checkout.stripe.com` URL; the
    renderer never gets it. The web client goes to the page in the same tab, and Stripe returns to
    `/app?hosting=checkout&hosted_server=<id>` (`&cancelled=1` when the user went back).
@@ -282,10 +289,28 @@ a Claude subscription on a server, read [provider terms](provider-terms.md#claud
 
 ## Members
 
-The plan sets the number of active members, owner included: Starter 3, Standard 10 and Pro 25
-(`BILLING_PLANS`). A host with no plan has 3 (`DEFAULT_TEAM_MEMBER_LIMIT`). The Worker reads the plan
+The plan sets the number of active members, owner included: Starter 1, Standard 5 and Pro 10
+(`BILLING_PLANS`). A host with no plan, such as a self-hosted server, takes the users of its owner's
+license (`ownerLicenseForHost`): Starter 1, Team 2 to 10. Only a license that is `active`, `trialing`, or
+`past_due` until the end of its period gives these seats. A host with no plan and no such license has 3
+(`DEFAULT_TEAM_MEMBER_LIMIT`). The Worker reads the limit in this order: a `server_member_limits` row,
+a hosted plan, the license, the default. A self-hosted host can keep a plan from before the license; it
+takes the larger of that plan and the license users. When an account has two open licenses, an
+entitled one comes first. When the limit comes from the license, a full server refuses a
+join with `409 license_users_full`. When a license ends, its servers go back to 3; members who are
+active stay. Any open license, also an `unpaid` one, refuses a join after its users, so the host list
+shows the lower of the limit and those users. When a license opens or closes, changes its users, or
+starts or stops giving them, the Worker sends `account-servers-changed` to each active member of the
+owner's servers, so their devices read the new limit. A renewal sends nothing. A `past_due` license that
+passes its period end sends it when the lapse sweep reads the license. A server made before
+these limits keeps the old limits of `LEGACY_MEMBER_LIMITS`: Starter 3, Standard 10 and Pro 25.
+Migration `0041` sets `hosted_servers.legacy_member_limits` to 1 for each existing row, and the
+Worker writes 0 for a new server. A self-hosted host with a plan has no hosted row, so it also keeps
+the old limits. `getServerEntitlement` returns the
+limit as `memberLimit`. The Worker reads the plan
 with `getServerEntitlement` when a member joins or is reactivated, and refuses a member over the limit
-(`409 member_limit_reached`). This also applies to a self-hosted host that has a plan.
+(`409 member_limit_reached`). A lower limit removes no member who is already active. This also applies to a
+self-hosted host that has a plan.
 
 - A row in the D1 table `server_member_limits` replaces the plan's limit for one server, such as an
   enterprise customer's, from 1 to 100. The row names the account that owns the server and applies
@@ -638,7 +663,38 @@ do not all pass the check before their processes grow. A start that fails counts
 | --- | --- | --- |
 | `ok` | Other times. After `low`, only at 256 MB above the `low` limit. | Turns start. |
 | `low` | Free memory is less than 512 MB or 12% of the total. | No new turn starts; the message stays queued. The agent shows one notice in each low period. The browser opens no new tab. |
-| `critical` | Free memory is less than 256 MB or 6% of the total. | As `low`. Also, the provider threads with no turn close one time. They open again from their session at the next turn. |
+| `critical` | Free memory is less than 256 MB or 6% of the total. | As `low`. Also, the provider threads with no turn close one time. They open again from their session at the next turn. Leftover agent processes stop (see below). |
+
+Agent processes (`AgentProcesses` in `src/main/server-memory.ts`):
+
+- Each provider process gets `OPENBOT_AGENT_PROCESS=1`, so every program that an agent starts has
+  it too. A job that an agent detaches (`nohup`, `&`, a routine wake-up job), and the workers of a
+  build whose parent the OOM killer stopped, leave main's tree: the kernel gives them to PID 1. The
+  variable still finds them. Xvfb, D-Bus and the keyring start before main and do not have it.
+- Every 5 s, each marked process gets an `oom_score_adj` of at least 500, also after it leaves main's
+  tree, and each of its threads gets the nice value 10. Main and the Electron processes keep their
+  values. The Computer Use driver and remote desktop get the OOM value as children of main, but keep
+  their nice value. So a full CPU slows the agents' builds and not main or the WebRTC host. Without
+  this, a build with many workers took all the CPU and memory, main stopped answering, and the
+  clients lost the connection.
+- At `critical`, main stops leftover processes: marked processes that are not in main's tree. It
+  sends SIGTERM to the largest ones that never had a child and run for at least 5 s, until the free
+  memory is 256 MB above `critical`, and one SIGKILL to each one that still runs 5 s later. A shell
+  or a build that runs other programs is never stopped, and the short command that a shell runs next,
+  such as a routine wake-up command, is too young to be stopped. So a detached job's shell still
+  wakes the agent, with the exit status of the job: 143 when the stopped process was the shell's own
+  child, else the status that the job gives. A job of one process, such as a preview server, is
+  stopped. A provider and its own children are never stopped: the kernel's OOM killer decides for
+  them. The log has one warning for each signal, with the pid, the short name and the memory, never
+  the command line.
+- `NODE_OPTIONS` of each provider process gets `--require=<resources>/agent-runtime/cpu-limit.cjs`.
+  In a container or a unit with a CPU limit, `os.cpus()` lists every CPU of the host, and build tools
+  such as Next.js start a worker for each (63 on a 64-CPU host). The module makes `os.cpus()` and
+  `os.availableParallelism()` count only the CPUs of the cgroup limit (`cpu.max`) and of the CPU
+  affinity. It changes nothing without a limit, or when `/proc` already shows the limit (LXCFS). Codex gets both variables in the
+  environment of its app-server, not in each thread configuration, so its sessions are not replaced.
+  The Claude Agent SDK removes `NODE_OPTIONS` from the environment of the CLI, so Claude gets it in
+  the `env` of its flag settings (`--settings`), which the CLI gives to the Bash tool and its hooks.
 
 When the level is `ok` again, each held message starts. If a file cannot be read, the level stays
 `ok` and main logs one warning.

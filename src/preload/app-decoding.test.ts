@@ -31,6 +31,8 @@ import {
   decodeProviderDetectionSettings,
   decodeUpdatePreference,
   decodeUpdateStatus,
+  decodeVoiceServerProbe,
+  decodeVoiceServerSettings,
 } from "./app-decoding";
 
 const updateStatus = {
@@ -69,7 +71,31 @@ const codeSent = {
 } satisfies CentralAuthState;
 
 // Each value is what main sends, typed as its contract, so it must come back unchanged.
+const voiceServer = {
+  address: "http://studio.local:8000/v1",
+  hasApiKey: true,
+  routes: {
+    dictation: true,
+    speech: false,
+    transcriptionModel: "Systran/faster-whisper-large-v3",
+    speechModel: null,
+    voice: null,
+  },
+};
+
 const valid: [string, (value: unknown) => unknown, unknown][] = [
+  ["a voice server", decodeVoiceServerSettings, voiceServer],
+  ["no voice server", decodeVoiceServerSettings, null],
+  [
+    "a voice server test that found models",
+    decodeVoiceServerProbe,
+    { ok: true, models: { transcription: ["whisper-1"], speech: ["kokoro"], voices: ["af_heart"] } },
+  ],
+  [
+    "a voice server test that failed",
+    decodeVoiceServerProbe,
+    { ok: false, field: "apiKey", message: "studio.local:8000 refused the API key." },
+  ],
   [
     "app info",
     decodeAppInfo,
@@ -108,6 +134,14 @@ const valid: [string, (value: unknown) => unknown, unknown][] = [
     {
       status: "signed_in",
       user: { id: "user-1", email: "user@example.com", name: null, avatarUrl: null },
+    } satisfies CentralAuthState,
+  ],
+  [
+    "signed in with an analytics answer",
+    decodeCentralAuthState,
+    {
+      status: "signed_in",
+      user: { id: "user-1", email: "user@example.com", name: null, avatarUrl: null, analyticsEnabled: true },
     } satisfies CentralAuthState,
   ],
   [
@@ -167,6 +201,24 @@ const valid: [string, (value: unknown) => unknown, unknown][] = [
 ];
 
 const malformed: [string, (value: unknown) => unknown, unknown][] = [
+  // The key never comes back to the renderer, so a record that carries one fails closed.
+  ["a voice server with its key", decodeVoiceServerSettings, { ...voiceServer, apiKey: "sk-secret" }],
+  [
+    "a voice server that dictates with no model",
+    decodeVoiceServerSettings,
+    { ...voiceServer, routes: { ...voiceServer.routes, transcriptionModel: null } },
+  ],
+  [
+    "a voice server that speaks with no voice",
+    decodeVoiceServerSettings,
+    { ...voiceServer, routes: { ...voiceServer.routes, speech: true, speechModel: "kokoro", voice: null } },
+  ],
+  ["a voice server test with an unknown field", decodeVoiceServerProbe, { ok: false, field: "model", message: "" }],
+  [
+    "a voice server test with an empty model",
+    decodeVoiceServerProbe,
+    { ok: true, models: { transcription: [""], speech: [], voices: [] } },
+  ],
   [
     "app info on an unknown platform",
     decodeAppInfo,
@@ -214,6 +266,14 @@ const malformed: [string, (value: unknown) => unknown, unknown][] = [
   ["a custom agent with a two-line usage prompt", decodeCustomAgents, [{ ...customAgent, usagePrompt: "/usage\nrm" }]],
   ["custom agent usage of an invalid id", decodeCustomAgentUsage, [{ id: "Not An Id", text: "42%" }]],
   ["custom agent usage with no text", decodeCustomAgentUsage, [{ id: "devin", text: null }]],
+  [
+    "an account analytics answer that is not a yes or a no",
+    decodeCentralAuthState,
+    {
+      status: "signed_in",
+      user: { id: "user-1", email: "user@example.com", name: null, avatarUrl: null, analyticsEnabled: "yes" },
+    },
+  ],
   ["a model list with an empty id", decodeDiscoverModelsResult, { models: [{ id: "" }] }],
   [
     "detection settings without a switch",

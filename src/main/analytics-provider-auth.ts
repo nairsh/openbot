@@ -27,6 +27,7 @@ export function providerAuthKind(agent: AgentSummary, facts: ProviderAuthFacts):
     case "codex": {
       if (addedAccount) return "unknown";
       const account = facts.account("codex");
+      if (account?.type === "apiKey") return "api_key";
       if (account?.type !== "chatgpt") return "unknown";
       return account.planType === "free" ? "free" : "subscription";
     }
@@ -48,7 +49,9 @@ export function providerAuthKind(agent: AgentSummary, facts: ProviderAuthFacts):
       if (facts.hasApiKey("muse")) return "api_key";
       return facts.account("muse") ? "subscription" : "unknown";
     case "inception":
-      return facts.hasApiKey("inception") ? "api_key" : "unknown";
+    case "deepseek":
+    case "openrouter":
+      return facts.hasApiKey(agent.provider) ? "api_key" : "unknown";
     case "direct":
       return "custom";
     case "cursor":

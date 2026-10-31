@@ -1,13 +1,21 @@
-import type { AgentProviderId, ClientAgentModelOption, CustomProviderSummary } from "@openbot/contracts/ipc";
+import type {
+  AgentProviderId,
+  AgentProviderStatus,
+  AgentStatus,
+  ClientAgentModelOption,
+  CustomProviderHarness,
+  CustomProviderSummary,
+  ProviderRuntimeStatus,
+} from "@openbot/contracts/ipc";
 import {
   agentProviderName,
   CUSTOM_AGENT_DEFAULT_MODEL,
+  DEFAULT_CUSTOM_PROVIDER_HARNESS,
   isAgentProvider,
-  isCustomProviderModelId,
   isFreeOpencodeModel,
   isKnownAgentProvider,
 } from "@openbot/contracts/ipc";
-import type { AppTextKey } from "@openbot/i18n";
+import type { AppTextKey, AppTranslate } from "@openbot/i18n";
 import { currentText } from "../text";
 
 /** The efforts that have a name in the catalog. The other efforts show their id. */
@@ -47,7 +55,6 @@ const KNOWN_PROVIDER_LABELS: Record<string, string> = {
   github: "GitHub",
   "github-copilot": "GitHub Copilot",
   openai: "OpenAI",
-  openrouter: "OpenRouter",
 };
 
 function providerLabel(id: string): string {
@@ -65,6 +72,25 @@ function groupLabel(service: string): string {
   const separator = service.lastIndexOf("/");
   if (separator < 0) return service;
   return `${service.slice(0, separator)} · ${providerLabel(service.slice(separator + 1))}`;
+}
+
+/**
+ * The lab of an OpenRouter model: its id starts `<lab>/`. Most names start `<Lab>: `, which gives the
+ * heading for the lab's other models too.
+ */
+function openRouterLab(id: string): string {
+  return id.split("/", 1)[0] ?? "";
+}
+
+function openRouterLabNames(options: readonly ClientAgentModelOption[]): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const model of options) {
+    if (model.provider !== "openrouter") continue;
+    const separator = model.name.indexOf(": ");
+    const lab = openRouterLab(model.id);
+    if (separator > 0 && !names.has(lab)) names.set(lab, model.name.slice(0, separator));
+  }
+  return names;
 }
 
 /** Free tier first; id says nothing about locality. */
@@ -89,6 +115,7 @@ export function pickerModels(options: ClientAgentModelOption[]): PickerModel[] {
     variants.set(base.id, [...(variants.get(base.id) ?? []), { id: model.id, name }]);
     variantIds.add(model.id);
   }
+  const labNames = openRouterLabNames(options);
   // A model of a provider that this build does not know has no tab here; the picker shows it alone.
   return options
     .filter((model) => !variantIds.has(model.id))
@@ -124,6 +151,12 @@ export function pickerModels(options: ClientAgentModelOption[]): PickerModel[] {
         const inner = name.indexOf("/");
         if (inner >= 0 && (!provider || name.slice(0, inner) === provider)) name = name.slice(inner + 1);
       }
+      // OpenRouter serves hundreds of models, so its tab has one group per lab.
+      if (model.provider === "openrouter") {
+        const lab = openRouterLab(model.id);
+        service = labNames.get(lab) ?? providerLabel(lab);
+        if (name.startsWith(`${service}: `)) name = name.slice(service.length + 2);
+      }
       name = name.replace(/^[\s:–—-]+/, "") || model.id;
       return {
         id: model.id,
@@ -131,7 +164,9 @@ export function pickerModels(options: ClientAgentModelOption[]): PickerModel[] {
         name,
         service,
         // Free-tier label only; shared with catalog order so badge and default agree.
-        free: model.provider === "opencode" && isFreeOpencodeModel(model.id, name),
+        free:
+          (model.provider === "opencode" && isFreeOpencodeModel(model.id, name)) ||
+          (model.provider === "openrouter" && model.id.endsWith(":free")),
         variants: variants.has(model.id)
           ? [{ id: model.id, name: t("app.modelVariant.default") }, ...(variants.get(model.id) ?? [])]
           : [],
@@ -159,18 +194,90 @@ export function groupPickerModels(models: PickerModel[], search: string): Picker
     .map(([, group]) => group);
 }
 
-export function customProviderIds(providers: readonly CustomProviderSummary[]): ReadonlySet<string> {
-  return new Set(providers.map((provider) => provider.id));
+/** Each saved endpoint id, with the provider that runs it. */
+export function customProviderIds(
+  providers: readonly CustomProviderSummary[],
+): ReadonlyMap<string, CustomProviderHarness> {
+  return new Map(providers.map((provider) => [provider.id, provider.harness ?? DEFAULT_CUSTOM_PROVIDER_HARNESS]));
+}
+
+/** A model of a custom endpoint, from the provider that runs that endpoint. */
+export function isCustomEndpointModel(
+  provider: ClientAgentModelOption["provider"],
+  modelId: string | null | undefined,
+  customIds: ReadonlyMap<string, CustomProviderHarness>,
+): boolean {
+  const separator = modelId?.indexOf("/") ?? -1;
+  return Boolean(modelId) && separator > 0 && customIds.get(modelId?.slice(0, separator) ?? "") === provider;
 }
 
 /**
- * A model of the Custom tab: a custom endpoint's, which Direct (or OpenCode, with Direct off) serves,
- * or a custom agent's.
+ * A model of the Custom tab: a custom endpoint's, which Direct, OpenCode or Pi serves, or a custom
+ * agent's.
  */
-export function isCustomModel(model: ClientAgentModelOption, customIds: ReadonlySet<string>): boolean {
+export function isCustomModel(
+  model: ClientAgentModelOption,
+  customIds: ReadonlyMap<string, CustomProviderHarness>,
+): boolean {
   return (
     model.provider === "acp" ||
     model.provider === "direct" ||
-    (model.provider === "opencode" && isCustomProviderModelId(model.id, customIds))
+    isCustomEndpointModel(model.provider, model.id, customIds)
+  );
+}
+
+/**
+ * The status of a provider: the one that the host reports, else one from the host phase. A host
+ * that is ready and reports no status for a provider can run it when it lists a model of it.
+ */
+export function providerAvailability(
+  status: AgentStatus,
+  models: readonly ClientAgentModelOption[],
+  provider: AgentProviderId,
+  t: AppTranslate,
+): AgentProviderStatus {
+  const explicit = status.providers?.find((item) => item.id === provider);
+  if (explicit) return explicit;
+  if (status.phase === "starting" || status.phase === "restarting") {
+    return { id: provider, state: "checking", version: null, message: null };
+  }
+  const available = models.some((model) => model.provider === provider);
+  return {
+    id: provider,
+    state: available ? "available" : "error",
+    version: null,
+    message: available ? null : t("provider.picker.unavailable", { name: agentProviderName(provider) }),
+  };
+}
+
+/** Whether the user turned the provider off on this computer. */
+export function providerTurnedOff(status: AgentStatus, provider: AgentProviderId): boolean {
+  return status.providers?.some((item) => item.id === provider && item.off) ?? false;
+}
+
+/**
+ * Whether the user can choose a model of the provider now, or soon: it is available, OpenBot checks
+ * it, it signs in, or its runtime downloads. A provider that is not connected cannot.
+ */
+export function providerUsable(status: AgentProviderStatus, runtime?: ProviderRuntimeStatus): boolean {
+  return (
+    status.state === "available" ||
+    status.state === "checking" ||
+    status.connectionState === "connecting" ||
+    runtime?.phase === "downloading" ||
+    runtime?.phase === "finishing"
+  );
+}
+
+/** Whether a model list offers the provider: it is on, and the user can choose its models now or soon. */
+export function providerOffersModels(
+  status: AgentStatus,
+  models: readonly ClientAgentModelOption[],
+  provider: AgentProviderId,
+  runtime?: ProviderRuntimeStatus,
+): boolean {
+  return (
+    !providerTurnedOff(status, provider) &&
+    providerUsable(providerAvailability(status, models, provider, currentText().t), runtime)
   );
 }

@@ -5,6 +5,7 @@ export const messages = {
   "status.agent.claudeWriteOutside":
     "Scrittura di {path}, fuori dal workspace dell'agente, dalla cartella condivisa e dalle cartelle temporanee.",
   "status.agent.contextCleared": "Contesto cancellato. Da qui inizia una nuova chat.",
+  "status.agent.instructionsChanged": "Ha aggiornato le sue istruzioni",
   "status.agent.modelSwitchedForLimit": "Limite di utilizzo raggiunto. Passato a {model}.",
   "status.agent.modelReturnedAfterLimit": "Limite di utilizzo terminato. Tornato a {model}.",
   "status.agent.modelSwitchedForError": "Errore del provider. Passato a {model}.",
@@ -28,6 +29,12 @@ export const messages = {
     "Acquisizione dell'area dello schermo a {x}, {y}, {width} × {height} punti e invio dell'immagine al modello dell'agente.",
   "status.agent.screenCaptureProgress": "Richiesta di acquisizione dello schermo…",
   "status.agent.screenCaptureReviewing": "Analisi dell'acquisizione dello schermo…",
+  "status.agent.browserOpening": "Apertura di una pagina web…",
+  "status.agent.browserReading": "Lettura della pagina web…",
+  "status.agent.browserClicking": "Clic sulla pagina web…",
+  "status.agent.browserTyping": "Digitazione nella pagina web…",
+  "status.agent.browserActing": "Uso della pagina web…",
+  "status.agent.browserReviewing": "Analisi della pagina web…",
   "status.agent.memoriesSearching": "Ricerca nelle sue memorie…",
   "status.agent.memoriesSearched": {
     one: "Ha cercato nelle sue memorie: {count} trovata",
@@ -37,4 +44,8 @@ export const messages = {
   "status.agent.skillUsing": "Uso della skill {name}…",
   "status.agent.skillReading": "Lettura di una skill…",
   "status.agent.memoryChanges": "Memorie: {saved} salvate, {updated} aggiornate, {forgotten} dimenticate.",
+  "status.agent.memoryChangesWithConflicts":
+    "Memorie: {saved} salvate, {updated} aggiornate, {forgotten} dimenticate, {notChanged} non modificate perché un altro thread le ha modificate prima.",
+  "status.agent.planContinues": "Il piano ha passaggi aperti. L'agente continua ({current} di {limit}).",
+  "status.agent.branchTitle": "Chat ramificata",
 } as const satisfies PartialTranslation<typeof source>;

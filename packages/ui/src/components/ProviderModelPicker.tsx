@@ -7,6 +7,7 @@ import type {
   AgentStatus,
   ClientAgentModelOption,
   CustomAgentSummary,
+  CustomProviderHarness,
   CustomProviderSummary,
   ForeignProviderId,
   ProviderAccountStatus,
@@ -16,9 +17,10 @@ import {
   agentProviderCliName,
   agentProviderName,
   customAgentIdOfModel,
+  DEFAULT_CUSTOM_PROVIDER_HARNESS,
   DEFAULT_PROVIDER_ACCOUNT_ID,
   defaultProviderModel,
-  isCustomProviderModelId,
+  isCustomProviderHarness,
   PICKER_PROVIDERS,
   providerDisplayName,
 } from "@openbot/contracts/ipc";
@@ -52,10 +54,14 @@ import { providerAccountName } from "./provider-accounts";
 import {
   customProviderIds,
   groupPickerModels,
+  isCustomEndpointModel,
   isCustomModel,
   type PickerModel,
   type PickerModelGroup,
   pickerModels,
+  providerAvailability,
+  providerTurnedOff,
+  providerUsable,
 } from "./provider-model-options";
 import { SwapLabel, type SwapMotion } from "./SwapLabel";
 
@@ -75,11 +81,6 @@ interface ProviderModelPickerProps {
   fastMode?: boolean | undefined;
   onFastModeChange?: ((fastMode: boolean) => void) | undefined;
   disabled?: boolean | undefined;
-  /**
-   * Lock the other providers, accounts and custom agents, but keep the agent's own models and effort
-   * open. `disabledReason` explains the lock in the panels it closes.
-   */
-  providerChangesDisabled?: boolean;
   disabledReason?: string;
   runtimeStatuses?: Partial<Record<AgentProviderId, ProviderRuntimeStatus>> | undefined;
   onDownloadProvider?: ((provider: AgentProviderId) => void | Promise<void>) | undefined;
@@ -184,9 +185,7 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
   let popover: HTMLElement | undefined;
 
   const visibleProviders = createMemo(() =>
-    PROVIDERS.filter(
-      (provider) => !props.agentStatus?.providers?.some((status) => status.id === provider && status.off),
-    ),
+    PROVIDERS.filter((provider) => provider === CUSTOM_RAIL || !providerTurnedOff(props.agentStatus, provider)),
   );
   /** The accounts that get rail entries: only a provider's with more than one, and only on request. */
   const railAccounts = (rail: RailId): readonly ProviderAccountStatus[] => {
@@ -211,13 +210,6 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
     const id = props.providerAccountId;
     return id && railAccounts(props.provider).some((account) => account.id === id) ? id : null;
   };
-  /** A model that the agent's provider, account and custom agent serve: the choices a provider lock keeps. */
-  const keepsRuntime = (model: PickerModel, accountId: string | null): boolean =>
-    model.provider === props.provider &&
-    accountId === currentAccount() &&
-    (props.provider !== "acp" || customAgentIdOfModel(model.id) === customAgentIdOfModel(props.value));
-  const providerLocked = (model: PickerModel, accountId: string | null): boolean =>
-    props.providerChangesDisabled === true && !keepsRuntime(model, accountId);
   const customIds = createMemo(() => customProviderIds(props.customProviders ?? []));
   const selectedModel = createMemo(() =>
     props.modelOptions.find((option) => option.provider === props.provider && option.id === props.value),
@@ -226,7 +218,7 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
   const activeProvider = (): RailId =>
     props.provider === "acp" ||
     props.provider === "direct" ||
-    (props.provider === "opencode" && isCustomProviderModelId(props.value, customIds()))
+    isCustomEndpointModel(props.provider, props.value, customIds())
       ? CUSTOM_RAIL
       : props.provider;
   const activeKey = (): RailKey => {
@@ -238,15 +230,10 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
   /** The provider whose mark the trigger shows, so only a changed one springs in. */
   let shownProvider = untrack(activeProvider);
 
-  /** OpenCode and Custom tabs split one wire provider so each model appears once. */
+  /** The OpenCode, Pi and Custom tabs split one wire provider so each model appears once. */
   function railModelOptions(rail: RailId): ClientAgentModelOption[] {
     if (rail === CUSTOM_RAIL) return props.modelOptions.filter((option) => isCustomModel(option, customIds()));
-    if (rail === "opencode") {
-      return props.modelOptions.filter(
-        (option) => option.provider === "opencode" && !isCustomModel(option, customIds()),
-      );
-    }
-    return props.modelOptions.filter((option) => option.provider === rail);
+    return props.modelOptions.filter((option) => option.provider === rail && !isCustomModel(option, customIds()));
   }
 
   /**
@@ -274,15 +261,24 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
       agents: t("provider.customAgentCount", { count: agents }),
     });
   };
+  /** The status of the providers that run the saved endpoints: the first available one, or the first. */
+  const endpointStatus = (): AgentProviderStatus => {
+    const status = (harness: CustomProviderHarness) =>
+      providerAvailability(props.agentStatus, props.modelOptions, harness, t);
+    const harnesses = [...new Set(customIds().values())];
+    const available = harnesses.find((harness) => status(harness).state === "available");
+    return status(available ?? harnesses[0] ?? DEFAULT_CUSTOM_PROVIDER_HARNESS);
+  };
   /**
    * One provider status per tab. The Custom tab stands for the provider that serves the endpoints --
-   * Direct when it lists them, else OpenCode -- and for `acp`, which runs the agents: it is available
-   * when either of the saved kinds is.
+   * Direct when it lists them, else OpenCode or Pi -- and for `acp`, which runs the agents: it is
+   * available when either of the saved kinds is.
    */
   const railStatus = (rail: RailId): AgentProviderStatus => {
     if (rail !== CUSTOM_RAIL) return providerAvailability(props.agentStatus, props.modelOptions, rail, t);
-    const endpointProvider = props.modelOptions.some((option) => option.provider === "direct") ? "direct" : "opencode";
-    const endpoints = providerAvailability(props.agentStatus, props.modelOptions, endpointProvider, t);
+    const endpoints = props.modelOptions.some((option) => option.provider === "direct")
+      ? providerAvailability(props.agentStatus, props.modelOptions, "direct", t)
+      : endpointStatus();
     if (agentCount() === 0) return endpoints;
     const agents = providerAvailability(props.agentStatus, props.modelOptions, "acp", t);
     if (!props.customProviders?.length) return agents;
@@ -328,14 +324,7 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
       return false;
     }
     const status = entryStatus(key);
-    const phase = props.runtimeStatuses?.[status.id]?.phase;
-    return (
-      status.state === "available" ||
-      status.state === "checking" ||
-      status.connectionState === "connecting" ||
-      phase === "downloading" ||
-      phase === "finishing"
-    );
+    return providerUsable(status, props.runtimeStatuses?.[status.id]);
   };
   /** The entries listed when the picker opened. An open rail does not drop a tab under the pointer. */
   const [openedKeys, setOpenedKeys] = createSignal<readonly RailKey[]>([]);
@@ -403,7 +392,7 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
   }
 
   function selectModel(option: PickerModel, accountId: string | null): void {
-    if (props.disabled || providerLocked(option, accountId) || !modelAvailable(option)) return;
+    if (props.disabled || !modelAvailable(option)) return;
     if (!showsReasoningEffort() && !option.variants.length) setOpen(false);
     props.onChange(option.id, option.provider, chosenAccount(option.provider, accountId));
   }
@@ -682,13 +671,13 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
                   const model = selected();
                   return model ? pickerModelKey(model) : props.value;
                 };
-                // OpenCode and Custom share the `opencode` wire id; the tab whose list holds it owns it.
+                // OpenCode or Pi and Custom share one wire id; the tab whose list holds it owns it.
                 const ownsSelection = () =>
                   provider === CUSTOM_RAIL
                     ? selected()?.provider === props.provider
                     : provider === props.provider &&
                       accountId() === currentAccount() &&
-                      (props.provider !== "opencode" || Boolean(selected()));
+                      (!isCustomProviderHarness(props.provider) || Boolean(selected()));
                 const effortOptions = createMemo(() => {
                   if (!ownsSelection()) return [];
                   if (selected()?.variants.length) return selected()?.variants ?? [];
@@ -709,10 +698,7 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
                 const available = () => status().state === "available";
                 // An account that is not signed in holds back the models its provider serves.
                 const modelEnabled = (model: PickerModel) =>
-                  modelAvailable(model) && (accountId() === null || available()) && !providerLocked(model, accountId());
-                /** The lock closes this whole panel: none of its models keeps the agent's runtime. */
-                const panelLocked = () =>
-                  available() && models().length > 0 && models().every((model) => providerLocked(model, accountId()));
+                  modelAvailable(model) && (accountId() === null || available());
                 const effortLocked = () => !available();
                 function chooseEffort(id: string): void {
                   if (props.disabled || effortLocked() || id === effortValue()) return;
@@ -762,8 +748,11 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
                     });
                   }
                   if (runtimeStatus?.phase === "finishing") return t("provider.status.settingUp");
-                  // A sign-in in progress has no message. It is not a failure.
-                  if (status().connectionState === "connecting") return t("provider.connecting.browserHint");
+                  // A sign-in in progress has no message. It is not a failure, and nor is a check again.
+                  if (status().connectionState === "connecting")
+                    return status().signInPending === false
+                      ? t("provider.status.connecting")
+                      : t("provider.connecting.browserHint");
                   const failed = connectError();
                   if (failed) return failed;
                   const message = runtimeStatus?.message ?? status().message;
@@ -836,11 +825,6 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
                             </Button>
                           )}
                         </Show>
-                      </div>
-                    </Show>
-                    <Show when={panelLocked() && props.disabledReason}>
-                      <div class="provider-model-empty" role="status">
-                        <span>{props.disabledReason}</span>
                       </div>
                     </Show>
                     <Input
@@ -1018,27 +1002,6 @@ function railName(rail: RailId, t: AppTranslate): string {
 /** Nothing is the default on the Custom tab: the user's own endpoints have no shipped starting model. */
 function railDefaultModel(rail: RailId): AgentModelId | null {
   return rail === CUSTOM_RAIL ? null : defaultProviderModel(rail);
-}
-
-function providerAvailability(
-  status: AgentStatus,
-  models: ClientAgentModelOption[],
-  rail: RailId,
-  t: AppTranslate,
-): AgentProviderStatus {
-  const provider = wireProvider(rail);
-  const explicit = status.providers?.find((item) => item.id === provider);
-  if (explicit) return explicit;
-  if (status.phase === "starting" || status.phase === "restarting") {
-    return { id: provider, state: "checking", version: null, message: null };
-  }
-  const available = models.some((model) => model.provider === provider);
-  return {
-    id: provider,
-    state: available ? "available" : "error",
-    version: null,
-    message: available ? null : t("provider.picker.unavailable", { name: agentProviderName(provider) }),
-  };
 }
 
 function providerSummary(provider: AgentProviderId, status: AgentProviderStatus, text: PickerText): string {

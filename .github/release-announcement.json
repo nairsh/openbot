@@ -1,10 +1,10 @@
 {
-  "version": "0.50.0",
+  "version": "0.56.0",
   "highlights": [
-    "Sign in to Google MCP servers, such as Gmail, Calendar or Drive, again after you update. Then the sign-in keeps working after the first hour.",
-    "Draw a workflow on a canvas with agent, model, condition and approval steps, and run it on a schedule or from a webhook.",
-    "Save logins, payment cards and contact info in the Vault. Agents use them, but never see a password or a card number.",
-    "Open the trace of an agent's turn to see each thought, tool call and subagent on one timeline, with its cost.",
-    "Claude can use an Anthropic API key, and Gemini can hold more than one Google account."
+    "Agents do many browser actions in one step, so browser tasks finish sooner and use fewer tokens, and Cloudflare checks pass in the built-in browser.",
+    "Right-click an agent message and select Mark unread to come back to it later.",
+    "Hide the Local server when you have another server; its agents, chats and files stay on your computer.",
+    "Choose the sound that plays when a task finishes, in Settings › Notifications.",
+    "Each provider CLI now uses about half the disk space, and OpenBot uses the CLI you installed when it is as new as its own copy."
   ]
 }

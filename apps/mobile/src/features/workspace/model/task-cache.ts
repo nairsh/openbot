@@ -1,4 +1,10 @@
-import type { AgentEvent, AgentTasksSnapshot, ConversationSnapshot, TeamRealtimeEvent } from "@openbot/contracts/ipc";
+import type {
+  AgentEvent,
+  AgentTasksSnapshot,
+  ConversationMessage,
+  ConversationSnapshot,
+  TeamRealtimeEvent,
+} from "@openbot/contracts/ipc";
 import type { QueryClient } from "@tanstack/react-query";
 import { type QueryScope, queryKeys } from "./query-keys";
 
@@ -39,6 +45,11 @@ export function applyTaskEvent(
 ): void {
   if (event.type === "agent-tasks-changed") {
     queryClient.setQueryData(queryKeys.agentTasks(scope, serverId, event.snapshot.agentId), event.snapshot);
+    // A new answer in a thread, or a thread that starts or goes, changes what is unread. The host
+    // sends no event when a read mark moves, so the marks load again with the list.
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.agentThreadReads(scope, serverId, event.snapshot.agentId),
+    });
   } else if (event.type === "agent-task-conversation") {
     // A delta raises the revision, so an older snapshot loses.
     queryClient.setQueryData<ConversationSnapshot>(
@@ -99,4 +110,25 @@ export function withoutTaskTurns(
     default:
       return event;
   }
+}
+
+/**
+ * The cached messages of the task that runs on `threadId`, or undefined when the thread is not a
+ * task the phone knows. A progress line of a task turn goes after the newest thought of the task.
+ */
+export function taskThreadMessages(
+  queryClient: QueryClient,
+  scope: QueryScope,
+  serverId: string,
+  agentId: string,
+  threadId: string,
+): readonly ConversationMessage[] | undefined {
+  const task = queryClient
+    .getQueryData<AgentTasksSnapshot>(queryKeys.agentTasks(scope, serverId, agentId))
+    ?.tasks.find((entry) => entry.threadId === threadId);
+  if (!task) return undefined;
+  return (
+    queryClient.getQueryData<ConversationSnapshot>(queryKeys.agentTaskConversation(scope, serverId, task.id))
+      ?.messages ?? []
+  );
 }

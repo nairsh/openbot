@@ -40,7 +40,7 @@ export const messages = {
   "provider.status.checking": "Wird geprüft",
   "provider.status.off": "Aus",
   "provider.gemini.hostSignIn":
-    "Um Gemini zu verbinden, öffne OpenBot auf dem Host und wähle „Verbinden“ unter Einstellungen > Anbieter. Die Google-Anmeldung benötigt einen Browser auf diesem Host. Eine Remote-Anmeldung wird nicht unterstützt.",
+    "Um Gemini zu verbinden, öffne OpenBot auf dem Host und wähle „Verbinden“ unter Servereinstellungen > Anbieter. Die Google-Anmeldung benötigt einen Browser auf diesem Host. Eine Remote-Anmeldung wird nicht unterstützt.",
   "provider.key.free": "Kostenlos",
   "provider.action.connect": "Verbinden",
   "provider.action.reconnect": "Neu verbinden",
@@ -153,6 +153,14 @@ export const messages = {
   "provider.inceptionKey.description":
     "Speichere einen Inception-API-Schlüssel auf diesem Computer, um die Mercury-Modelle zu verwenden. OpenBot führt sie in der Pi-CLI aus, die es herunterlädt.",
   "provider.inceptionKey.label": "Inception-API-Schlüssel",
+  "provider.deepseekKey.title": "DeepSeek-API-Schlüssel",
+  "provider.deepseekKey.description":
+    "Speichere einen DeepSeek-API-Schlüssel auf diesem Computer, um die DeepSeek-Modelle zu verwenden. OpenBot führt sie in der Pi-CLI aus, die es herunterlädt.",
+  "provider.deepseekKey.label": "DeepSeek-API-Schlüssel",
+  "provider.openrouterKey.title": "OpenRouter-API-Schlüssel",
+  "provider.openrouterKey.description":
+    "Speichere einen OpenRouter-API-Schlüssel auf diesem Computer, um die Modelle von OpenRouter zu verwenden. OpenBot führt sie in der Pi-CLI aus, die es herunterlädt.",
+  "provider.openrouterKey.label": "OpenRouter-API-Schlüssel",
   "provider.openCodeKey.title": "Bei OpenCode Go anmelden",
   "provider.openCodeKey.description":
     "Kostenlose Modelle benötigen kein Konto. Ein Schlüssel schaltet die kostenpflichtigen Go-Modelle frei.",
@@ -181,6 +189,7 @@ export const messages = {
   "provider.account.cancelSignIn": "Anmeldung abbrechen",
   "provider.account.finishSignIn": "Schließen Sie die Anmeldung im Browser ab.",
   "provider.account.remove": "Konto entfernen",
+  "provider.account.disconnect": "Trennen",
   "provider.account.actionFailed": "Das {name}-Konto konnte nicht geändert werden.",
   "provider.account.resetUsage": "Nutzung zurücksetzen",
   "provider.account.resetUsageTitle": "Nutzung von {name} zurücksetzen?",
@@ -196,6 +205,11 @@ export const messages = {
   "provider.account.resetUsageNoCredit": "{name} hat kein Guthaben zum Zurücksetzen der Nutzung mehr.",
   "provider.account.resetUsageAlreadyRedeemed": "Dieses Guthaben von {name} wurde bereits verwendet.",
   "provider.account.resetUsageFailed": "Die Nutzung von {name} konnte nicht zurückgesetzt werden.",
+  "provider.settings.disconnectTitle": "{name} trennen?",
+  "provider.settings.disconnectOthers": "Die anderen {provider}-Konten warten, bis du {provider} wieder verbindest.",
+  "provider.settings.disconnectLocal":
+    "OpenBot meldet {provider} auf diesem Computer ab. Die {provider}-CLI in deinem Terminal wird auch abgemeldet.",
+  "provider.settings.disconnectHost": "OpenBot meldet {provider} auf dem Server ab.",
   "provider.settings.cache": "Cache",
   "provider.settings.promptCache": "Prompt-Cache",
   "provider.settings.promptCacheDescription":
@@ -203,4 +217,17 @@ export const messages = {
   "provider.settings.promptCacheHour": "1 Stunde",
   "provider.settings.promptCacheDefault": "Claude Code-Standard",
   "provider.settings.promptCacheLoadFailed": "Die Prompt-Cache-Dauer dieses Servers konnte nicht geladen werden.",
+  "provider.settings.download": "Download",
+  "provider.settings.downloadedCli": "{name}-CLI",
+  "provider.settings.downloadDetail": {
+    one: "{version} · 1 Version · {size}",
+    other: "{version} · {count} Versionen · {size}",
+  },
+  "provider.settings.downloadVersions": { one: "1 Version · {size}", other: "{count} Versionen · {size}" },
+  "provider.settings.downloadAgain": "Wenn du {name} einschaltest, lädt OpenBot die CLI erneut herunter.",
+  "provider.settings.removeDownloadConfirm": "{size} entfernen?",
+  "provider.settings.removeDownloadKeeps": "Konten, Anmeldungen und Agenten bleiben.",
+  "provider.settings.removeDownload": "Download entfernen",
+  "provider.settings.removingDownload": "Wird entfernt…",
+  "provider.settings.removeDownloadFailed": "Der Download konnte nicht entfernt werden.",
 } as const satisfies PartialTranslation<typeof source>;

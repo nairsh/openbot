@@ -1,5 +1,6 @@
 import type { AttachmentSupport } from "@openbot/contracts/attachment-files";
 import type {
+  AddAgentFolderInput,
   AddedAgent,
   AddMessagingOrchestratorResult,
   AgentAccessChange,
@@ -7,28 +8,51 @@ import type {
   AgentAdminSettings,
   AgentAnalytics,
   AgentAnalyticsInput,
+  AgentBackupModelSettings,
+  AgentBrowserProfile,
+  AgentExclusionChange,
+  AgentFolderBrowse,
+  AgentFolderChange,
+  AgentFolderInput,
+  AgentFolderList,
   AgentHostSettings,
+  AgentImportPreview,
   AgentMemory,
   AgentMemorySelectionState,
   AgentModelId,
   AgentModelOption,
+  AgentNewChatSettings,
+  AgentNotificationLevelsSnapshot,
+  AgentPlanCardSettings,
   AgentProviderId,
   AgentReasoningEffort,
   AgentSessionSettings,
   AgentTask,
   AgentTaskInput,
+  AgentTaskLimitSettings,
+  AgentTaskReadState,
   AgentTasksSnapshot,
   AgentTemplatePreview,
   AgentTemplatePublication,
+  ApplyAgentImportInput,
+  ApplyInstanceTransferInput,
   AvatarHue,
   AvatarImageInput,
+  BitwardenConnectorStatus,
+  BitwardenHostConnectInput,
+  BrowserProfileList,
+  BrowserProfileSummary,
   ClearableStorageCategory,
+  ClearBrowserDataInput,
   ConversationFileSearchPage,
   ConversationSearchPage,
   ConversationSnapshot,
   CreateAgentInput,
   CreateRoutineInput,
+  CreateWorkflowInput,
+  DecideWorkflowStepInput,
   DraftAttachment,
+  ExportInstanceInput,
   ForeignProviderId,
   GitHubConnectorRepositories,
   HostAddMessagingOrchestratorInput,
@@ -49,6 +73,9 @@ import type {
   InstalledSkill,
   InstallMarketplaceAgentInput,
   InstallSkillInput,
+  InstanceTransferPreview,
+  InstanceTransferSummary,
+  MarkAgentTaskReadInput,
   McpServerConfig,
   McpSignInState,
   McpTestResult,
@@ -57,6 +84,9 @@ import type {
   OnePasswordConnectorStatus,
   QueuedMessageReceipt,
   QueueSnapshot,
+  RemoteAgentImportResult,
+  RemoteInstanceTransferResult,
+  RenameWorkflowInput,
   ResetAgentSessionSettingInput,
   RespondToApprovalInput,
   RespondToBrowserSecretInput,
@@ -68,7 +98,10 @@ import type {
   RoutineResultConnectionOption,
   RoutineResultDestination,
   RoutineResultRoutineInput,
+  SaveWorkflowGraphInput,
+  ServerNotificationLevel,
   SetAgentMemoryInclusionInput,
+  SetAgentNotificationLevelInput,
   SetAgentProviderAccountInput,
   SetAgentSessionSettingInput,
   SetEnabledSkillInput,
@@ -80,10 +113,27 @@ import type {
   StorageUsage,
   UninstallSkillInput,
   UpdateAgentAdminSettingsInput,
+  UpdateAgentBackupModelsInput,
+  UpdateAgentBrowserProfileInput,
   UpdateAgentHostSettingsInput,
   UpdateAgentInput,
+  UpdateAgentNewChatInput,
+  UpdateAgentPlanCardInput,
+  UpdateAgentTaskLimitInput,
+  UpdateBrowserProfileInput,
   UpdateRestartMode,
   UpdateRoutineInput,
+  VaultHostImportResult,
+  VaultSaveInput,
+  VaultState,
+  WorkflowDetail,
+  WorkflowRunDetail,
+  WorkflowRunPage,
+  WorkflowSaveResult,
+  WorkflowStep,
+  WorkflowSummary,
+  WorkflowTriggerInput,
+  WorkflowWebhookSecret,
 } from "@openbot/contracts/ipc";
 import type {
   EventActivity,
@@ -140,6 +190,8 @@ export interface MobileServer {
   memberLimit?: number;
   /** A hosted server, which its owner and its admins can restart. Absent when the account server did not say. */
   hosted?: boolean;
+  /** When the host last changed its key, from a handover that both keys signed. Absent when it did not. */
+  keyChangedAt?: number;
 }
 
 export interface MobileAgent {
@@ -185,12 +237,15 @@ export interface MobileBrowserViewSupport {
   contextMenu: boolean;
   /** `browser-view-viewport`: the host holds the page at the size the phone asks for. */
   viewport: boolean;
+  /** `browser-navigation`: the host loads an address in a tab that is open. */
+  navigation: boolean;
 }
 
 /** What the phone does to a host browser tab, through the released `browser-control` routes. */
 type MobileBrowserTabAction =
   | { type: "navigate"; tabId: string; direction: "back" | "forward" }
   | { type: "reload"; tabId: string }
+  | { type: "load"; tabId: string; url: string }
   | { type: "open"; url: string; ownerAgentId: string; ownerThreadId: string | null }
   | { type: "close"; tabId: string };
 
@@ -255,6 +310,11 @@ export interface MobileWorkspaceContextValue {
   hideChannel: (channelId: string, serverId: string) => boolean;
   unhideChannel: (channelId: string, serverId: string) => boolean;
   toggleChannelPin: (channelId: string, serverId: string) => ToggleAgentPinResult;
+  /** The pinned workflows of each server, in the order the drawer shows them. Saved on this device. */
+  pinnedWorkflowIds: Readonly<Record<string, readonly string[]>>;
+  toggleWorkflowPin: (workflowId: string, serverId: string) => ToggleAgentPinResult;
+  /** Drops the pins of workflows that the host no longer lists. Call only with a complete list. */
+  reconcileWorkflowPins: (serverId: string, workflowIds: readonly string[]) => void;
   conversationStore: MobileConversationStore;
   /** Activity, unread agents, and browser requests. Read them with a selector hook, not from the context. */
   liveState: LiveWorkspaceStore;
@@ -273,11 +333,43 @@ export interface MobileWorkspaceContextValue {
    * `push-notifications-android-v1` for an Android phone.
    */
   canSendNotifications: (serverId: string) => boolean;
+  /**
+   * True when the host advertises `agent-notification-levels-v1`. Every member keeps a notification
+   * level of their own for each agent.
+   */
+  canSetAgentNotificationLevel: (serverId: string) => boolean;
+  /**
+   * The user's own level for the agents of `serverId`. It replaces the server level of this phone for
+   * that agent, on each device of the user.
+   */
+  loadAgentNotificationLevels: (serverId: string) => Promise<AgentNotificationLevelsSnapshot>;
+  /** `level: null` removes the level, so the server level applies again. The host answers with all levels. */
+  setAgentNotificationLevel: (
+    input: SetAgentNotificationLevelInput,
+    serverId: string,
+  ) => Promise<AgentNotificationLevelsSnapshot>;
+  /**
+   * The user's own level of the whole server, on each device of the user. `null` gives each device its
+   * own server level again. The host answers with all levels.
+   */
+  setOwnServerNotificationLevel: (
+    level: ServerNotificationLevel | null,
+    serverId: string,
+  ) => Promise<AgentNotificationLevelsSnapshot>;
   /** An absent field stays unchanged; a `null` logo removes it. */
   updateServerIdentity: (
     serverId: string,
     input: { serverName?: string; logo?: AvatarImageInput | null },
   ) => Promise<void>;
+  /** The owner of an online host that serves `host-key-rotation-v1`. The host checks the role again. */
+  canRotateServerKey: (serverId: string) => boolean;
+  /**
+   * Asks the host to change its key, then reads the server list, which carries the signed handover.
+   * Resolves with the new public key; the server's `publicKey` changes to it when this app follows it.
+   */
+  rotateServerKey: (serverId: string) => Promise<{ publicKey: string }>;
+  /** Reads the server list again, with its signed key changes. It does not connect again. */
+  reloadServerList: () => Promise<void>;
   /** An owner or admin of an online host that serves `host-timezone-v1`. The host checks the role again. */
   canManageServerTimezone: (serverId: string) => boolean;
   /** The zone of a routine that an agent creates with no zone. Owners and admins only. */
@@ -307,6 +399,26 @@ export interface MobileWorkspaceContextValue {
   canManageConnectors: (serverId: string) => boolean;
   /** The same for the host's 1Password connection (`onepassword-connector-v1`). */
   canManageOnePasswordConnector: (serverId: string) => boolean;
+  /** The same for the host's Bitwarden connection (`bitwarden-connector-v1`). */
+  canManageBitwardenConnector: (serverId: string) => boolean;
+  /** True for an owner or admin of a host that serves its Vault to other devices (`vault-v1`). */
+  canManageVault: (serverId: string) => boolean;
+  /** The same for a CSV import from this phone (`vault-import-v1`). */
+  canImportVault: (serverId: string) => boolean;
+  /** True on an online host that takes a Grok Bot or Hermes export from any member (`agent-import-v1`). */
+  canImportAgents: (serverId: string) => boolean;
+  /**
+   * True for an owner or admin of an online host that moves its agents to or from an OpenBot
+   * transfer file (`instance-transfer-v1`).
+   */
+  canTransferServer: (serverId: string) => boolean;
+  /** The same for API keys in the Vault (`vault-v2`). */
+  canManageVaultApiKeys: (serverId: string) => boolean;
+  /**
+   * True for an owner or admin of a host that serves its named browser profiles and the profile of
+   * each agent (`browser-profiles-v1`). The host checks the role again.
+   */
+  canManageBrowserProfiles: (serverId: string) => boolean;
   /** Reads or changes the host's GitHub connection. The answer names the GitHub pages that the phone opens. */
   githubConnector: (route: GitHubConnectorRoute, serverId: string) => Promise<HostGitHubConnectorStatus>;
   /** The repositories where the host's GitHub App is installed. The host reads them from GitHub. */
@@ -315,6 +427,55 @@ export interface MobileWorkspaceContextValue {
   /** The token goes to the host once. No answer carries it. */
   connectOnePassword: (token: string, serverId: string) => Promise<OnePasswordConnectorStatus>;
   disconnectOnePassword: (serverId: string) => Promise<OnePasswordConnectorStatus>;
+  loadBitwardenConnector: (serverId: string) => Promise<BitwardenConnectorStatus>;
+  /**
+   * The API key and the master password go to the host once. No answer carries them. The host
+   * answers `connecting` at once and signs in after that.
+   */
+  connectBitwarden: (input: BitwardenHostConnectInput, serverId: string) => Promise<BitwardenConnectorStatus>;
+  /** Also stops a sign-in that has not ended. */
+  disconnectBitwarden: (serverId: string) => Promise<BitwardenConnectorStatus>;
+  /** The host's Vault. No answer carries a password, a card number or a security code. */
+  loadVault: (serverId: string) => Promise<VaultState>;
+  /** A new secret goes to the host once; a null secret keeps the saved one. */
+  saveVaultItem: (input: VaultSaveInput, serverId: string) => Promise<VaultState>;
+  deleteVaultItem: (id: string, serverId: string) => Promise<VaultState>;
+  /** The text of a CSV password export. The host adds its logins and answers only the counts. */
+  importVaultCsv: (csv: string, serverId: string) => Promise<VaultHostImportResult>;
+  /** Sends a Grok Bot or Hermes export to the host, which keeps it under the preview's token. */
+  stageAgentImport: (
+    upload: RemoteFileUpload,
+    serverId: string,
+    onProgress?: (fraction: number) => void,
+  ) => Promise<AgentImportPreview>;
+  /** Creates the chosen agents and channels. The token is spent, also when the import fails. */
+  applyAgentImport: (input: ApplyAgentImportInput, serverId: string) => Promise<RemoteAgentImportResult>;
+  discardAgentImport: (token: string, serverId: string) => Promise<void>;
+  /** The host's agents with their counts, for the export. */
+  loadInstanceTransferSummary: (serverId: string) => Promise<InstanceTransferSummary>;
+  /** The host's transfer file, as Base64. */
+  downloadInstanceTransfer: (input: ExportInstanceInput, serverId: string) => Promise<RemoteFileUpload>;
+  /** Sends a transfer file to the host, which keeps it under the preview's token. */
+  stageInstanceTransfer: (
+    upload: RemoteFileUpload,
+    serverId: string,
+    onProgress?: (fraction: number) => void,
+  ) => Promise<InstanceTransferPreview>;
+  /** Creates the chosen agents and adds the settings. The token is spent, also when the import fails. */
+  applyInstanceTransfer: (input: ApplyInstanceTransferInput, serverId: string) => Promise<RemoteInstanceTransferResult>;
+  discardInstanceTransfer: (token: string, serverId: string) => Promise<void>;
+  /** The named browser profiles of the host, and the agents of its shared profile. */
+  loadBrowserProfiles: (serverId: string) => Promise<BrowserProfileList>;
+  createBrowserProfile: (name: string, serverId: string) => Promise<BrowserProfileSummary>;
+  /** A new name, a new color, or both. Sign-ins and tabs stay. */
+  updateBrowserProfile: (input: UpdateBrowserProfileInput, serverId: string) => Promise<BrowserProfileSummary>;
+  /** Closes the open tabs of the profile and signs it out of every site. */
+  clearBrowserData: (input: ClearBrowserDataInput, serverId: string) => Promise<void>;
+  /** Deletes the profile and its data. Its agents change to the shared profile. */
+  deleteBrowserProfile: (profileId: string, serverId: string) => Promise<void>;
+  loadAgentBrowserProfile: (agentId: string, serverId: string) => Promise<AgentBrowserProfile>;
+  /** The host closes the open tabs of the agent. */
+  updateAgentBrowserProfile: (input: UpdateAgentBrowserProfileInput, serverId: string) => Promise<AgentBrowserProfile>;
   loadMessagingConnections: (platform: MessagingPlatform, serverId: string) => Promise<MessagingOverview>;
   /** The platform's page that the phone opens. The host opens no page. */
   connectMessaging: (input: HostMessagingConnectInput, serverId: string) => Promise<MessagingConnectorPage>;
@@ -482,6 +643,42 @@ export interface MobileWorkspaceContextValue {
   loadAgentHostSettings: (agentId: string, serverId: string) => Promise<AgentHostSettings | null>;
   /** Owners and admins only; the host refuses a member. Resolves with the settings the host saved. */
   updateAgentHostSettings: (input: UpdateAgentHostSettingsInput, serverId: string) => Promise<AgentHostSettings>;
+  /** An owner or admin of an online host that serves `agent-backup-models-v1`. The host checks the role again. */
+  canManageAgentBackupModels: (serverId: string) => boolean;
+  /**
+   * The backup models of an agent, and the model it left for a usage limit. Null when the host does
+   * not advertise `agent-backup-models-v1`. Owners and admins only; the host refuses a member.
+   */
+  loadAgentBackupModels: (agentId: string, serverId: string) => Promise<AgentBackupModelSettings | null>;
+  /** Owners and admins only; the host refuses a member. Resolves with the settings the host saved. */
+  updateAgentBackupModels: (input: UpdateAgentBackupModelsInput, serverId: string) => Promise<AgentBackupModelSettings>;
+  /** An owner or admin of an online host that serves `agent-task-limit-v1`. The host checks the role again. */
+  canManageAgentTaskLimit: (serverId: string) => boolean;
+  /**
+   * How many threads of the agent run at the same time. Null when the host does not advertise
+   * `agent-task-limit-v1`. Owners and admins only; the host refuses a member.
+   */
+  loadAgentTaskLimit: (agentId: string, serverId: string) => Promise<AgentTaskLimitSettings | null>;
+  /** Owners and admins only; the host refuses a member. Resolves with the limit the host saved. */
+  updateAgentTaskLimit: (input: UpdateAgentTaskLimitInput, serverId: string) => Promise<AgentTaskLimitSettings>;
+  /** An owner or admin of an online host that serves `agent-new-chat-v1`. The host checks the role again. */
+  canManageAgentNewChat: (serverId: string) => boolean;
+  /**
+   * Whether the agent starts a new chat itself when its chat gets long. Null when the host does not
+   * advertise `agent-new-chat-v1`. Owners and admins only; the host refuses a member.
+   */
+  loadAgentNewChat: (agentId: string, serverId: string) => Promise<AgentNewChatSettings | null>;
+  /** Owners and admins only; the host refuses a member. Resolves with the setting the host saved. */
+  updateAgentNewChat: (input: UpdateAgentNewChatInput, serverId: string) => Promise<AgentNewChatSettings>;
+  /** An owner or admin of an online host that serves `agent-plan-card-v1`. The host checks the role again. */
+  canManageAgentPlanCard: (serverId: string) => boolean;
+  /**
+   * Whether the agent shows its plan card before a long task, as it applies on the host. Null when the
+   * host does not advertise `agent-plan-card-v1`. Owners and admins only; the host refuses a member.
+   */
+  loadAgentPlanCard: (agentId: string, serverId: string) => Promise<AgentPlanCardSettings | null>;
+  /** Owners and admins only; the host refuses a member. Resolves with the setting the host saved. */
+  updateAgentPlanCard: (input: UpdateAgentPlanCardInput, serverId: string) => Promise<AgentPlanCardSettings>;
   /** An owner or admin of an online host that serves `provider-accounts-v1`. The host checks the role again. */
   canManageProviderAccounts: (serverId: string) => boolean;
   /**
@@ -507,6 +704,18 @@ export interface MobileWorkspaceContextValue {
   loadAgentSessionSettings: (agentId: string, serverId: string) => Promise<AgentSessionSettings | null>;
   setAgentSessionSetting: (input: SetAgentSessionSettingInput, serverId: string) => Promise<AgentSessionSettings>;
   resetAgentSessionSetting: (input: ResetAgentSessionSettingInput, serverId: string) => Promise<AgentSessionSettings>;
+  /** An owner or admin of an online host that serves `agent-folders-v1`. The host checks the role again. */
+  canManageAgentFolders: (serverId: string) => boolean;
+  /** The folders that the agent can change besides its workspace. Owners and admins only. */
+  loadAgentFolders: (agentId: string, serverId: string) => Promise<AgentFolderList>;
+  /** With `replace`, the folder takes the place of a folder that was moved. */
+  addAgentFolder: (input: AddAgentFolderInput, serverId: string) => Promise<AgentFolderChange>;
+  removeAgentFolder: (input: AgentFolderInput, serverId: string) => Promise<AgentFolderChange>;
+  /** A folder in the agent's folders that it must not change. */
+  excludeAgentFolder: (input: AgentFolderInput, serverId: string) => Promise<AgentExclusionChange>;
+  includeAgentFolder: (input: AgentFolderInput, serverId: string) => Promise<AgentExclusionChange>;
+  /** The folders in one folder of the host computer; `path` null is the home folder. */
+  browseAgentFolders: (agentId: string, path: string | null, serverId: string) => Promise<AgentFolderBrowse>;
   startNewChat: (agentId: string, serverId: string) => Promise<void>;
   /** An owner or admin of an online host that serves `shared-tables-v1`. The host checks the role again. */
   canManageSharedTables: (serverId: string) => boolean;
@@ -542,21 +751,53 @@ export interface MobileWorkspaceContextValue {
   searchFiles: (query: string, serverId: string, cursor?: string) => Promise<ConversationFileSearchPage>;
   /** True when the host advertises `agent-tasks-v1`. A member who can message an agent can use its tasks. */
   canUseTasks: (serverId: string) => boolean;
+  /** True when the host advertises `agent-threads-v1`: a member who can message an agent can rename and delete its threads. */
+  canEditThreads: (serverId: string) => boolean;
+  /** True when the host advertises `agent-thread-reads-v1`: the host keeps the person's read mark of each thread. */
+  canReadThreads: (serverId: string) => boolean;
+  /** True when the host advertises `agent-thread-files-v1`: a message in a thread can carry files. */
+  canAttachThreadFiles: (serverId: string) => boolean;
+  /** True when the host advertises `workflows-v1`. The host shows each member the workflows of their agents. */
+  canUseWorkflows: (serverId: string) => boolean;
+  listWorkflows: (serverId: string) => Promise<WorkflowSummary[]>;
+  loadWorkflow: (workflowId: string, serverId: string) => Promise<WorkflowDetail>;
+  createWorkflow: (input: CreateWorkflowInput, serverId: string) => Promise<WorkflowDetail>;
+  renameWorkflow: (input: RenameWorkflowInput, serverId: string) => Promise<WorkflowSummary>;
+  deleteWorkflow: (workflowId: string, serverId: string) => Promise<void>;
+  /** Answers a conflict with the saved workflow when another device saved it first. */
+  saveWorkflowGraph: (input: SaveWorkflowGraphInput, serverId: string) => Promise<WorkflowSaveResult>;
+  /** The newest runs of a workflow, or the runs older than `before`. */
+  loadWorkflowRuns: (workflowId: string, serverId: string, before?: string) => Promise<WorkflowRunPage>;
+  loadWorkflowRun: (runId: string, serverId: string) => Promise<WorkflowRunDetail>;
+  startWorkflowRun: (workflowId: string, serverId: string) => Promise<WorkflowRunDetail>;
+  stopWorkflowRun: (runId: string, serverId: string) => Promise<void>;
+  retryWorkflowStep: (stepId: string, serverId: string) => Promise<WorkflowStep>;
+  decideWorkflowStep: (input: DecideWorkflowStepInput, serverId: string) => Promise<void>;
+  /** A new webhook secret, which the host shows once. Only an owner or admin can make one. */
+  rotateWorkflowWebhookSecret: (input: WorkflowTriggerInput, serverId: string) => Promise<WorkflowWebhookSecret>;
   /** The tasks of one agent. The host answers 404 for an agent that this member cannot see. */
   loadAgentTasks: (agentId: string, serverId: string) => Promise<AgentTasksSnapshot>;
   loadAgentTaskConversation: (input: AgentTaskInput, serverId: string) => Promise<ConversationSnapshot>;
-  /** `agent-tasks-v1` carries text only. */
+  /** Files need `canAttachThreadFiles`: `agent-tasks-v1` carries text only. */
   startAgentTask: (
-    input: { agentId: string; text: string; clientMessageId: string },
+    input: { agentId: string; text: string; attachmentDraftIds?: string[]; clientMessageId: string },
     serverId: string,
   ) => Promise<AgentTask>;
   /** Steers the running turn of the task, or queues the message in the task. */
   sendAgentTaskMessage: (
-    input: AgentTaskInput & { text: string; clientMessageId: string },
+    input: AgentTaskInput & { text: string; attachmentDraftIds?: string[]; clientMessageId: string },
     serverId: string,
   ) => Promise<QueuedMessageReceipt>;
   /** Stops the running turn of a task, closes the task, or reopens it. */
   controlAgentTask: (action: "stop" | "close" | "reopen", input: AgentTaskInput, serverId: string) => Promise<void>;
+  /** Renames a thread. The title then no longer follows its first message. */
+  renameAgentThread: (input: AgentTaskInput & { title: string }, serverId: string) => Promise<void>;
+  /** Deletes a thread, its conversation, its files and its queued messages for good. */
+  deleteAgentThread: (input: AgentTaskInput, serverId: string) => Promise<void>;
+  /** The person's read mark of each open thread of the agent. The member's devices share it. */
+  loadAgentThreadReads: (agentId: string, serverId: string) => Promise<AgentTaskReadState[]>;
+  /** Moves the person's read mark of a thread to a message that they see. */
+  markAgentThreadRead: (input: MarkAgentTaskReadInput, serverId: string) => Promise<AgentTaskReadState>;
   /** Answers a question of a task turn. The host finds the question by its request, on any thread. */
   respondToTaskPrompt: (input: RespondToPromptInput, serverId: string) => Promise<void>;
   loadConversation: (agentId: string, serverId?: string) => Promise<ConversationSnapshot>;
@@ -632,7 +873,12 @@ export type MobileWorkspaceCapabilityCheck =
   | "canInstallAgentTemplate"
   | "canSearchFiles"
   | "canUseTasks"
-  | "canReadServerStorage";
+  | "canEditThreads"
+  | "canReadThreads"
+  | "canAttachThreadFiles"
+  | "canUseWorkflows"
+  | "canReadServerStorage"
+  | "canSetAgentNotificationLevel";
 
 type MobileWorkspaceStateKey =
   | MobileWorkspaceCapabilityCheck
@@ -647,16 +893,25 @@ type MobileWorkspaceStateKey =
   | "hiddenAgents"
   | "pinnedAgentIds"
   | "pinnedChannelIds"
+  | "pinnedWorkflowIds"
   | "hiddenChannelIds"
   | "hidesAgentsOnServer"
   | "canUnhideAgent"
   | "canEditServerIdentity"
+  | "canRotateServerKey"
   | "canManageServerTimezone"
   | "canManageAgentMemoryLimit"
   | "canManageServerRoles"
   | "hasAgentAccessLimits"
   | "canManageConnectors"
   | "canManageOnePasswordConnector"
+  | "canManageBitwardenConnector"
+  | "canManageVault"
+  | "canImportVault"
+  | "canImportAgents"
+  | "canTransferServer"
+  | "canManageVaultApiKeys"
+  | "canManageBrowserProfiles"
   | "serverUpdateAccess"
   | "canReadServerRelease"
   | "canViewHostedSites"
@@ -673,8 +928,13 @@ type MobileWorkspaceStateKey =
   | "canManageAgentSkills"
   | "canManageAgentAccess"
   | "canManageAgentHostSettings"
+  | "canManageAgentBackupModels"
+  | "canManageAgentTaskLimit"
+  | "canManageAgentNewChat"
+  | "canManageAgentPlanCard"
   | "canManageProviderAccounts"
   | "canManageSharedTables"
+  | "canManageAgentFolders"
   | "canPublishAgent";
 
 /**

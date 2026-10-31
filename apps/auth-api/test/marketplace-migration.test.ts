@@ -70,7 +70,7 @@ describe("marketplace presentation migration", () => {
   it("stores the publisher's category and keeps consent when an older client submits a new version", async () => {
     const database = presentationDatabase();
     const agents = new AgentMarketplace({ DB: d1(database), SKILLS: unusedBucket() });
-    const user = { id: "user-1", name: "Owner", email: "owner@example.com", avatarUrl: null };
+    const user = { id: "user-1", name: "Owner", email: "owner@example.com", avatarUrl: null, analyticsEnabled: null };
     const snapshot = {
       botId: "local",
       name: "Writer",
@@ -167,6 +167,7 @@ function presentationDatabase(): DatabaseSync {
   database.exec(migration("0010_agents_marketplace.sql"));
   seedMarketplace(database);
   database.exec(migration("0019_marketplace_presentation.sql"));
+  database.exec(migration("0042_marketplace_skill_verified.sql"));
   database.exec("UPDATE users SET avatar_url = '/v1/avatars/user-1?v=one'");
   return database;
 }

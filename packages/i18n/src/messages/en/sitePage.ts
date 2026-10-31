@@ -51,9 +51,8 @@ export const messages = defineMessages("sitePage", {
   "sitePage.connect.failure.tabClosed":
     "The OpenBot tab that started the {name} connection did not answer. Open OpenBot in your browser and connect {name} again.",
   "sitePage.connect.failure.failed": "{name} did not finish the connection. Try again.",
-  // {serverSettings}, {connectors} and {connect} are the names of these screens and that button in the app.
-  "sitePage.connect.restartHint":
-    "In OpenBot, open {serverSettings}, then {connectors}, then {name}, and select {connect}.",
+  // {marketplace}, {apps} and {connect} are the names of these screens and that button in the app.
+  "sitePage.connect.restartHint": "In OpenBot, open {marketplace}, then {apps}, then {name}, and select {connect}.",
   "sitePage.connect.notOpened":
     "Start OpenBot, then try again. If OpenBot is not on this computer, download it and connect {name} from the app.",
   "sitePage.openApp.title": "Nothing opened?",
@@ -86,4 +85,13 @@ export const messages = defineMessages("sitePage", {
   "sitePage.report.sentTitle": "Report sent",
   "sitePage.report.sentBody": "Thanks. We received your report.",
   "sitePage.report.home": "Go to the home page",
+  "sitePage.pricing.title": "OpenBot pricing",
+  "sitePage.pricing.description":
+    "Hosted servers and a license for teams. OpenBot is free for personal use on your own computer.",
+  "sitePage.pricing.heading": "Pricing",
+  "sitePage.pricing.enterprise.title": "Enterprise",
+  // {count} is the largest number of members that the page sells, such as 25.
+  "sitePage.pricing.enterprise.body":
+    "Larger servers, more than {count} members, or anything else you need. With enterprise support.",
+  "sitePage.pricing.enterprise.contact": "Contact sales",
 });
