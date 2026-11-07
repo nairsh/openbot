@@ -9,6 +9,8 @@ import { For, Show } from "solid-js";
 export interface RepeatableColumn<T> {
   /** The accessible name of the field in row `number`, as `Model 1 ID`. */
   label: (number: number) => string;
+  /** A visible name over the field, as `Context window`. Without it, the placeholder names the field. */
+  caption?: string;
   /** The row is given so that one row can differ, as a saved value that an empty field keeps. */
   placeholder: (row: T) => string;
   maxlength: number;
@@ -79,23 +81,36 @@ export function RepeatableRows<T>(props: RepeatableRowsProps<T>) {
                   "custom-provider-row-single": props.columns.length === 1,
                   "custom-provider-row-triple": props.columns.length === 3,
                   "custom-provider-row-quad": props.columns.length === 4,
+                  "custom-provider-row-captioned": props.columns.some((column) => column.caption),
                 },
               ]}
             >
               <For each={props.columns}>
-                {(column) => (
-                  <Input
-                    aria-label={column.label(index() + 1)}
-                    value={column.read(row)}
-                    onValueChange={(value) => column.write(index(), value)}
-                    placeholder={column.placeholder(row)}
-                    autocomplete={column.identifier ? "off" : undefined}
-                    spellcheck={column.identifier ? false : undefined}
-                    inputmode={column.numeric ? "numeric" : undefined}
-                    maxlength={column.maxlength}
-                    disabled={props.busy}
-                  />
-                )}
+                {(column) => {
+                  const input = (
+                    <Input
+                      aria-label={column.label(index() + 1)}
+                      value={column.read(row)}
+                      onValueChange={(value) => column.write(index(), value)}
+                      placeholder={column.placeholder(row)}
+                      autocomplete={column.identifier ? "off" : undefined}
+                      spellcheck={column.identifier ? false : undefined}
+                      inputmode={column.numeric ? "numeric" : undefined}
+                      maxlength={column.maxlength}
+                      disabled={props.busy}
+                    />
+                  );
+                  return column.caption ? (
+                    <div class="custom-provider-row-field">
+                      <Text tone="muted" variant="caption">
+                        {column.caption}
+                      </Text>
+                      {input}
+                    </div>
+                  ) : (
+                    input
+                  );
+                }}
               </For>
               <IconButton
                 label={props.removeLabel(index() + 1)}

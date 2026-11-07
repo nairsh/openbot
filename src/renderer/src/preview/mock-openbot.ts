@@ -1649,6 +1649,12 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
         emitAgentEvent({ type: "status", status: clone(agentStatus) });
         return { providers: clone(customProviders), restart: "restarted" };
       },
+      // Preview sends nothing: a saved model answers with its own id.
+      testModel: async ({ id, modelId }) => {
+        const stored = customProviders.find((provider) => provider.id === id);
+        if (!stored?.models.some((model) => model.id === modelId)) throw new Error("This model is not saved.");
+        return `Hello from ${modelId}`;
+      },
     },
     // Preview starts no process: the names are kept, the values are dropped, and a check answers
     // for the command without running it.

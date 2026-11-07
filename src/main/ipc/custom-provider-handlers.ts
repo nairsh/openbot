@@ -6,6 +6,7 @@ import type { CustomProviderChanges } from "../custom-provider-changes";
 import {
   parseDeleteCustomProvider,
   parseSaveCustomProvider,
+  parseTestCustomProviderModel,
   parseUpdateCustomProvider,
 } from "./custom-provider-inputs";
 import { handler, type IpcGroupHandlers, payloadHandler } from "./define-ipc-group";
@@ -17,6 +18,7 @@ export function customProviderIpcHandlers(changes: CustomProviderChanges): Pick<
       save: payloadHandler(parseSaveCustomProvider, (input) => runCauseEffect(changes.save(input))),
       delete: payloadHandler(parseDeleteCustomProvider, ({ id }) => runCauseEffect(changes.remove(id))),
       update: payloadHandler(parseUpdateCustomProvider, (input) => runCauseEffect(changes.update(input))),
+      testModel: payloadHandler(parseTestCustomProviderModel, (input) => runCauseEffect(changes.testModel(input))),
     },
   };
 }

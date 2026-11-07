@@ -206,6 +206,15 @@ export interface DeleteCustomProviderInput {
   id: string;
 }
 
+/**
+ * Renderer to main, on this computer only: one short message to a saved model of a saved endpoint,
+ * through the provider that runs the endpoint. The answer is the model's reply.
+ */
+export interface TestCustomProviderModelInput {
+  id: string;
+  modelId: string;
+}
+
 /** Main to renderer. The key never comes back; `hasApiKey` is all the renderer may know about it. */
 export interface CustomProviderSummary {
   id: string;

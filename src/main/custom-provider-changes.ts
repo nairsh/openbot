@@ -1,5 +1,5 @@
 import { Effect, Semaphore } from "effect";
-import { type ProviderRuntimeFailure, runtimeSync, toProviderRuntimeFailure } from "./provider-runtime-effects";
+import { ProviderRuntimeFailure, runtimeSync, toProviderRuntimeFailure } from "./provider-runtime-effects";
 // The user's own model endpoints: list, add, remove. The local IPC handlers and the `providers-v1`
 // host routes share one instance, so a change from a joined admin and a change from this window
 // wait for each other.
@@ -14,9 +14,12 @@ import {
   type CustomProviderSummary,
   DEFAULT_CUSTOM_PROVIDER_HARNESS,
   type SaveCustomProviderInput,
+  type TestCustomProviderModelInput,
   type UpdateCustomProviderInput,
 } from "@openbot/contracts/ipc";
+import { sourceText } from "@openbot/i18n/source";
 import { AgentLifecycleFailed, type AgentService } from "../backend/agent-service";
+import { redactMcpValues } from "../backend/mcp-redaction";
 import type { CustomProviderStore } from "./custom-provider-store";
 import type { ProviderRuntimeManager } from "./provider-runtime-manager";
 
@@ -30,8 +33,9 @@ export interface CustomProviderChangeDependencies {
     | "removeCustomProvider"
     | "reloadCustomProviderConfig"
     | "startHarnessForMovedAgents"
+    | "testCustomProviderModel"
   >;
-  customProviders: Pick<CustomProviderStore, "list" | "save" | "checkUpdate" | "update" | "remove">;
+  customProviders: Pick<CustomProviderStore, "list" | "configs" | "save" | "checkUpdate" | "update" | "remove">;
   providerRuntimes: Pick<ProviderRuntimeManager, "startCustomProviderHarness">;
 }
 
@@ -42,6 +46,8 @@ export interface CustomProviderChanges {
   /** This computer only: the Team API routes take `PeerCustomProviderChanges`. */
   update(input: UpdateCustomProviderInput): Effect.Effect<CustomProviderResult, ProviderRuntimeFailure>;
   remove(id: string): Effect.Effect<CustomProviderResult, ProviderRuntimeFailure>;
+  /** This computer only. The model's reply; a failure names the endpoint's error without its secrets. */
+  testModel(input: TestCustomProviderModelInput): Effect.Effect<string, ProviderRuntimeFailure>;
 }
 
 export function createCustomProviderChanges({
@@ -186,7 +192,31 @@ export function createCustomProviderChanges({
           };
         })().pipe(Effect.uninterruptible),
       ),
+    /**
+     * One short message to a saved model, through the provider that runs the endpoint. It waits for
+     * no endpoint change, as a turn does not. The endpoint's error can quote the key or a header
+     * value, so the saved values are masked before the message leaves main.
+     */
+    testModel: (input) =>
+      Effect.fn("CustomProviderChanges.testModel")(function* () {
+        const failure = (message: string) => new ProviderRuntimeFailure({ cause: new Error(message) });
+        const config = customProviders.configs().find((provider) => provider.id === input.id);
+        if (!config?.models.some((model) => model.id === input.modelId))
+          return yield* failure(sourceText("error.provider.noModel"));
+        const secrets = [config.apiKey ?? "", ...config.headers.map((header) => header.value)].filter(Boolean);
+        return yield* service
+          .testCustomProviderModel(config.harness ?? DEFAULT_CUSTOM_PROVIDER_HARNESS, `${input.id}/${input.modelId}`)
+          .pipe(
+            // A generation failure keeps the provider's own text as its cause; that text says why.
+            Effect.mapError((error) => failure(redactMcpValues(providerText(error.cause), secrets))),
+          );
+      })(),
   };
+}
+
+function providerText(cause: unknown): string {
+  if (!(cause instanceof Error)) return String(cause);
+  return cause.cause instanceof Error ? cause.cause.message : cause.message;
 }
 
 /** What a joined admin may change through the Team API. There is no edit route. */

@@ -254,9 +254,29 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
 
   /** The OpenCode, Pi and Custom tabs split one wire provider so each model appears once. */
   function railModelOptions(rail: RailId): ClientAgentModelOption[] {
-    if (rail === CUSTOM_RAIL) return props.modelOptions.filter((option) => isCustomModel(option, customIds()));
-    return props.modelOptions.filter((option) => option.provider === rail && !isCustomModel(option, customIds()));
+    if (rail !== CUSTOM_RAIL)
+      return props.modelOptions.filter((option) => option.provider === rail && !isCustomModel(option, customIds()));
+    // Direct lists every endpoint as well. A model that the endpoint's own runtime lists shows once,
+    // from that runtime, unless the agent runs it on Direct now.
+    const harnessIds = new Set(
+      props.modelOptions
+        .filter((option) => isCustomEndpointModel(option.provider, option.id, customIds()))
+        .map((option) => option.id),
+    );
+    return props.modelOptions.filter(
+      (option) =>
+        isCustomModel(option, customIds()) &&
+        !(
+          option.provider === "direct" &&
+          harnessIds.has(option.id) &&
+          !(props.provider === "direct" && props.value === option.id)
+        ),
+    );
   }
+
+  /** A runtime that runs a saved endpoint is the endpoint's engine: its models are on the Custom tab. */
+  const runsEndpoints = (rail: RailId): boolean =>
+    rail !== CUSTOM_RAIL && [...customIds().values()].some((harness) => harness === rail);
 
   /**
    * The agents list is this computer's. A joined server's host sends no list, so the count comes from
@@ -346,6 +366,9 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
   /** A rail entry the user can choose a model from now, or soon: the agent's own entry always. */
   const entryUsable = (key: RailKey): boolean => {
     if (key === activeKey()) return true;
+    // Pi that runs an endpoint also reads the user's own Pi sign-ins, but it is not a provider to
+    // choose here. OpenCode keeps its tab: it is a provider of its own as well.
+    if (railOf(key) === "pi" && runsEndpoints("pi")) return false;
     if (
       railOf(key) === CUSTOM_RAIL &&
       !props.customProviders?.length &&

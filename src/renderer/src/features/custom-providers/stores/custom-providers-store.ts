@@ -2,6 +2,7 @@ import type {
   CustomProviderRestart,
   CustomProviderSummary,
   SaveCustomProviderInput,
+  TestCustomProviderModelInput,
   UpdateCustomProviderInput,
 } from "@openbot/contracts/ipc";
 import { currentText } from "@openbot/ui/text";
@@ -92,6 +93,13 @@ export function createCustomProvidersStore(api: () => CustomProvidersEndpointApi
     return result.restart;
   }
 
+  /** Only this computer's endpoints have `testModel`. The answer is the model's reply. */
+  async function testCustomProviderModel(input: TestCustomProviderModelInput): Promise<string> {
+    const testModel = api()?.testModel;
+    if (!testModel) throw new Error(currentText().t("customProvider.model.testFailed"));
+    return testModel(input);
+  }
+
   async function deleteCustomProvider(id: string): Promise<CustomProviderRestart> {
     const group = api();
     if (!group) throw new Error(currentText().t("customProvider.removeUnavailable"));
@@ -106,6 +114,7 @@ export function createCustomProvidersStore(api: () => CustomProvidersEndpointApi
     refreshCustomProviders,
     saveCustomProvider,
     updateCustomProvider,
+    testCustomProviderModel,
     deleteCustomProvider,
   };
 }

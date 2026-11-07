@@ -14,6 +14,7 @@ import {
   type ProviderRuntimeDownload,
   type ProviderRuntimeStatus,
   type SaveCustomProviderInput,
+  type TestCustomProviderModelInput,
   type UpdateCustomProviderInput,
 } from "@openbot/contracts/ipc";
 import { Text } from "@openbot/ui";
@@ -30,7 +31,11 @@ import {
 } from "@openbot/ui/features/custom-providers/CustomAgentSettings";
 import { CustomProviderDialog } from "@openbot/ui/features/custom-providers/CustomProviderDialog";
 import { CustomProviderPresetDialog } from "@openbot/ui/features/custom-providers/CustomProviderPresetDialog";
-import { savedCustomProviderDraft } from "@openbot/ui/features/custom-providers/custom-provider-form";
+import {
+  type CustomProviderEndpoint,
+  type ModelDiscovery,
+  savedCustomProviderDraft,
+} from "@openbot/ui/features/custom-providers/custom-provider-form";
 import { localServerProbes, presetSetupProvider } from "@openbot/ui/features/custom-providers/custom-provider-presets";
 import { DetectedProviderSetup } from "@openbot/ui/features/custom-providers/DetectedProviderSetup";
 import { DetectedProviders } from "@openbot/ui/features/custom-providers/DetectedProviders";
@@ -98,6 +103,8 @@ interface ProviderSettingsSectionProps {
   onDeleteCustomProvider?: ((id: string) => Promise<CustomProviderRestart>) | undefined;
   /** Without it the rows have no Edit. This computer only: the Team API has no edit route. */
   onUpdateCustomProvider?: ((input: UpdateCustomProviderInput) => Promise<CustomProviderRestart>) | undefined;
+  /** This computer only, like `onUpdateCustomProvider`: one message to a saved model, answered by its reply. */
+  onTestCustomProviderModel?: ((input: TestCustomProviderModelInput) => Promise<string>) | undefined;
   onSignInProvider?: ((provider: AgentProviderId) => void | Promise<void>) | undefined;
   /** Adds, names and removes the accounts of each provider that can hold more than one. */
   accountActions?: ProviderAccountActions | undefined;
@@ -239,6 +246,29 @@ function ProviderSettingsSection(props: ProviderSettingsSectionProps) {
     },
   });
   const editing = () => host.state.editing;
+  // The models that "Fetch models" lists in the endpoint form. Cancel and save clear the list.
+  const [discovery, setDiscovery] = createSignal<ModelDiscovery>({ status: "idle" });
+  async function discoverModels(endpoint: CustomProviderEndpoint): Promise<void> {
+    const discover = props.detectedProviderApi?.discoverModels;
+    if (!discover) return;
+    setDiscovery({ status: "loading" });
+    const saved = editing();
+    try {
+      const models = await discover(saved ? { ...endpoint, savedProviderId: saved.id } : endpoint);
+      setDiscovery({ status: "found", models });
+    } catch (error) {
+      setDiscovery({
+        status: "failed",
+        message: i18n.errorMessage(error, i18n.t("customProvider.discovery.empty")),
+      });
+    }
+  }
+  /** Test only on Edit: it sends the saved endpoint, and a new one is not saved yet. */
+  const testModel = () => {
+    const test = props.onTestCustomProviderModel;
+    const saved = editing();
+    return test && saved ? (modelId: string) => test({ id: saved.id, modelId }) : undefined;
+  };
   const editDraft = () => {
     const provider = editing();
     return provider ? savedCustomProviderDraft(provider) : undefined;
@@ -343,8 +373,19 @@ function ProviderSettingsSection(props: ProviderSettingsSectionProps) {
           busy={host.state.saving}
           submitError={host.state.submitError}
           takenProviderIds={customProviders().map((provider) => provider.id)}
-          onSubmit={(value) => void host.submit(value)}
-          onCancel={host.closeForm}
+          discovery={discovery()}
+          onDiscoverModels={
+            props.detectedProviderApi?.discoverModels ? (endpoint) => void discoverModels(endpoint) : undefined
+          }
+          onTestModel={testModel()}
+          onSubmit={(value) => {
+            setDiscovery({ status: "idle" });
+            void host.submit(value);
+          }}
+          onCancel={() => {
+            setDiscovery({ status: "idle" });
+            host.closeForm();
+          }}
         />
       </Show>
       <Show when={detectedApi()}>
@@ -534,6 +575,8 @@ export interface HostProviderSettings {
   onDeleteCustomProvider?: ((id: string) => Promise<CustomProviderRestart>) | undefined;
   /** This computer only: the Team API has no edit route, so a joined server's section has no Edit. */
   onUpdateCustomProvider?: ((input: UpdateCustomProviderInput) => Promise<CustomProviderRestart>) | undefined;
+  /** This computer only, like `onUpdateCustomProvider`: one message to a saved model, answered by its reply. */
+  onTestCustomProviderModel?: ((input: TestCustomProviderModelInput) => Promise<string>) | undefined;
   providerKeys?: ProviderKeyApi | undefined;
   /** How each row signs in, from where the user connects. */
   connection?: ProviderConnectionApi | undefined;
@@ -637,6 +680,7 @@ export function HostProviderSettingsPanel(
         customProviders={props.customProviders}
         onDeleteCustomProvider={props.onDeleteCustomProvider}
         onUpdateCustomProvider={props.onUpdateCustomProvider}
+        onTestCustomProviderModel={props.onTestCustomProviderModel}
         accountActions={props.accountActions}
         // With detection off there is no list, not an empty one.
         providerDetection={props.detectionSettings?.enabled === false ? undefined : props.providerDetection}

@@ -96,6 +96,15 @@ export const messages = defineMessages("customProvider", {
   "customProvider.model.foundValuesHint": "Some values come from the endpoint. You can change them.",
   "customProvider.model.remove": "Remove model {number}",
   "customProvider.model.add": "Add model",
+  "customProvider.model.idCaption": "Model ID",
+  "customProvider.model.contextWindowCaption": "Context window",
+  "customProvider.model.maxOutputCaption": "Max output",
+  "customProvider.model.test": "Test",
+  "customProvider.model.testLabel": "Test model {number}",
+  "customProvider.model.testRunning": "Sending a test message.",
+  "customProvider.model.testReply": "Reply: {text}",
+  "customProvider.model.testFailed": "The test failed.",
+  "customProvider.model.testSaveFirst": "Save this model to test it.",
   "customProvider.headers": "Headers",
   "customProvider.header.name": "Header {number} name",
   "customProvider.header.value": "Header {number} value",
@@ -106,8 +115,8 @@ export const messages = defineMessages("customProvider", {
   "customProvider.submit": "Submit",
 
   // Model discovery. OpenBot asks the endpoint for its model list, and the user picks from it.
-  "customProvider.discovery.find": "Find models",
-  "customProvider.discovery.refresh": "Find again",
+  "customProvider.discovery.find": "Fetch models",
+  "customProvider.discovery.refresh": "Fetch again",
   "customProvider.discovery.loading": "Asking {url} for its models.",
   "customProvider.discovery.found": {
     one: "The endpoint lists {count} model. Select the models to add.",

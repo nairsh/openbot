@@ -136,6 +136,82 @@
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(9ch, 0.8fr) minmax(9ch, 0.8fr) auto;
 }
 
+/* A field with its visible name over it: the name stays when the field holds a value. */
+.custom-provider-row-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--openbot-space-1);
+}
+
+/* A row with named fields aligns the remove control with the fields, not with their names. */
+.custom-provider-row-inputs.custom-provider-row-captioned {
+  align-items: end;
+}
+
+/* A model with its two token counts is a card of its own. The ID and the name each take a full
+ * line, so a long value shows in full; the two counts share the last line. */
+.custom-provider-row:has(.custom-provider-row-quad) {
+  gap: var(--openbot-space-2);
+  border: 1px solid var(--openbot-border);
+  border-radius: var(--openbot-radius-md);
+  padding: var(--openbot-space-3);
+}
+
+.custom-provider-row-inputs.custom-provider-row-quad.custom-provider-row-captioned {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.custom-provider-row-quad.custom-provider-row-captioned > :nth-child(1) {
+  grid-area: 1 / 1 / 2 / 3;
+}
+
+.custom-provider-row-quad.custom-provider-row-captioned > :nth-child(2) {
+  grid-area: 2 / 1 / 3 / 3;
+}
+
+.custom-provider-row-quad.custom-provider-row-captioned > :nth-child(3) {
+  grid-area: 3 / 1;
+}
+
+.custom-provider-row-quad.custom-provider-row-captioned > :nth-child(4) {
+  grid-area: 3 / 2;
+}
+
+.custom-provider-row-quad.custom-provider-row-captioned > .ui-icon-button {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+/* The efforts and the input kinds of one model share a line when the dialog has room. */
+.custom-provider-model-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--openbot-space-2) var(--openbot-space-4);
+}
+
+.custom-provider-effort-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--openbot-space-1);
+}
+
+.custom-provider-model-test {
+  display: flex;
+  align-items: center;
+  gap: var(--openbot-space-2);
+  min-width: 0;
+}
+
+.custom-provider-model-test-result {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--openbot-space-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* The efforts of one model, under its fields. They wrap on a narrow dialog. */
 .custom-provider-efforts {
   min-width: 0;

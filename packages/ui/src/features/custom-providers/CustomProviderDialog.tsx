@@ -160,13 +160,20 @@ interface CustomProviderDialogProps {
    */
   discovery?: ModelDiscovery | undefined;
   onDiscoverModels?: ((endpoint: CustomProviderEndpoint) => void) | undefined;
+  /**
+   * Sends one short message to a saved model of the saved endpoint and answers its reply. Without it,
+   * the rows have no Test control. This computer only.
+   */
+  onTestModel?: ((modelId: string) => Promise<string>) | undefined;
   onSubmit: (value: SaveCustomProviderInput) => void;
   onCancel: () => void;
   onBack?: (() => void) | undefined;
 }
 
+type ModelTest = { status: "running"; text?: undefined } | { status: "replied" | "failed"; text: string };
+
 export function CustomProviderDialog(props: CustomProviderDialogProps) {
-  const { t, format } = useText();
+  const { t, format, errorMessage } = useText();
   // The form owns its state from here on: the incoming draft is read once, as a snapshot, so later
   // edits by the caller do not reach in and overwrite what the user is typing.
   const [draft, setDraft] = createStore<CustomProviderDraft>(
@@ -178,6 +185,12 @@ export function CustomProviderDialog(props: CustomProviderDialogProps) {
 
   // Set by a Find click: the list that it gets fills the empty fields of the rows (#3946).
   let fillNextList = false;
+
+  /**
+   * The test of each model, by its saved id. The host sends the saved endpoint, so only a model that
+   * the form opened with can be tested; an edit applies after Save.
+   */
+  const [tests, setTests] = createStore<Record<string, ModelTest>>({});
 
   /**
    * Both hosts keep this dialog mounted after a close, and the draft above is a snapshot, so without
@@ -192,6 +205,9 @@ export function CustomProviderDialog(props: CustomProviderDialogProps) {
       const next = untrack(() => props.draft);
       setDraft(() => (next ? cloneDraft(next) : emptyCustomProviderDraft()));
       setSubmitted(untrack(() => Boolean(props.showErrors)));
+      setTests((state) => {
+        for (const id of Object.keys(state)) delete state[id];
+      });
       fillNextList = false;
     },
   );
@@ -237,6 +253,7 @@ export function CustomProviderDialog(props: CustomProviderDialogProps) {
   const modelNameColumns: readonly [RepeatableColumn<ModelRow>, RepeatableColumn<ModelRow>] = [
     {
       label: (number) => t("customProvider.model.id", { number }),
+      caption: t("customProvider.model.idCaption"),
       placeholder: () => MODEL_ID_PLACEHOLDER,
       maxlength: INPUT_LIMITS.modelName,
       identifier: true,
@@ -249,6 +266,7 @@ export function CustomProviderDialog(props: CustomProviderDialogProps) {
     },
     {
       label: (number) => t("customProvider.model.name", { number }),
+      caption: t("customProvider.field.displayName"),
       placeholder: () => t("customProvider.model.namePlaceholder"),
       maxlength: INPUT_LIMITS.modelName,
       read: (row) => row.name,
@@ -262,6 +280,7 @@ export function CustomProviderDialog(props: CustomProviderDialogProps) {
 
   const contextWindowColumn: RepeatableColumn<ModelRow> = {
     label: (number) => t("customProvider.model.contextWindow", { number }),
+    caption: t("customProvider.model.contextWindowCaption"),
     placeholder: () => t("customProvider.model.contextWindowPlaceholder"),
     // `100,000,000` with its separators.
     maxlength: 16,
@@ -276,6 +295,7 @@ export function CustomProviderDialog(props: CustomProviderDialogProps) {
   };
   const maxOutputColumn: RepeatableColumn<ModelRow> = {
     label: (number) => t("customProvider.model.maxOutput", { number }),
+    caption: t("customProvider.model.maxOutputCaption"),
     placeholder: () => t("customProvider.model.maxOutputPlaceholder"),
     maxlength: 16,
     identifier: true,
@@ -312,25 +332,30 @@ export function CustomProviderDialog(props: CustomProviderDialogProps) {
   }
 
   /** The efforts of one model row. None checked keeps the efforts of the provider that runs it. */
-  const effortsId = createUniqueId();
   const effortsRow = (row: ModelRow, index: () => number) => (
     <fieldset class="custom-provider-efforts" aria-label={t("customProvider.model.efforts", { number: index() + 1 })}>
       <Text tone="muted" variant="caption" aria-hidden="true">
         {t("customProvider.model.effortsLabel")}
       </Text>
-      <For each={CUSTOM_PROVIDER_REASONING_EFFORTS}>
-        {(effort) => (
-          <label class="custom-provider-effort" for={`${effortsId}-${index()}-${effort}`}>
-            <Checkbox
-              id={`${effortsId}-${index()}-${effort}`}
-              checked={row.reasoningEfforts?.includes(effort) ?? false}
-              disabled={busy()}
-              onChange={(event) => setEffort(index(), effort, event.currentTarget.checked)}
-            />
-            <Text variant="body-sm">{t(REASONING_LABEL[effort])}</Text>
-          </label>
-        )}
-      </For>
+      <div class="custom-provider-effort-toggles">
+        <For each={CUSTOM_PROVIDER_REASONING_EFFORTS}>
+          {(effort) => {
+            const on = () => row.reasoningEfforts?.includes(effort) ?? false;
+            return (
+              <Button
+                type="button"
+                size="xs"
+                variant={on() ? "secondary" : "ghost"}
+                aria-pressed={on() ? "true" : "false"}
+                disabled={busy()}
+                onClick={() => setEffort(index(), effort, !on())}
+              >
+                {t(REASONING_LABEL[effort])}
+              </Button>
+            );
+          }}
+        </For>
+      </div>
     </fieldset>
   );
 
@@ -377,10 +402,78 @@ export function CustomProviderDialog(props: CustomProviderDialogProps) {
     </fieldset>
   );
 
+  const savedModel = (row: ModelRow): boolean =>
+    Boolean(row.id.trim()) && (untrack(() => props.draft?.models) ?? []).some((model) => model.id === row.id.trim());
+  async function runTest(modelId: string): Promise<void> {
+    const test = props.onTestModel;
+    if (!test) return;
+    const record = (result: ModelTest) =>
+      setTests((state) => {
+        state[modelId] = result;
+      });
+    record({ status: "running" });
+    try {
+      record({ status: "replied", text: await test(modelId) });
+    } catch (error) {
+      record({ status: "failed", text: errorMessage(error, t("customProvider.model.testFailed")) });
+    }
+  }
+  const testRow = (row: ModelRow, index: () => number) => (
+    <Show when={props.onTestModel}>
+      <div class="custom-provider-model-test">
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          aria-label={t("customProvider.model.testLabel", { number: index() + 1 })}
+          disabled={busy() || !savedModel(row) || tests[row.id.trim()]?.status === "running"}
+          onClick={() => void runTest(row.id.trim())}
+        >
+          {t("customProvider.model.test")}
+        </Button>
+        <Switch
+          fallback={
+            <Show when={!savedModel(row)}>
+              <Text tone="muted" variant="caption">
+                {t("customProvider.model.testSaveFirst")}
+              </Text>
+            </Show>
+          }
+        >
+          <Match when={tests[row.id.trim()]?.status === "running"}>
+            <span class="custom-provider-model-test-result" role="status">
+              <Spinner size="sm" />
+              <Text tone="muted" variant="caption">
+                {t("customProvider.model.testRunning")}
+              </Text>
+            </span>
+          </Match>
+          <Match when={tests[row.id.trim()]}>
+            {(result) => (
+              <Text
+                class="custom-provider-model-test-result"
+                tone={result().status === "failed" ? "danger" : "muted"}
+                variant="caption"
+                role={result().status === "failed" ? "alert" : "status"}
+              >
+                {result().status === "replied"
+                  ? t("customProvider.model.testReply", { text: result().text ?? "" })
+                  : result().text}
+              </Text>
+            )}
+          </Match>
+        </Switch>
+      </div>
+    </Show>
+  );
+
   const modelDetails = (row: ModelRow, index: () => number) => (
     <>
-      {effortsRow(row, index)}
-      {inputsRow(row, index)}
+      <div class="custom-provider-model-options">
+        {effortsRow(row, index)}
+        {inputsRow(row, index)}
+      </div>
+      {testRow(row, index)}
     </>
   );
 

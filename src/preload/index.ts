@@ -1098,6 +1098,7 @@ const openbotApi: OpenBotDesktopApi = {
     save: decodeCustomProviderResult,
     delete: decodeCustomProviderResult,
     update: decodeCustomProviderResult,
+    testModel: decodeSideQuestionAnswer,
   }),
   acpRegistry: bridgeGroup(IPC_ENDPOINTS.acpRegistry, {
     search: decodeRegistryEntries,
