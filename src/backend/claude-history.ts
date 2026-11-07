@@ -259,8 +259,10 @@ async function buildIndex(
       const parsed = record.complete ? parseRecord(record.line.trim()) : null;
       if (parsed) {
         const text = messageText(parsed.message);
+        // A meta record, such as the skill text that the Skill tool adds, is part of the running turn.
         const visibleUser =
           parsed.type === "user" &&
+          parsed.isMeta !== true &&
           text.length > 0 &&
           !isClaudeInterruptMarker(text) &&
           !isClaudeCompactionSummary(text) &&
@@ -332,6 +334,9 @@ async function* readTranscriptLines(
   }
 }
 
+/** Change it when the index rows change meaning. An index of another format is built again. */
+const INDEX_FORMAT = "2";
+
 interface HistoryState extends FileIdentity {
   scanOffset: number;
   scanHash: string;
@@ -346,6 +351,7 @@ function readHistoryState(database: DatabaseSync): HistoryState | null {
   let prefixHashValue: string | undefined;
   let offsetValue: string | undefined;
   let scanHashValue: string | undefined;
+  let formatValue: string | undefined;
   for (const raw of read.iterate()) {
     const row = databaseRow(raw);
     if (!row) throw new Error("Invalid Claude history index row.");
@@ -358,8 +364,10 @@ function readHistoryState(database: DatabaseSync): HistoryState | null {
     else if (key === "prefix_hash") prefixHashValue = value;
     else if (key === "scan_offset") offsetValue = value;
     else if (key === "scan_hash") scanHashValue = value;
+    else if (key === "format") formatValue = value;
   }
   if (
+    formatValue !== INDEX_FORMAT ||
     devValue === undefined ||
     inoValue === undefined ||
     sizeValue === undefined ||
@@ -391,6 +399,7 @@ function writeHistoryState(database: DatabaseSync, identity: FileIdentity, scanO
     ["prefix_hash", identity.prefixHash],
     ["scan_offset", scanOffset],
     ["scan_hash", scanHash],
+    ["format", INDEX_FORMAT],
   ] as const) {
     write.run(key, String(value));
   }
