@@ -51,7 +51,7 @@ const PRESENTATION: AgentDockPresentation = {
   chats: [
     {
       agentId: "agent-1",
-      messages: [{ id: "m1", author: "agent", kind: "text", body: "Hello", attachments: [] }],
+      messages: [{ id: "m1", author: "agent", kind: "text", body: "Hello", attachments: [], reactions: [] }],
       working: true,
       wait: null,
     },

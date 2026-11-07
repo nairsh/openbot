@@ -161,6 +161,7 @@ export function AgentDockSurface() {
           body: message.body,
           time: "",
           attachments: message.attachments,
+          reactions: message.reactions,
         }),
       );
       byAgent.set(chat.agentId, { messages, working: chat.working, wait: chat.wait });

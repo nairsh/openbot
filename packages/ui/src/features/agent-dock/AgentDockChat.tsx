@@ -3,11 +3,13 @@
  * Tool steps, plans and other timeline items stay in the main window, which opens from the ⋯ menu.
  */
 
+import type { ConversationReaction } from "@openbot/contracts/ipc";
 import {
   AppWindow,
   ArrowUp,
   Bubble,
   BubbleContent,
+  BubbleReactions,
   Button,
   DropdownMenu,
   Ellipsis,
@@ -85,6 +87,13 @@ export function isDockMessage(message: AgentMessage): boolean {
   if (message.author !== "you" && message.author !== "agent") return false;
   if (message.kind !== undefined && message.kind !== "text" && message.kind !== "error") return false;
   return message.body.trim().length > 0;
+}
+
+/** The reactions that a message shows, as the main chat shows them: the full list, or else the older single fields. */
+export function dockReactions(message: AgentMessage): readonly ConversationReaction[] {
+  if (message.reactions?.length) return message.reactions;
+  if (message.reaction) return [{ emoji: message.reaction, actor: { kind: "user" } }];
+  return (message.reactionSummary?.emojis ?? []).map((emoji) => ({ emoji, actor: { kind: "user" } }));
 }
 
 /**
@@ -339,6 +348,22 @@ export function AgentDockChat(props: {
                         />
                       </div>
                     </BubbleContent>
+                    <Show when={dockReactions(message).length > 0}>
+                      <BubbleReactions
+                        class="agent-dock-reactions"
+                        align={message.author === "you" ? "start" : "end"}
+                        role="img"
+                        aria-label={t("chat.row.reactions", {
+                          emoji: dockReactions(message)
+                            .map((reaction) => reaction.emoji)
+                            .join(", "),
+                        })}
+                      >
+                        <For each={dockReactions(message)}>
+                          {(reaction) => <span aria-hidden="true">{reaction.emoji}</span>}
+                        </For>
+                      </BubbleReactions>
+                    </Show>
                   </Bubble>
                 )}
               </For>
