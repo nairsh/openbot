@@ -190,17 +190,14 @@ function createServerDock(serverId: string, options: { readWhenHidden: boolean }
 function WindowAgentDock(props: { serverId: string }) {
   const { sendMessage } = useConversation();
   const { selectAgent } = useNavigation();
-  const { openAppSettings } = useSettings();
   const dock = createServerDock(props.serverId, { readWhenHidden: false });
   const voice = createAgentDockVoice(() => props.serverId);
 
   return (
     <AgentDock
       seats={dock.seats()}
-      available={dock.available()}
       chat={dock.chat}
       onOpenChange={dock.openChat}
-      onAdd={dock.add}
       onRemove={dock.remove}
       onSend={(agentId, text) => sendMessage(text, [], null, { agentId, serverId: props.serverId })}
       onOpenInMain={(agentId) => selectAgent(agentId)}
@@ -209,7 +206,6 @@ function WindowAgentDock(props: { serverId: string }) {
       agents={dock.agents()}
       onSelectAgent={(agentId) => selectAgent(agentId)}
       onOpenLink={(url) => void appPort().openUrl(url)}
-      onOpenSettings={() => openAppSettings(null, "agent-dock")}
       results={dock.results()}
     />
   );

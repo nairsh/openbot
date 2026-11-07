@@ -48,8 +48,6 @@ export const messages = {
   "agent.deleteUndo.action": "تراجع",
   "agent.dock.label": "شريط الوكلاء",
   "agent.dock.chatWith": "الدردشة مع {name}",
-  "agent.dock.add": "إضافة وكيل إلى الشريط",
-  "agent.dock.allAdded": "جميع وكلائك في الشريط",
   "agent.dock.more": "المزيد",
   "agent.dock.openInMain": "فتح في النافذة الرئيسية",
   "agent.dock.openWindow": "فتح في نافذة جديدة",
@@ -58,7 +56,6 @@ export const messages = {
   "agent.dock.working": "يعمل…",
   "agent.dock.writing": "{name} يكتب",
   "agent.dock.empty": "لا توجد رسائل بعد. اكتب إلى {name}.",
-  "agent.dock.settings": "إعدادات الشريط",
   "agent.dock.finished.label": "العمل المنجز",
   "agent.dock.finished.result": "{label}، من {name}",
   "agent.dock.finished.more": {

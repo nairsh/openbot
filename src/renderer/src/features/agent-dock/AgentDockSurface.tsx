@@ -188,7 +188,6 @@ export function AgentDockSurface() {
       {(server) => (
         <AgentDock
           seats={seats()}
-          available={presentation()?.available ?? []}
           chat={chat}
           closeRequest={closeRequest()}
           voice={voice}
@@ -206,7 +205,6 @@ export function AgentDockSurface() {
             sync();
             void perform({ type: "open-chat", serverId: server, agentId }).catch(() => undefined);
           }}
-          onAdd={(agentId) => void perform({ type: "add", serverId: server, agentId }).catch(() => undefined)}
           onRemove={(agentId) => void perform({ type: "remove", serverId: server, agentId }).catch(() => undefined)}
           onSend={async (agentId, text) => {
             const clientMessageId =
@@ -233,7 +231,6 @@ export function AgentDockSurface() {
             void perform({ type: "open-agent", serverId: server, agentId }).catch(() => undefined)
           }
           onOpenLink={(url) => void perform({ type: "open-link", url }).catch(() => undefined)}
-          onOpenSettings={() => void perform({ type: "open-settings" }).catch(() => undefined)}
           results={results()}
           onShelfChange={(shown) => {
             // A result that came shows the hidden dock until the shelf is empty.

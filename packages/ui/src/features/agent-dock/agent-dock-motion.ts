@@ -69,14 +69,14 @@ export const LIQUID_WIDTH = STAGE_WIDTH + LIQUID_PAD + 60;
 export const LIQUID_HEIGHT = PANEL_HEIGHT + LIQUID_PAD * 2;
 
 export function dockHeight(seats: number): number {
-  return DOCK_PAD * 2 + (seats + 1) * SEAT + seats * SEAT_GAP;
+  return DOCK_PAD * 2 + seats * SEAT + Math.max(0, seats - 1) * SEAT_GAP;
 }
 
 function dockTop(seats: number): number {
   return (PANEL_HEIGHT - dockHeight(seats)) / 2;
 }
 
-/** The centre y of a seat. Index `seats` is the add button. */
+/** The centre y of a seat. Index `seats` is one place below the last seat. */
 export function seatCenterY(index: number, seats: number): number {
   return dockTop(seats) + DOCK_PAD + index * (SEAT + SEAT_GAP) + SEAT / 2;
 }

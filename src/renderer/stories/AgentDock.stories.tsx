@@ -151,7 +151,6 @@ function AgentDockStory(props: { seats: string[]; results?: AgentDockShelfResult
     <div style={{ height: "100vh", background: "var(--openbot-bg-canvas)" }}>
       <AgentDock
         seats={seats()}
-        available={AGENTS.filter((agent) => !state.seats.includes(agent.id))}
         chat={chat}
         results={state.results}
         onOpenChange={(agentId) =>
@@ -159,11 +158,6 @@ function AgentDockStory(props: { seats: string[]; results?: AgentDockShelfResult
             for (let index = draft.results.length - 1; index >= 0; index -= 1) {
               if (draft.results[index]?.agentId === agentId) draft.results.splice(index, 1);
             }
-          })
-        }
-        onAdd={(agentId) =>
-          setState((draft) => {
-            draft.seats.push(agentId);
           })
         }
         onRemove={(agentId) =>
