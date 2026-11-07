@@ -101,10 +101,9 @@ function messagePreview(text: string): string {
 
 export function conversationBubbleVariant(message: AgentMessage): BubbleVariant {
   if (message.author === "you") return "secondary";
+  // A reply with a code block, chart or other rich block keeps the bubble too, so every reply looks the same.
   if (message.imageGeneration || (!message.body.trim() && message.attachments?.length)) return "ghost";
-  const contentBlocks = sharedContentBlocks(message.body, message.streaming === true);
-  if (contentBlocks.some((block) => block.type === "table" || block.type === "comparison-table")) return "muted";
-  return contentBlocks.some((block) => block.type !== "text") ? "ghost" : "muted";
+  return "muted";
 }
 
 function cssDurationMs(style: CSSStyleDeclaration, property: string, fallback: number): number {

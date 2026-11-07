@@ -5,4 +5,5 @@
 - A working agent's avatar no longer shows three dots.
 - An agent's message actions float at the right end of the message, so its answers stay stacked.
   "Worked for 29s" moved to the message's right-click menu, where it opens the trace.
+- An agent's reply with a code block or another rich block shows in a bubble, like other replies.
 - A live voice call shows in the chat as one "Voice call" row. Open it to see the messages of the call.
