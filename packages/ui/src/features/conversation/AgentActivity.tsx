@@ -3,6 +3,7 @@ import type { AppTextKey } from "@openbot/i18n";
 import type { JSX } from "@solidjs/web";
 import { createEffect, createMemo, createSignal, createUniqueId, Show } from "solid-js";
 import { Button } from "../../button";
+import { TypingDots } from "../../components/TypingDots";
 import type { AgentProfile } from "../../data";
 import { ChevronDown } from "../../icons";
 import { useText } from "../../text";
@@ -114,8 +115,10 @@ export function AgentActivityIndicator(props: {
     if (provider) return t("chat.activity.waitingFor", { provider });
     return detail() ?? t(agentActivityLabelKey(props.label));
   };
-  /** The text on the line. A plain line with no named step says that the agent types. */
-  const shownLabel = () => (props.plain && !props.waitingFor && !detail() ? t("chat.activity.typing") : label());
+  /** A plain line with no named step shows that the agent types: three dots in a reply bubble. */
+  const typing = () => Boolean(props.plain && !props.waitingFor && !detail());
+  /** The text on the line. */
+  const shownLabel = () => (typing() ? null : label());
   const statusLabel = () => {
     const name = props.agent?.name ?? t("chat.activity.agentFallback");
     const provider = props.waitingFor;
@@ -158,9 +161,18 @@ export function AgentActivityIndicator(props: {
           when={plain()}
           fallback={<Show when={shownLabel()}>{(text) => <span class="agent-activity-label">{text()}</span>}</Show>}
         >
-          {/* Keyed, so that each new label is a new element and plays its entrance. */}
-          <Show when={shownLabel()} keyed>
-            {(text) => <span class="agent-activity-label">{text}</span>}
+          <Show
+            when={!typing()}
+            fallback={
+              <span class="agent-activity-typing">
+                <TypingDots class="agent-activity-typing-dots" />
+              </span>
+            }
+          >
+            {/* Keyed, so that each new label is a new element and plays its entrance. */}
+            <Show when={shownLabel()} keyed>
+              {(text) => <span class="agent-activity-label">{text}</span>}
+            </Show>
           </Show>
         </Show>
         <Show when={elapsed()}>{(time) => <span class="agent-activity-elapsed">{time()}</span>}</Show>

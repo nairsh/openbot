@@ -16,7 +16,7 @@ import {
   PanelRight,
   X,
 } from "@openbot/ui";
-import { createMemo, For, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import type { AvatarMood } from "../../bloub-avatar";
 import { createScrollFades } from "../../components/createScrollFades";
 import { TypingDots } from "../../components/TypingDots";
@@ -218,6 +218,26 @@ export function AgentDockChat(props: {
     );
   }
 
+  /*
+   * As in the main window, text that wraps in the one-line composer moves it to the tall layout until the
+   * draft is empty. Measuring the tall layout would unwrap the text and flip the layout on each key.
+   */
+  let composer: HTMLFormElement | undefined;
+  const [textWrapped, setTextWrapped] = createSignal(false);
+  createEffect(
+    () => props.draft,
+    (text) => {
+      if (!text) {
+        setTextWrapped(false);
+        return;
+      }
+      const surface = composer?.querySelector<HTMLElement>(".composer-editor-surface");
+      if (!composer?.hasAttribute("data-compact") || !surface) return;
+      // One line is about 20px high and the surface has 4px of padding above and below.
+      if (surface.scrollHeight > 36) setTextWrapped(true);
+    },
+  );
+
   const sizes = new ResizeObserver(() => {
     keepAtEnd();
     fades.measure();
@@ -303,6 +323,7 @@ export function AgentDockChat(props: {
                     align={message.author === "you" ? "end" : "start"}
                     variant={message.author === "you" ? "secondary" : "muted"}
                     class="agent-dock-bubble"
+                    data-author={message.author === "you" ? "user" : "assistant"}
                     data-error={message.kind === "error" ? "" : undefined}
                   >
                     <BubbleContent>
@@ -323,7 +344,7 @@ export function AgentDockChat(props: {
               </For>
               <For each={pending()}>
                 {(message) => (
-                  <Bubble align="end" variant="secondary" class="agent-dock-bubble" data-pending="">
+                  <Bubble align="end" variant="secondary" class="agent-dock-bubble" data-author="user" data-pending="">
                     <BubbleContent>
                       <p class="agent-dock-text">{message.text}</p>
                     </BubbleContent>
@@ -332,7 +353,7 @@ export function AgentDockChat(props: {
               </For>
             </Show>
             <Show when={props.chat.working && !props.chat.wait}>
-              <Bubble align="start" variant="muted" class="agent-dock-bubble">
+              <Bubble align="start" variant="muted" class="agent-dock-bubble" data-author="assistant">
                 <BubbleContent>
                   <span class="agent-dock-typing" role="status">
                     <TypingDots class="agent-dock-typing-dots" />
@@ -363,46 +384,50 @@ export function AgentDockChat(props: {
 
       <Show when={props.error}>{(error) => <p class="agent-dock-error">{error()}</p>}</Show>
 
-      <form
-        class="composer agent-dock-composer"
-        data-compact=""
-        onSubmit={(event: SubmitEvent) => {
-          event.preventDefault();
-          submit();
-        }}
-      >
-        <div class="composer-input-label">
-          <ComposerEditor
-            agentId={undefined}
-            agents={props.agents}
-            value={props.draft}
-            placeholder={t("composer.placeholder.message", { name: props.agent.name })}
-            ariaLabel={t("composer.placeholder.message", { name: props.agent.name })}
-            disabled={transcribing()}
-            focusRequest={props.focusRequest}
-            dictation={{ text: props.voice?.liveText ?? "", final: transcribing() }}
-            onValueChange={(value) => props.onDraftChange(value)}
-            onSubmit={submit}
-          />
-        </div>
-        <div class="composer-primary-actions">
-          <Show when={props.voice} fallback={sendButton()}>
-            {(voice) => (
-              <ComposerVoiceControls
-                phase={voice().phase}
-                levels={voice().levels}
-                elapsedSeconds={voice().elapsedSeconds}
-                modelProgress={voice().modelProgress}
-                blocked={voice().blocked}
-                onStart={() => voice().onStart()}
-                onCancel={() => voice().onCancel()}
-                onFinish={() => voice().onFinish()}
-                send={sendButton()}
-              />
-            )}
-          </Show>
-        </div>
-      </form>
+      {/* The main window's message box: the same row, border, shadow and layouts. */}
+      <div class="composer-row agent-dock-composer-row">
+        <form
+          ref={(element) => (composer = element)}
+          class="composer agent-dock-composer"
+          data-compact={props.draft.includes("\n") || textWrapped() ? undefined : ""}
+          onSubmit={(event: SubmitEvent) => {
+            event.preventDefault();
+            submit();
+          }}
+        >
+          <div class="composer-input-label">
+            <ComposerEditor
+              agentId={undefined}
+              agents={props.agents}
+              value={props.draft}
+              placeholder={t("composer.placeholder.message", { name: props.agent.name })}
+              ariaLabel={t("composer.placeholder.message", { name: props.agent.name })}
+              disabled={transcribing()}
+              focusRequest={props.focusRequest}
+              dictation={{ text: props.voice?.liveText ?? "", final: transcribing() }}
+              onValueChange={(value) => props.onDraftChange(value)}
+              onSubmit={submit}
+            />
+          </div>
+          <div class="composer-primary-actions">
+            <Show when={props.voice} fallback={sendButton()}>
+              {(voice) => (
+                <ComposerVoiceControls
+                  phase={voice().phase}
+                  levels={voice().levels}
+                  elapsedSeconds={voice().elapsedSeconds}
+                  modelProgress={voice().modelProgress}
+                  blocked={voice().blocked}
+                  onStart={() => voice().onStart()}
+                  onCancel={() => voice().onCancel()}
+                  onFinish={() => voice().onFinish()}
+                  send={sendButton()}
+                />
+              )}
+            </Show>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

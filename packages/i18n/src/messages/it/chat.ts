@@ -3,7 +3,6 @@ import type { messages as source } from "../en/chat";
 
 export const messages = {
   "chat.activity.workingOnIt": "Ci sto lavorando…",
-  "chat.activity.typing": "Sta scrivendo…",
   "chat.activity.thinking": "Ci sto pensando…",
   "chat.activity.connectingDots": "Metto insieme i pezzi…",
   "chat.activity.checkingDetails": "Controllo i dettagli…",
