@@ -9,3 +9,7 @@
 - An agent's reply with a code block or another rich block shows in a bubble, like other replies.
 - A live voice call shows in the chat as one "Voice call" row. Open it to see the messages of the call.
 - The agent dock no longer has a "+" button. To add or remove dock agents, use Settings > Agent dock.
+
+### Fixed
+
+- In the dark theme, the line between the chat and a file or browser pane on the right is easier to see.

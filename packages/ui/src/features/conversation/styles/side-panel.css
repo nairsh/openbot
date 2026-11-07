@@ -233,6 +233,11 @@
   }
 }
 
+/* In dark mode, `--openbot-border` is only 3.5% opaque, too faint for the line between the chat and a pane. */
+:root:not([data-openbot-color-scheme="light"]) .browser-panel {
+  border-inline-start-color: color-mix(in srgb, var(--openbot-text-primary) 18%, transparent);
+}
+
 /* In the dock, a pane starts under the tab row. Its inset card starts at the top row's line. */
 .side-panel-docked > :is(.browser-panel, .settings-panel) {
   top: var(--left-header-height, 38px);
