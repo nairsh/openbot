@@ -1,37 +1,8 @@
 name: Remote desktop runtime
 
+# This fork does not build the runtime: the app downloads it from the nightly-labs/openbot releases
+# that `native-runtime.lock.json` names. Run it by hand from the Actions tab when needed.
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - ".github/workflows/remote-desktop-runtime.yml"
-      - "native-runtime.lock.json"
-      - "scripts/build-remote-desktop-runtime.ts"
-      - "scripts/create-remote-desktop-release-manifest.ts"
-      - "scripts/install-remote-desktop-runtime.ts"
-      - "scripts/mac-runtime-dylibs.ts"
-      - "scripts/native-runtime-lock.ts"
-      - "scripts/package-remote-desktop-runtime.ts"
-      - "scripts/pin-remote-desktop-runtime.ts"
-      - "scripts/remote-desktop-runtime-release.ts"
-      - "scripts/remote-desktop-runtime-smoke.ts"
-      - "scripts/verify-remote-desktop-runtime.ts"
-      - "vendor/remote-desktop/**"
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/remote-desktop-runtime.yml"
-      - "native-runtime.lock.json"
-      - "scripts/build-remote-desktop-runtime.ts"
-      - "scripts/create-remote-desktop-release-manifest.ts"
-      - "scripts/install-remote-desktop-runtime.ts"
-      - "scripts/mac-runtime-dylibs.ts"
-      - "scripts/native-runtime-lock.ts"
-      - "scripts/package-remote-desktop-runtime.ts"
-      - "scripts/pin-remote-desktop-runtime.ts"
-      - "scripts/remote-desktop-runtime-release.ts"
-      - "scripts/verify-remote-desktop-runtime.ts"
-      - "vendor/remote-desktop/**"
   workflow_dispatch:
     inputs:
       verify_only:

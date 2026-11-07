@@ -29,7 +29,7 @@ jobs:
   macos:
     name: Build and publish signed macOS ARM64 release
     if: github.repository != 'nightly-labs/openbot'
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 90
     permissions:
       contents: write
