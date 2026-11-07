@@ -10,3 +10,4 @@
 
 - The steps list under "Worked for" folds away smoothly when you close it.
 - A chat fades in when you switch agents, so the change is not abrupt.
+- A Claude agent's reply no longer shows two times after the agent used a skill.
