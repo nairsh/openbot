@@ -8,11 +8,11 @@ export interface CustomProvidersPort {
 }
 
 /**
- * The endpoint calls of one host. `update` is local only: the Team API has no update, so the list of
- * a joined server offers no Edit.
+ * The endpoint calls of one host. `update` and `testModel` are local only: the Team API has neither,
+ * so the list of a joined server offers no Edit and no Test.
  */
-export type CustomProvidersEndpointApi = Omit<CustomProvidersDesktopApi, "update"> &
-  Partial<Pick<CustomProvidersDesktopApi, "update">>;
+export type CustomProvidersEndpointApi = Omit<CustomProvidersDesktopApi, "update" | "testModel"> &
+  Partial<Pick<CustomProvidersDesktopApi, "update" | "testModel">>;
 
 /** Read on each call: tests and stories replace `window.openbot` per case. */
 export function customProvidersPort(): CustomProvidersPort {

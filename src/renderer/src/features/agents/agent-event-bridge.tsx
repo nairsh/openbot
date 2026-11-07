@@ -24,6 +24,7 @@ import { agentConversationKey, composerDraftKey, promptRequestKey } from "../con
 import { latestIncomingConversationMessage } from "../conversation/conversation-read-state";
 import { noteSocialFollowReplyCompleted } from "../conversation/social-follow-prompt";
 import { appendTurnStepLine } from "../conversation/turn-step-lines";
+import { useCustomProviders } from "../custom-providers/custom-providers-context";
 import { serverCanManageMcp } from "../servers/server-capabilities";
 import { useServerSettings } from "../servers/server-settings";
 import { useServers } from "../servers/servers-context";
@@ -68,6 +69,7 @@ export function AgentEventBridge() {
   const { setConversationErrors, setConversationErrorRuns } = useConversationController();
   const { setUiErrors } = useUiErrors();
   const agentTasks = useAgentTasks();
+  const { customProviders } = useCustomProviders();
   const {
     applyRuntimeMessages,
     conversations,
@@ -390,7 +392,13 @@ export function AgentEventBridge() {
           const message = readableAgentError(event.message);
           setConversationErrors((current) => ({ ...current, [key]: message }));
           // The provider and model above the error let the user report which run failed (#2858).
-          const provider = event.provider ? providerDisplayName(event.provider) : null;
+          // A saved endpoint runs inside its harness, so the endpoint's name is the provider the user
+          // knows, not the harness.
+          const endpointId = event.model?.split("/", 1)[0];
+          const endpoint = customProviders().find(
+            (saved) => saved.id === endpointId && saved.harness === event.provider,
+          );
+          const provider = endpoint ? endpoint.name : event.provider ? providerDisplayName(event.provider) : null;
           const run =
             provider && event.model ? currentText().t("agent.error.run", { provider, model: event.model }) : provider;
           setConversationErrorRuns((current) => {

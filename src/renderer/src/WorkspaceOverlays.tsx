@@ -589,6 +589,7 @@ function ServerSettings() {
       onDeleteCustomProvider: endpoints.deleteCustomProvider,
       // The Team API has no edit route, so only this computer's endpoints have Edit.
       onUpdateCustomProvider: local ? localEndpoints.updateCustomProvider : undefined,
+      onTestCustomProviderModel: local ? localEndpoints.testCustomProviderModel : undefined,
       get providerKeys() {
         return providerRuntimeDownloadsAvailable() ? providerKeys() : undefined;
       },

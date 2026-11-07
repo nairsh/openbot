@@ -461,6 +461,9 @@ export interface AgentServiceOptions {
 const USER_SEND_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** The `send_message` recipient limit, so one message can reach every section-mate the prompt names. */
 const MAX_SECTION_TEAMMATES = 32;
+
+/** What the Test control of the endpoint form sends. The model reads it, not the user. */
+const CUSTOM_MODEL_TEST_PROMPT = "Reply with one short sentence to say that you work.";
 /** How long an archive waits for the provider to end the turn that it stopped. After it, the archive is refused. */
 const TASK_STOP_WAIT_MS = 15_000;
 /**
@@ -2567,6 +2570,27 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         );
     },
     Effect.mapError((failure) => new AgentLifecycleFailed({ operation: "ask side question", cause: failure.cause })),
+  ).bind(this);
+
+  /**
+   * Sends one short message to a model of a saved endpoint, through the provider that runs it, as a
+   * side question does: no tools, no session and no thread. The failure keeps the provider's own
+   * message, so the form can show why the endpoint refused. Main masks the endpoint's secrets in it.
+   */
+  readonly testCustomProviderModel = Effect.fn("AgentService.testCustomProviderModel")(
+    function* (this: AgentService, harness: CustomProviderHarness, modelId: string) {
+      const failed = (message: string) => new ProfileGenerationFailed({ cause: new Error(message) });
+      if (this.#stopping) return yield* failed(sourceText("error.backend.shuttingDown"));
+      if (this.#profileClients.busy()) return yield* failed(sourceText("error.agent.sideQuestionBusy"));
+      yield* this.#providers.ensureProvider(harness);
+      const model = this.#endpoints.findModel(harness, modelId, this.#endpoints.available());
+      if (!model) return yield* failed(sourceText("error.provider.noModel"));
+      const client = this.#providers.createProfileClient(harness);
+      return yield* this.#profileClients.run(client, (cancelled) =>
+        generateTextWithoutTools(client, model, CUSTOM_MODEL_TEST_PROMPT, cancelled),
+      );
+    },
+    Effect.mapError((failure) => new AgentLifecycleFailed({ operation: "test custom model", cause: failure.cause })),
   ).bind(this);
 
   /**

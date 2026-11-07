@@ -158,6 +158,11 @@ const PROVIDER_IDLE_CHECK_MS = 60_000;
 /** How often the host reads a signed-out provider's sign-in file. A read is one `stat`. */
 const SIGN_IN_FILE_POLL_MS = 2_000;
 
+/** Pi and the providers that OpenBot runs in the Pi CLI: the key-only ones and Direct. */
+function runsOnPiCli(provider: AgentProvider): boolean {
+  return provider === "pi" || (provider !== "acp" && requireProviderDriver(provider).cliProvider === "pi");
+}
+
 /**
  * Identifies one write of a sign-in file. The time alone is not enough: a file system with 1 s
  * times shows two writes in the same second as one, such as an empty file and then the credentials.
@@ -3831,6 +3836,13 @@ export class ProviderRuntime implements ProviderPort {
       }
       if (isGlogBelowErrorDiagnostic(message) || isRustLogBelowErrorDiagnostic(message)) {
         stderrLogger.info("A provider logged an info or warning record.", { provider: client.provider, message });
+        return;
+      }
+      if (runsOnPiCli(client.provider) && /^Warning: /.test(message)) {
+        // Pi warns at each start about the user's own `~/.pi/agent` settings, such as an
+        // `enabledModels` pattern that matches no model. Pi runs without that setting, and the user
+        // has nothing to change in OpenBot. Pi reports a failed turn or start in its RPC answers.
+        stderrLogger.info("Pi logged a warning.", { provider: client.provider, message });
         return;
       }
       if (client.provider === "antigravity") {

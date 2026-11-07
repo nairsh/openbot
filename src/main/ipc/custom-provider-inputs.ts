@@ -9,6 +9,7 @@ import type {
   CustomProviderModel,
   DeleteCustomProviderInput,
   SaveCustomProviderInput,
+  TestCustomProviderModelInput,
   UpdateCustomProviderInput,
 } from "@openbot/contracts/ipc";
 import {
@@ -217,4 +218,12 @@ export function parseUpdateCustomProvider(input: unknown): UpdateCustomProviderI
 export function parseDeleteCustomProvider(input: unknown): DeleteCustomProviderInput {
   if (!isObject(input)) throw new Error("Invalid endpoint.");
   return { id: parseSavedProviderId(input.id) };
+}
+
+export function parseTestCustomProviderModel(input: unknown): TestCustomProviderModelInput {
+  if (!isObject(input)) throw new Error("Invalid endpoint.");
+  const id = parseSavedProviderId(input.id);
+  const modelId = requireString(input.modelId, "Model ID", INPUT_LIMITS.identifier);
+  if (!isAgentModel(composedCustomModelId(id, modelId))) throw new Error(sourceText("error.provider.modelIdCharacter"));
+  return { id, modelId };
 }

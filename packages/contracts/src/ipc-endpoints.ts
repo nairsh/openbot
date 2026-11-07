@@ -309,6 +309,7 @@ import type {
   CustomProviderSummary,
   DeleteCustomProviderInput,
   SaveCustomProviderInput,
+  TestCustomProviderModelInput,
   UpdateCustomProviderInput,
 } from "./ipc-custom-providers";
 import type {
@@ -1066,6 +1067,8 @@ export const IPC_ENDPOINTS = {
     // This computer only. `providerAdmin` has no edit, so a joined admin cannot reach a stored key
     // through a changed address.
     update: request<UpdateCustomProviderInput, CustomProviderResult>()("custom-providers:update"),
+    // This computer only, like `update`. The reply text, or a rejection with the endpoint's error.
+    testModel: request<TestCustomProviderModelInput, string>()("custom-providers:test-model"),
   },
   // Local model servers and ACP agents on this computer. Main makes every request, and a scan sends
   // no key. A joined host is never scanned.
