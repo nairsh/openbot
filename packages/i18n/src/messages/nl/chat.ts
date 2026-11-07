@@ -3,6 +3,7 @@ import type { messages as source } from "../en/chat";
 
 export const messages = {
   "chat.activity.workingOnIt": "Ermee bezig…",
+  "chat.activity.typing": "Typt…",
   "chat.activity.thinking": "Even goed nadenken…",
   "chat.activity.connectingDots": "De puntjes verbinden…",
   "chat.activity.checkingDetails": "De details controleren…",
