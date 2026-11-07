@@ -8,7 +8,7 @@
  * change, such as the first load, places the seats at once.
  */
 
-import { AppWindow, ContextMenu, DropdownMenu, Maximize2, PanelRight, Plus, Settings } from "@openbot/ui";
+import { AppWindow, ContextMenu, Maximize2, PanelRight } from "@openbot/ui";
 import {
   createEffect,
   createMemo,
@@ -25,7 +25,6 @@ import type { AvatarMood } from "../../bloub-avatar";
 import type { ComposerAgent } from "../../data";
 import { useText } from "../../text";
 import { prefersReducedMotion } from "../../utils";
-import { AgentAvatar } from "../agents/AgentAvatar";
 import type { VoicePhase } from "../conversation/VoiceRecordingMorph";
 import { SidebarPinnedAvatar } from "../sidebar/SidebarAgentIndicator";
 import type { SidebarAgentState } from "../sidebar/sidebar-types";
@@ -122,13 +121,10 @@ export type AgentDockDragPhase = "start" | "move" | "end";
 
 export interface AgentDockProps {
   seats: readonly AgentDockSeat[];
-  /** The agents that the add menu offers. */
-  available: readonly ComposerAgent[];
   /** The chat of an agent on the dock. */
   chat: (agentId: string) => AgentDockChatModel;
   /** Called with the agent whose chat the panel shows, and with null when the panel closes. */
   onOpenChange?: ((agentId: string | null) => void) | undefined;
-  onAdd: (agentId: string) => void;
   onRemove: (agentId: string) => void;
   onSend: (agentId: string, text: string) => Promise<AgentDockSendResult>;
   onOpenInMain: (agentId: string) => void;
@@ -138,8 +134,6 @@ export interface AgentDockProps {
   agents: ComposerAgent[];
   onSelectAgent?: ((agentId: string) => void) | undefined;
   onOpenLink?: ((url: string) => void) | undefined;
-  /** Opens the dock settings. The add menu shows the item only when it is set. */
-  onOpenSettings?: (() => void) | undefined;
   /** A change closes the chat, for example when the dock window loses the focus. */
   closeRequest?: number | undefined;
   /** The window edge that holds the dock. The dock and the panel are mirrored on the left edge. */
@@ -210,7 +204,6 @@ export function AgentDock(props: AgentDockProps) {
   let neck!: SVGPathElement;
   let drop!: HTMLDivElement;
   let panelContent!: HTMLElement;
-  let addSeat!: HTMLDivElement;
   let hitArea!: HTMLDivElement;
   let handleArc!: SVGPathElement;
   let handleHit!: SVGPathElement;
@@ -220,7 +213,8 @@ export function AgentDock(props: AgentDockProps) {
   const motion = createMotion(() => render());
   const initialCount = initialSeats.length;
   const dockH = motion.spring(dockHeight(initialCount), WOBBLY);
-  const addY = motion.spring(seatCenterY(initialCount, initialCount), WOBBLY);
+  /** The end of the last seat, where the shelf stands. */
+  const endY = motion.spring(seatCenterY(initialCount, initialCount), WOBBLY);
   /** Open progress: 0 is the seat, 1 is the full panel. Width leads height for a liquid stretch. */
   const panelOpen = motion.spring(0, PANEL_OPEN);
   // 0 while the panel opens, 1 while it closes: a close goes back as a drop, not as a tall bar.
@@ -267,9 +261,8 @@ export function AgentDock(props: AgentDockProps) {
     const { top: bandTop, bottom: bandBottom } = dockBand(height, pull);
     const cut = LIQUID_PAD + DOCK_LEFT - 2;
     liquid.style.clipPath = `polygon(0 0, ${cut}px 0, ${cut}px ${bandTop}px, 100% ${bandTop}px, 100% ${bandBottom}px, ${cut}px ${bandBottom}px, ${cut}px 100%, 0 100%)`;
-    addSeat.style.transform = `translateY(${addY.value - SEAT / 2 - pull * SEAT_LAG}px)`;
-    // The shelf stands on the line between the last agent and the add button.
-    if (shelf) shelf.style.bottom = `${PANEL_HEIGHT - (addY.value - SEAT / 2 - pull * SEAT_LAG)}px`;
+    // The shelf stands on the line below the last agent.
+    if (shelf) shelf.style.bottom = `${PANEL_HEIGHT - (endY.value - SEAT / 2 - pull * SEAT_LAG)}px`;
     const arc = dockHandlePath(height, pull);
     handleArc.setAttribute("d", arc);
     handleHit.setAttribute("d", arc);
@@ -336,9 +329,6 @@ export function AgentDock(props: AgentDockProps) {
     drop.style.transform = `translate(${dropX.value}px, ${dropY.value}px) translate(-50%, -50%) scale(${r / (SEAT / 2)})`;
   }
 
-  /** The add menu opens away from the screen edge. */
-  const menuPlacement = (): "right-end" | "left-end" => (props.side === "left" ? "right-end" : "left-end");
-
   /**
    * The pointer stays captured while the window moves under it. Main reads the pointer once a frame.
    * The trailing end of the dock stretches with the speed of the window, and settles with a wobble when
@@ -404,12 +394,12 @@ export function AgentDock(props: AgentDockProps) {
     endDrag = end;
   }
 
-  /** Moves the seats, the add button and the dock body to the layout of `seats`. */
+  /** Moves the seats and the dock body to the layout of `seats`. */
   function layout(seats: readonly string[], instant = false) {
     const count = seats.length;
     const move = (spring: Spring, value: number) => (instant ? spring.jump(value) : spring.to(value));
     move(dockH, dockHeight(count));
-    move(addY, seatCenterY(count, count));
+    move(endY, seatCenterY(count, count));
     seats.forEach((id, index) => {
       move(seatSprings(id).y, seatCenterY(index, count));
     });
@@ -544,7 +534,7 @@ export function AgentDock(props: AgentDockProps) {
     setState((draft) => {
       draft.seats.push(id);
     });
-    // A drop comes in from the left at the add button and flows into the new seat.
+    // A drop comes in from the left below the last seat and flows into the new seat.
     dropX.jump(DOCK_LEFT - 120);
     dropY.jump(seatCenterY(index, index));
     dropR.jump(0);
@@ -814,48 +804,6 @@ export function AgentDock(props: AgentDockProps) {
             </div>
           )}
         </For>
-        <div
-          class="agent-dock-seat"
-          ref={(element) => (addSeat = element)}
-          style={{ left: `${DOCK_LEFT + DOCK_PAD}px` }}
-        >
-          {/* The menu reads its placement once, so a change of edge makes a new menu. */}
-          <Show when={menuPlacement()} keyed>
-            {(placement) => (
-              <DropdownMenu.Root placement={placement} gutter={12}>
-                <DropdownMenu.Trigger class="agent-dock-seat-button agent-dock-add" aria-label={t("agent.dock.add")}>
-                  <Plus aria-hidden="true" />
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Portal>
-                  <DropdownMenu.Content>
-                    <For
-                      each={props.available}
-                      fallback={<DropdownMenu.Item disabled>{t("agent.dock.allAdded")}</DropdownMenu.Item>}
-                    >
-                      {(agent) => (
-                        <DropdownMenu.Item onSelectAfterClose={() => props.onAdd(agent.id)}>
-                          <AgentAvatar agent={agent} motion="idle" class="agent-dock-menu-avatar" />
-                          {agent.name}
-                        </DropdownMenu.Item>
-                      )}
-                    </For>
-                    <Show when={props.onOpenSettings}>
-                      {(open) => (
-                        <>
-                          <DropdownMenu.Separator />
-                          <DropdownMenu.Item onSelectAfterClose={() => open()()}>
-                            <Settings aria-hidden="true" />
-                            {t("agent.dock.settings")}
-                          </DropdownMenu.Item>
-                        </>
-                      )}
-                    </Show>
-                  </DropdownMenu.Content>
-                </DropdownMenu.Portal>
-              </DropdownMenu.Root>
-            )}
-          </Show>
-        </div>
       </nav>
 
       <AgentDockShelf

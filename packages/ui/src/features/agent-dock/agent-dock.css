@@ -123,7 +123,7 @@
   transform: scale(0);
 }
 
-/* Seats and the add button. */
+/* Seats. */
 .agent-dock-seats {
   position: absolute;
   inset: 0;
@@ -191,16 +191,6 @@
 /* The sidebar badge, with the dock colour for its cut-out border. */
 .agent-dock-seat-button .agent-row-agent-status {
   border-color: var(--agent-dock-fill);
-}
-
-.agent-dock-add svg {
-  width: var(--openbot-icon-md);
-  height: var(--openbot-icon-md);
-}
-
-.agent-dock-menu-avatar.agent-avatar {
-  width: 20px;
-  height: 20px;
 }
 
 /* The chat, over the liquid panel. */
@@ -494,7 +484,7 @@
 }
 
 /* The finished-work shelf beside the dock. See `AgentDockShelf.tsx`. The results drip out of the dock
-   and stand on the line between the last agent and the add button. */
+   and stand on the line below the last agent. */
 .agent-dock-shelf {
   /* The side the results come from and go back to: the dock. */
   --agent-dock-shelf-toward: 1;

@@ -50,8 +50,6 @@ export const messages = {
   "agent.deleteUndo.action": "Cofnij",
   "agent.dock.label": "Dok agentów",
   "agent.dock.chatWith": "Czat z {name}",
-  "agent.dock.add": "Dodaj agenta do doku",
-  "agent.dock.allAdded": "Wszyscy Twoi agenci są w doku",
   "agent.dock.more": "Więcej",
   "agent.dock.openInMain": "Otwórz w głównym oknie",
   "agent.dock.openWindow": "Otwórz w nowym oknie",
@@ -60,7 +58,6 @@ export const messages = {
   "agent.dock.working": "Pracuje…",
   "agent.dock.writing": "{name} pisze",
   "agent.dock.empty": "Nie ma jeszcze wiadomości. Napisz do {name}.",
-  "agent.dock.settings": "Ustawienia doku",
   "agent.dock.finished.label": "Ukończona praca",
   "agent.dock.finished.result": "{label}, od: {name}",
   "agent.dock.finished.more": {
