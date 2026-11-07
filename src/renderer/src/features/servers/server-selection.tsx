@@ -41,8 +41,13 @@ const ServerSelection = createSimpleContext({
     const { pendingInviteUrl, setPendingInviteUrl, saveSetup } = useSetup();
     const { setSkillsMarketplaceOpen } = useSettings();
     const { disconnectRemoteDesktopWorkspace } = useRemoteDesktop();
-    const { setBrowserVisibilitySuspended, setPendingAgentSelection, setPendingChannelSelection, setPreviousServerId } =
-      useServerSwitch();
+    const {
+      setBrowserVisibilitySuspended,
+      setPendingAgentSelection,
+      setPendingChannelSelection,
+      setPendingThreadSelection,
+      setPreviousServerId,
+    } = useServerSwitch();
     const { agentSetupOpen, creatingAgent } = useAgents();
     const { stopComposerTyping } = useConversationController();
     const { setDirectTyping } = useDirectMessages();
@@ -149,8 +154,12 @@ const ServerSelection = createSimpleContext({
       const onServer = servers().find((server) => server.active)?.id === event.serverId;
       if (!onServer && !(await selectServer(event.serverId, false))) return;
       // Published for the same reason as the marketplace agent above.
-      if (event.channelId) setPendingChannelSelection(event.channelId);
-      else setPendingAgentSelection(event.agentId);
+      if (event.channelId) {
+        setPendingChannelSelection(event.channelId);
+        return;
+      }
+      if (event.threadId) setPendingThreadSelection({ agentId: event.agentId, threadId: event.threadId });
+      setPendingAgentSelection(event.agentId);
     }
 
     onSettled(() =>
@@ -178,6 +187,12 @@ const ServerSelection = createSimpleContext({
       }
     }
 
+    /** Creates a server on this computer and opens it. Main resolves when the desktop is connected to it. */
+    async function createLocalServer(name: string): Promise<void> {
+      const server = await serversPort().localServers.create(name);
+      await selectServer(server.id, false);
+    }
+
     async function joinRemoteDuringSetup(input: { inviteUrl: string }, provider: AgentProviderId): Promise<void> {
       await joinServer(input);
       await saveSetup(provider);
@@ -186,6 +201,7 @@ const ServerSelection = createSimpleContext({
     return {
       selectServer,
       joinServer,
+      createLocalServer,
       joinRemoteDuringSetup,
       openInstalledMarketplaceAgent,
     };

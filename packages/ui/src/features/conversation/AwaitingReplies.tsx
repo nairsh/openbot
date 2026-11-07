@@ -19,6 +19,8 @@ export interface AwaitingReplyItem {
   preview?: string;
   /** A short note after the state, such as who reads the reply next. */
   detail?: string | undefined;
+  /** The queued delivery of a reply, which the user can steer into the running turn. */
+  deliveryId?: string | undefined;
   /**
    * What stops an agent that was asked before it can reply: a question, an approval or a browser
    * takeover in its own chat, or a usage limit. The row names it in place of "Working".
@@ -34,6 +36,10 @@ export interface AwaitingReplyListProps {
   onDismiss?: () => void;
   /** Opens the chat of an agent that waits for the user, where the user can answer it. */
   onOpenAgent?: ((agentId: string) => void) | undefined;
+  /** Takes a queued reply into the running turn. Set only while a turn runs. */
+  onSteer?: ((deliveryId: string) => void) | undefined;
+  /** Stops the work of a row that is asked or working. A channel sets it for its sub-tasks. */
+  onStop?: ((id: string) => void) | undefined;
   class?: string;
 }
 
@@ -86,6 +92,17 @@ function AwaitingReplyList(props: AwaitingReplyListProps) {
     const open = props.onOpenAgent;
     if (wait?.kind !== "waiting" || !agentId || !open) return undefined;
     return { label: t(SIDEBAR_WAIT_ACTION[wait.reason]), run: () => open(agentId) };
+  };
+  const steerAction = (item: AwaitingReplyItem) => {
+    const deliveryId = item.deliveryId;
+    const steer = props.onSteer;
+    if (item.state !== "replied" || !deliveryId || !steer) return undefined;
+    return () => steer(deliveryId);
+  };
+  const stopAction = (item: AwaitingReplyItem) => {
+    const stop = props.onStop;
+    if ((item.state !== "asked" && item.state !== "working") || !stop) return undefined;
+    return () => stop(item.id);
   };
   // Every agent replied or failed, so nothing more comes for these rows.
   const settled = () => props.items.every((item) => item.state === "replied" || item.state === "failed");
@@ -156,6 +173,34 @@ function AwaitingReplyList(props: AwaitingReplyListProps) {
                         onClick={() => action().run()}
                       >
                         {action().label}
+                      </Button>
+                    )}
+                  </Show>
+                  <Show when={steerAction(item())}>
+                    {(steer) => (
+                      <Button
+                        id={`${rowId}-steer`}
+                        size="xs"
+                        variant="secondary"
+                        class="awaiting-replies-steer"
+                        aria-labelledby={`${rowId}-steer ${rowId}-name`}
+                        onClick={() => steer()()}
+                      >
+                        {t("queue.item.steer")}
+                      </Button>
+                    )}
+                  </Show>
+                  <Show when={stopAction(item())}>
+                    {(stop) => (
+                      <Button
+                        id={`${rowId}-stop`}
+                        size="xs"
+                        variant="secondary"
+                        class="awaiting-replies-stop"
+                        aria-labelledby={`${rowId}-stop ${rowId}-name`}
+                        onClick={() => stop()()}
+                      >
+                        {t("chat.awaiting.stop")}
                       </Button>
                     )}
                   </Show>

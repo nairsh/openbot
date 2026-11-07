@@ -13,14 +13,19 @@ type Drafts = Record<string, ComposerDraft>;
 export interface StoredComposerDrafts {
   agents: Drafts;
   channels: Drafts;
+  /** The message box of each side thread, keyed by `threadDraftKey`. */
+  threads: Drafts;
 }
 
 interface ComposerDraftOwner {
   drafts: () => Drafts;
   channelDrafts: () => Drafts;
+  threadDrafts: () => Drafts;
   editingAgentId: () => string | null;
   editingServerId: () => string | null;
   editingDraftBackup: () => ComposerDraft | null;
+  /** The queue edit in a side thread's message box, and the draft that it restores when it ends. */
+  threadQueueEdit: () => { draftKey: string; backup: ComposerDraft } | null;
   /** Messages that left the composer but that the host has not confirmed, per chat, oldest first. */
   unsentTexts: () => Record<string, string[]>;
 }
@@ -37,21 +42,25 @@ export function readStoredComposerDrafts(): StoredComposerDrafts {
   try {
     return decodeStoredDrafts(JSON.parse(window.localStorage.getItem(COMPOSER_DRAFTS_STORAGE_KEY) ?? "null"));
   } catch {
-    return { agents: {}, channels: {} };
+    return { agents: {}, channels: {}, threads: {} };
   }
 }
 
 function decodeStoredDrafts(value: unknown): StoredComposerDrafts {
   return isDynamicRecord(value)
-    ? { agents: decodeDrafts(value.agents), channels: decodeDrafts(value.channels) }
-    : { agents: {}, channels: {} };
+    ? {
+        agents: decodeDrafts(value.agents),
+        channels: decodeDrafts(value.channels),
+        threads: decodeThreadDrafts(value.threads),
+      }
+    : { agents: {}, channels: {}, threads: {} };
 }
 
 /**
  * Writes the drafts shortly after each change, and at once when the window goes away.
  *
- * A queue edit stores its own draft (`QUEUE_EDIT_STORAGE_KEY`), so for that conversation this keeps
- * the draft the edit restores when it ends.
+ * A queue edit stores its own draft (`QUEUE_EDIT_STORAGE_KEY`, or `THREAD_QUEUE_EDIT_STORAGE_KEY` in a
+ * side thread), so for that conversation this keeps the draft the edit restores when it ends.
  */
 export function writeComposerDraftsOnChange(owner: ComposerDraftOwner): void {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -64,6 +73,9 @@ export function writeComposerDraftsOnChange(owner: ComposerDraftOwner): void {
     if (editAgentId && editServerId)
       agents[composerDraftKey({ agentId: editAgentId, serverId: editServerId })] =
         owner.editingDraftBackup() ?? EMPTY_DRAFT;
+    const threads = { ...owner.threadDrafts() };
+    const threadEdit = owner.threadQueueEdit();
+    if (threadEdit) threads[threadEdit.draftKey] = threadEdit.backup;
     // A failed or waiting message lives only in memory. After a restart its text is back in the
     // composer, before what the user typed later, and nothing sends it again on its own.
     for (const [key, texts] of Object.entries(owner.unsentTexts())) {
@@ -73,7 +85,11 @@ export function writeComposerDraftsOnChange(owner: ComposerDraftOwner): void {
     try {
       window.localStorage.setItem(
         COMPOSER_DRAFTS_STORAGE_KEY,
-        JSON.stringify({ agents: storableDrafts(agents), channels: storableDrafts(owner.channelDrafts()) }),
+        JSON.stringify({
+          agents: storableDrafts(agents),
+          channels: storableDrafts(owner.channelDrafts()),
+          threads: storableThreadDrafts(threads),
+        }),
       );
     } catch {
       // Storage is full or unavailable. The drafts stay in memory for this session.
@@ -84,8 +100,10 @@ export function writeComposerDraftsOnChange(owner: ComposerDraftOwner): void {
       [
         owner.drafts(),
         owner.channelDrafts(),
+        owner.threadDrafts(),
         owner.editingAgentId(),
         owner.editingDraftBackup(),
+        owner.threadQueueEdit(),
         owner.unsentTexts(),
       ] as const,
     () => {
@@ -113,6 +131,11 @@ function storableDrafts(drafts: Drafts): Record<string, { text: string }> {
   );
 }
 
+/** A side thread's draft is stored as its text only, as `storableDrafts` keeps it. */
+function storableThreadDrafts(drafts: Drafts): Record<string, string> {
+  return Object.fromEntries(Object.entries(storableDrafts(drafts)).map(([key, draft]) => [key, draft.text]));
+}
+
 function decodeDrafts(value: unknown): Drafts {
   if (!isDynamicRecord(value)) return {};
   return Object.fromEntries(
@@ -120,6 +143,15 @@ function decodeDrafts(value: unknown): Drafts {
       isDynamicRecord(draft) && isString(draft.text)
         ? [[key, { text: draft.text, attachments: [], replyToMessageId: null }]]
         : [],
+    ),
+  );
+}
+
+function decodeThreadDrafts(value: unknown): Drafts {
+  if (!isDynamicRecord(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, text]) =>
+      isString(text) ? [[key, { text, attachments: [], replyToMessageId: null }]] : [],
     ),
   );
 }

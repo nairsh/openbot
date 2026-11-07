@@ -2,13 +2,15 @@
 // settings file, the scan, the model probe, and the encrypted endpoint store, against fake
 // OpenAI-compatible servers on this computer. A fake cipher replaces the operating system's secret
 // storage, which exists only in Electron. It also scans a folder that holds a file named like a known
-// agent, and proves that the scan never starts it.
+// agent, and proves that the scan never starts it. A model list in the models.dev, OpenRouter and
+// vLLM shapes gives each model's input kinds, context window and max output (#3946).
 // `bun scripts/provider-detection-e2e.ts`. Writes .openbot-build/provider-detection-e2e/report.json.
 import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { isDiscoverModelsResult } from "@openbot/contracts/ipc";
 import { Effect } from "effect";
 import { runCauseEffect } from "../src/backend/effect-boundary";
 import { type CustomProviderCipher, CustomProviderStore } from "../src/main/custom-provider-store";
@@ -32,8 +34,23 @@ interface FakeServer {
   close: () => Promise<void>;
 }
 
-/** An OpenAI-compatible server that lists `models`, or redirects every request to `redirectTo`. */
-async function fakeServer(models: string[], redirectTo?: string): Promise<FakeServer> {
+/** A model list entry with the fields of models.dev, OpenRouter and vLLM. The input is wrong on purpose in one entry. */
+interface ListedModel {
+  id: string;
+  object?: string;
+  modalities?: { input?: string[] | string };
+  limit?: { context?: number; output?: number };
+  context_length?: number;
+  architecture?: { input_modalities: string[] };
+  top_provider?: { max_completion_tokens: number };
+  max_model_len?: number;
+}
+
+/**
+ * An OpenAI-compatible server that lists `models`, or redirects every request to `redirectTo`. A
+ * string is a bare entry; an object is sent as it is.
+ */
+async function fakeServer(models: (string | ListedModel)[], redirectTo?: string): Promise<FakeServer> {
   const seen: Seen[] = [];
   const server: Server = createServer((request: IncomingMessage, response) => {
     seen.push({
@@ -46,7 +63,8 @@ async function fakeServer(models: string[], redirectTo?: string): Promise<FakeSe
       return;
     }
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ object: "list", data: models.map((id) => ({ id, object: "model" })) }));
+    const data = models.map((model) => (typeof model === "string" ? { id: model, object: "model" } : model));
+    response.end(JSON.stringify({ object: "list", data }));
   });
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
   const address = server.address();
@@ -74,7 +92,9 @@ interface Report {
     storedKeyReachedOtherOrigin: boolean;
     newAddressWithKeptKeyRefused: boolean;
   };
+  headers?: Record<string, boolean>;
   disabled?: { requestsSent: number; savedAcrossRestart: boolean };
+  catalog?: unknown[];
 }
 
 const cipher: CustomProviderCipher = {
@@ -92,7 +112,39 @@ try {
   const primary = await fakeServer(["llama-3.1-8b", "qwen2.5-coder"]);
   const other = await fakeServer(["other-model"]);
   const redirecting = await fakeServer([], primary.baseUrl);
-  servers.push(primary, other, redirecting);
+  // #3946: what a list says about each model, in the shapes that servers publish.
+  const catalog = await fakeServer([
+    // models.dev, as the gateway of #5332 lists it.
+    {
+      id: "gateway-vision",
+      modalities: { input: ["text", "image", "pdf"] },
+      limit: { context: 200_000, output: 32_000 },
+    },
+    // OpenRouter: `file` is a PDF input.
+    {
+      id: "router-model",
+      context_length: 131_072,
+      architecture: { input_modalities: ["text", "file"] },
+      top_provider: { max_completion_tokens: 65_536 },
+    },
+    // OpenRouter often lists the max output as the whole window: it leaves no room for the prompt.
+    // An empty `modalities` does not hide the OpenRouter kinds.
+    {
+      id: "router-full-cap",
+      context_length: 163_840,
+      modalities: {},
+      architecture: { input_modalities: ["text", "image"] },
+      top_provider: { max_completion_tokens: 163_840 },
+    },
+    // vLLM: a window, and no input kinds.
+    { id: "vllm-model", object: "model", max_model_len: 32_768 },
+    // A text-only list entry.
+    { id: "text-only", modalities: { input: ["text"] } },
+    // Values out of range and of the wrong type are left out; a max output with no window too.
+    { id: "odd-model", context_length: 12, limit: { output: 4_096 }, modalities: { input: "image" } },
+    "bare-model",
+  ]);
+  servers.push(primary, other, redirecting, catalog);
 
   const settings = new ProviderDetectionSettingsStore(join(root, "openbot-provider-detection-v1.json"));
   await runCauseEffect(settings.load());
@@ -178,12 +230,13 @@ try {
   assert.deepEqual(cipherAfter, cipherBefore, "A kept key keeps its ciphertext.");
 
   // 4. Load models for the saved endpoint with an empty key field: the server gets the stored key.
+  // With no header rows, the saved header is not sent: the user removed it in the form.
   await Effect.runPromise(
     detection.discoverModels({ baseUrl: row.baseUrl, apiKey: null, headers: [], savedProviderId: row.id }),
   );
   const loaded = primary.seen.at(-1);
   assert.equal(loaded?.authorization, `Bearer ${KEY}`);
-  assert.equal(loaded?.team, HEADER.value);
+  assert.equal(loaded?.team, null, "A removed header row is not sent.");
 
   // 5. The stored key never goes to another origin.
   await Effect.runPromise(
@@ -195,6 +248,80 @@ try {
     runCauseEffect(endpoints.update({ id: row.id, name: "Local server", baseUrl: other.baseUrl, models: [] })),
     "A new address with a kept key is refused.",
   );
+  // 5b. Edit shows the saved header names. A null value keeps the saved value of that name.
+  const savedHeaders = endpoints.list().find((summary) => summary.id === row.id)?.headerNames;
+  assert.deepEqual(savedHeaders, [HEADER.name], "The list names the saved header.");
+  const editBase = { id: row.id, name: "Local server", baseUrl: row.baseUrl, models: edited?.models ?? [] };
+  await runCauseEffect(endpoints.update({ ...editBase, headers: [{ name: HEADER.name, value: null }] }));
+  const cipherKept = JSON.parse(await readFile(join(root, "custom-providers.json"), "utf8")).providers[0].secret;
+  assert.deepEqual(cipherKept, cipherBefore, "Kept headers keep the ciphertext.");
+  await Effect.runPromise(
+    detection.discoverModels({
+      baseUrl: row.baseUrl,
+      apiKey: null,
+      headers: [{ name: HEADER.name, value: "" }],
+      savedProviderId: row.id,
+    }),
+  );
+  assert.equal(primary.seen.at(-1)?.team, HEADER.value, "A kept header row loads models with the saved value.");
+  await Effect.runPromise(
+    detection.discoverModels({
+      baseUrl: other.baseUrl,
+      apiKey: null,
+      headers: [{ name: HEADER.name, value: "" }],
+      savedProviderId: row.id,
+    }),
+  );
+  assert.equal(other.seen.at(-1)?.team, null, "Another origin gets no kept header value.");
+  await assert.rejects(
+    runCauseEffect(
+      endpoints.update({
+        ...editBase,
+        baseUrl: other.baseUrl,
+        apiKey: "sk-new",
+        headers: [{ name: HEADER.name, value: null }],
+      }),
+    ),
+    "A new address with a kept header is refused.",
+  );
+  await assert.rejects(
+    runCauseEffect(endpoints.update({ ...editBase, headers: [{ name: "X-Unknown", value: null }] })),
+    "A kept value for a name that is not saved is refused.",
+  );
+  await runCauseEffect(
+    endpoints.update({
+      ...editBase,
+      headers: [
+        { name: HEADER.name, value: null },
+        { name: "X-Extra", value: "extra-value" },
+      ],
+    }),
+  );
+  await runCauseEffect(endpoints.update({ ...editBase, headers: [{ name: "X-Extra", value: null }] }));
+  const afterRemove = endpoints.configs().find((config) => config.id === row.id);
+  assert.deepEqual(
+    afterRemove?.headers,
+    [{ name: "X-Extra", value: "extra-value" }],
+    "A removed row removes its header.",
+  );
+  assert.equal(afterRemove?.apiKey, KEY, "A header edit keeps the key.");
+  const reopened = new CustomProviderStore({ path: join(root, "custom-providers.json"), cipher });
+  await runCauseEffect(reopened.load());
+  assert.deepEqual(reopened.list().find((summary) => summary.id === row.id)?.headerNames, ["X-Extra"]);
+  await runCauseEffect(endpoints.update({ ...editBase, headers: [] }));
+  assert.deepEqual(endpoints.list().find((summary) => summary.id === row.id)?.headerNames, [], "No rows clear them.");
+  assert.equal(endpoints.configs().find((config) => config.id === row.id)?.apiKey, KEY);
+  report.headers = {
+    namesListed: true,
+    keptCiphertextUnchanged: true,
+    keptValueReachedSameOrigin: true,
+    keptValueReachedOtherOrigin: false,
+    newAddressWithKeptHeaderRefused: true,
+    unknownKeptNameRefused: true,
+    removedRowRemoved: true,
+    namesSurviveReload: true,
+    emptyListClears: true,
+  };
   report.edit = {
     keyKeptOnEdit: true,
     ciphertextUnchanged: true,
@@ -203,7 +330,23 @@ try {
     newAddressWithKeptKeyRefused: true,
   };
 
-  // 6. Detection off: nothing is probed.
+  // 6. A model list gives the input kinds, the window and the max output that it says, and no more.
+  const listed = await Effect.runPromise(
+    detection.discoverModels({ baseUrl: catalog.baseUrl, apiKey: null, headers: [] }),
+  );
+  report.catalog = listed.models;
+  assert.ok(isDiscoverModelsResult(listed), "The preload decoder accepts the list.");
+  assert.deepEqual(listed.models, [
+    { id: "gateway-vision", inputs: ["image", "pdf"], contextWindow: 200_000, maxOutput: 32_000 },
+    { id: "router-model", inputs: ["pdf"], contextWindow: 131_072, maxOutput: 65_536 },
+    { id: "router-full-cap", inputs: ["image"], contextWindow: 163_840 },
+    { id: "vllm-model", contextWindow: 32_768 },
+    { id: "text-only", inputs: [] },
+    { id: "odd-model" },
+    { id: "bare-model" },
+  ]);
+
+  // 7. Detection off: nothing is probed.
   const before = primary.seen.length;
   await runCauseEffect(settings.set({ ...settings.get(), enabled: false }));
   assert.deepEqual(await Effect.runPromise(detection.scanModelServers()), []);

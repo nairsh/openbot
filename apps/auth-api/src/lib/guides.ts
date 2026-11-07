@@ -15,11 +15,63 @@ export const GUIDES_COLLECTION: ContentCollection<"guides"> = {
   indexTitle: "OpenBot Guides: How to Run a Team of AI Agents",
   indexDescription:
     "How OpenBot works and how to run a team of AI agents. Start with how to set up your first agent, then explore practical guides to models, agents, and the Marketplace.",
+  indexSocialImage: {
+    path: "/social/guides.jpg",
+    alt: "From idea to done. OpenBot agents on a folded paper path",
+  },
   feedTitle: "OpenBot guides",
   backLabel: "All guides",
   moreTitle: "More guides",
   imageEyebrow: "OPENBOT · GUIDES",
   articles: publishedFirst([
+    {
+      slug: "ai-workspace-vs-chat",
+      title: "AI Agent Workspace vs Chat History: What Changes in Practice?",
+      description:
+        "Compare an AI agent workspace with chat history in OpenBot. See how saved files, shared work and model changes affect an ongoing research task.",
+      publishedAt: "2026-11-03",
+      author: NEWS_AUTHOR,
+    },
+    {
+      slug: "install-openbot-vps",
+      title: "How to Install OpenBot on a VPS: Ubuntu and Docker Guide",
+      description:
+        "Install OpenBot on a VPS with Ubuntu or Docker. Connect the server to your account, set up an AI provider, and manage updates, logs and backups.",
+      publishedAt: "2026-10-30",
+      author: NEWS_AUTHOR,
+    },
+    {
+      slug: "import-hermes-agents",
+      title: "How to Import Hermes Agents into OpenBot",
+      description:
+        "Import your Hermes Agent profiles into OpenBot. Choose what to bring over, review instructions, memories and skills, and check your agents after import.",
+      publishedAt: "2026-10-27",
+      author: NEWS_AUTHOR,
+    },
+    {
+      slug: "import-grok-bot-agents",
+      title: "How to Import Grok Bot Agents into OpenBot",
+      description:
+        "Move your Grok Bot agents into OpenBot with one ZIP export. Follow the steps for instructions, skills, memories, routines and optional files.",
+      publishedAt: "2026-10-23",
+      author: NEWS_AUTHOR,
+    },
+    {
+      slug: "ai-agents-examples",
+      title: "20 Real AI Agent Examples for Work and Business",
+      description:
+        "Explore 20 practical AI agent examples for research, content, coding and daily operations. Each OpenBot task ends with a result you can review.",
+      publishedAt: "2026-10-20",
+      author: NEWS_AUTHOR,
+    },
+    {
+      slug: "ai-agents-vs-agentic-ai",
+      title: "AI Agents vs Agentic AI: What Is the Difference?",
+      description:
+        "AI agents vs agentic AI, explained with a simple OpenBot example. See what an agent is, what makes its work agentic, and when one agent is enough.",
+      publishedAt: "2026-10-16",
+      author: NEWS_AUTHOR,
+    },
     {
       slug: "agentic-ai-definition",
       title: "Agentic AI Definition: How It Differs From Chatbots",

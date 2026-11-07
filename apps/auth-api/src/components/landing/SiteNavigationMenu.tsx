@@ -1,14 +1,16 @@
 import { Link } from "@tanstack/solid-router";
-import { createSignal, createUniqueId, For, flush, onSettled } from "solid-js";
+import { createSignal, createUniqueId, For, flush, Match, onSettled, Switch } from "solid-js";
 import { SITE_NAVIGATION_LINKS, SITE_NAVIGATION_SECTIONS, type SiteNavigationSection } from "../../lib/site-navigation";
 import { LandingIcon } from "./LandingIcon";
 import { SiteNavigationPanel } from "./SiteNavigationPanel";
+import { useSiteChrome, useSitePath } from "./SiteText";
 
 // The header menu on a wide screen. A Solid port of the Kobra navigation menu
 // (https://kobra.systems/components/navigation-menu), which is React on Base UI.
 //
-// It is a disclosure, not an ARIA menu: every trigger is a link to its section's
-// index page, and a hover or ArrowDown shows its panel of ordinary links. Each
+// It is a disclosure, not an ARIA menu: a trigger is a link to its section's
+// index page, and a hover or ArrowDown shows its panel of ordinary links. Resources
+// has no index page, so its trigger is a button that opens the panel. Each
 // panel sits in the DOM right after its trigger, so Tab walks from a trigger into
 // its open panel and on to the next trigger. A closed panel is inert.
 //
@@ -37,6 +39,9 @@ const CLOSE_DELAY_MS = 180;
 const VIEWPORT_GUTTER_PX = 16;
 
 export function SiteNavigationMenu() {
+  const chrome = useSiteChrome();
+  const text = () => chrome().text;
+  const path = useSitePath();
   const baseId = createUniqueId();
   const [active, setActive] = createSignal<SectionId | null>(null);
   const [motion, setMotion] = createSignal<MenuMotion>({ opened: "enter" });
@@ -48,7 +53,7 @@ export function SiteNavigationMenu() {
   let list: HTMLUListElement | undefined;
   let pill: HTMLSpanElement | undefined;
   let surface: HTMLDivElement | undefined;
-  const triggers = new Map<SectionId, HTMLAnchorElement>();
+  const triggers = new Map<SectionId, HTMLElement>();
   const panels = new Map<SectionId, HTMLDivElement>();
 
   // The open section as of this handler. `active()` catches up a microtask later.
@@ -190,6 +195,21 @@ export function SiteNavigationMenu() {
     openTimer = setTimeout(() => open(id), OPEN_DELAY_MS);
   }
 
+  /** The pointer of the last press on a button trigger: a touch press has no hover before it. */
+  let pressPointer = "mouse";
+
+  /**
+   * A press opens the panel. A mouse has usually opened it already by hover, so only a touch or pen
+   * press, or Enter or Space, which report no click count, closes it again.
+   */
+  function handleButtonTriggerClick(event: MouseEvent, id: SectionId): void {
+    if (current === id && (event.detail === 0 || pressPointer !== "mouse")) {
+      close();
+      return;
+    }
+    open(id);
+  }
+
   /** A plain link has no panel, so reaching it closes the one that is open. */
   function reachLink(link: HTMLElement): void {
     clearTimeout(openTimer);
@@ -264,7 +284,7 @@ export function SiteNavigationMenu() {
     <nav
       ref={root}
       class="site-nav"
-      aria-label="Primary navigation"
+      aria-label={text().primaryNavigation}
       data-state={active() ? "open" : "closed"}
       onPointerEnter={() => clearTimeout(closeTimer)}
       onPointerLeave={(event) => {
@@ -281,18 +301,40 @@ export function SiteNavigationMenu() {
           <For each={SITE_NAVIGATION_SECTIONS}>
             {(section) => (
               <li class="site-nav-item">
-                <Link
-                  ref={(element: HTMLAnchorElement) => triggers.set(section.id, element)}
-                  class="site-nav-trigger"
-                  to={section.indexRoute}
-                  aria-expanded={active() === section.id ? "true" : "false"}
-                  aria-controls={panelId(section.id)}
-                  onPointerEnter={(event) => handleTriggerPointerEnter(event, section.id)}
-                  onPointerLeave={() => clearTimeout(openTimer)}
-                >
-                  {section.label}
-                  <LandingIcon name="chevron-down" class="site-nav-chevron" />
-                </Link>
+                <Switch>
+                  <Match when={section.kind !== "resources" && section}>
+                    {(linked) => (
+                      <Link
+                        ref={(element: HTMLAnchorElement) => triggers.set(section.id, element)}
+                        class="site-nav-trigger"
+                        to={linked().indexRoute}
+                        aria-expanded={active() === section.id ? "true" : "false"}
+                        aria-controls={panelId(section.id)}
+                        onPointerEnter={(event) => handleTriggerPointerEnter(event, section.id)}
+                        onPointerLeave={() => clearTimeout(openTimer)}
+                      >
+                        {text().sections[section.id].label}
+                        <LandingIcon name="chevron-down" class="site-nav-chevron" />
+                      </Link>
+                    )}
+                  </Match>
+                  <Match when={section.kind === "resources"}>
+                    <button
+                      ref={(element) => triggers.set(section.id, element)}
+                      type="button"
+                      class="site-nav-trigger"
+                      aria-expanded={active() === section.id ? "true" : "false"}
+                      aria-controls={panelId(section.id)}
+                      onPointerEnter={(event) => handleTriggerPointerEnter(event, section.id)}
+                      onPointerLeave={() => clearTimeout(openTimer)}
+                      onPointerDown={(event) => (pressPointer = event.pointerType)}
+                      onClick={(event) => handleButtonTriggerClick(event, section.id)}
+                    >
+                      {text().sections[section.id].label}
+                      <LandingIcon name="chevron-down" class="site-nav-chevron" />
+                    </button>
+                  </Match>
+                </Switch>
                 <div
                   ref={(element) => panels.set(section.id, element)}
                   id={panelId(section.id)}
@@ -312,12 +354,12 @@ export function SiteNavigationMenu() {
               <li class="site-nav-item">
                 <Link
                   class="site-nav-trigger site-nav-link"
-                  to={link.to}
+                  to={path(link.to)}
                   onPointerEnter={(event) => {
                     if (event.pointerType === "mouse") reachLink(event.currentTarget);
                   }}
                 >
-                  {link.label}
+                  {text().links[link.id]}
                 </Link>
               </li>
             )}

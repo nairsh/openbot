@@ -13,7 +13,7 @@ import { markIncompleteImageGeneration } from "./image-generation";
 import type { MailboxSync } from "./mailbox-sync";
 import type { ProviderRuntime } from "./provider-runtime";
 import { stopRunningSubagents } from "./subagent-updates";
-import { isCodexMissingRollout, providerForAgent } from "./thread-items";
+import { isCodexMissingRollout, isCodexRolloutPending, providerForAgent } from "./thread-items";
 import type { ThreadLifecycle } from "./thread-lifecycle";
 
 type UnresolvedDelivery = DeliveryContext["delivery"];
@@ -366,7 +366,7 @@ export class BootRecovery {
             agentId: agent.id,
             publicThreadId,
             cwd: typeof params.cwd === "string" ? params.cwd : agent.workspacePath,
-            findDelivery: (deliveryId) => this.#mailbox.getDelivery(deliveryId),
+            findDelivery: (deliveryId) => this.#mailbox.deliveryForProviderMessage(agent.id, deliveryId),
             findMessageDelivery: (messageId) => this.#mailbox.deliveryForMessage(messageId, agent.id),
             quietRoutineDelivery: (deliveryId) => this.#hooks.quietRoutineDelivery(deliveryId),
           }).pipe(toBootRecoveryFailed);
@@ -380,8 +380,8 @@ export class BootRecovery {
               } catch (refreshFailure) {
                 this.#hooks.emitError("provider_history_backfill_pending", refreshFailure, agent.id);
               }
-              // No rollout means no history to import, so it is not an error to show.
-              if (!containsCause(failure, isCodexMissingRollout))
+              // No rollout, or none saved yet, means no history to import, so it is not an error to show.
+              if (!containsCause(failure, (cause) => isCodexMissingRollout(cause) || isCodexRolloutPending(cause)))
                 this.#hooks.emitError("provider_history_backfill_pending", failure.cause, agent.id);
             }),
           ),

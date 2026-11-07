@@ -9,6 +9,8 @@ import {
   File,
   Folder,
   FolderOpen,
+  LabelTooltip,
+  LabelTooltipTrigger,
   WrapText,
   X,
 } from "@openbot/ui";
@@ -19,6 +21,8 @@ import { type CodeToken, fileCodeLanguage, highlightedCodeLines } from "@openbot
 import { MarkdownFilePreview } from "@openbot/ui/features/conversation/MarkdownFilePreview";
 import { SpreadsheetFilePreview } from "@openbot/ui/features/conversation/SpreadsheetFilePreview";
 import { useText } from "@openbot/ui/text";
+import { holdFlag } from "@openbot/ui/utils";
+import type { JSX } from "@solidjs/web";
 import { createEffect, createMemo, createSignal, For, onCleanup, onSettled, Show, untrack } from "solid-js";
 
 import { MediaFilePreview } from "./MediaFilePreview";
@@ -44,6 +48,11 @@ interface FilePreviewPanelProps {
   onWrapLinesChange: (wrap: boolean) => void;
   /** Empty while the panel shows a folder. */
   preview: FilePreview | null;
+  /**
+   * Names the shown file. A new preview with the same key is the same file read again, so the panel
+   * keeps the source view. Absent means that each preview is another file.
+   */
+  fileKey?: string | undefined;
   /** A workspace folder. The panel lists it instead of a file. */
   directory?: WorkspaceDirectory | null;
   agents: AgentProfile[];
@@ -71,6 +80,8 @@ interface FilePreviewPanelProps {
    * the selection actions, so the user can quote the passage or ask for a change.
    */
   selectionQuoteId?: string | undefined;
+  /** The window draws the macOS window controls over the top start corner. The image viewer leaves room. */
+  macWindowControls?: boolean | undefined;
   onOpenExternally: () => void;
   allowExternalOpen?: boolean;
   onDownload?: () => void;
@@ -116,7 +127,9 @@ export default function FilePreviewPanel(props: FilePreviewPanelProps) {
       props.onWidthChange(width);
     },
   );
-  createEffect(file, () => {
+  // A memo, because an effect runs again on an equal value and a file read again has an equal key.
+  const shownFile = createMemo(() => props.fileKey ?? file());
+  createEffect(shownFile, () => {
     setRawSource(false);
   });
   createEffect(
@@ -136,7 +149,23 @@ export default function FilePreviewPanel(props: FilePreviewPanelProps) {
         setPreviewUrl(null);
         return;
       }
-      const url = URL.createObjectURL(new Blob([new Uint8Array(preview.bytes).buffer], { type: preview.mimeType }));
+      const blob = new Blob([new Uint8Array(preview.bytes).buffer], { type: preview.mimeType });
+      // The renderer policy allows `data:` images and no object URL images. A `data:` SVG also has
+      // no app origin when it is opened on its own. The reader encodes off the UI thread.
+      if (preview.previewKind === "image") {
+        let current = true;
+        setPreviewUrl(null);
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (current && typeof reader.result === "string") setPreviewUrl(reader.result);
+        };
+        reader.readAsDataURL(blob);
+        return () => {
+          current = false;
+          reader.abort();
+        };
+      }
+      const url = URL.createObjectURL(blob);
       currentPreviewUrl = url;
       setPreviewUrl(url);
     },
@@ -146,7 +175,15 @@ export default function FilePreviewPanel(props: FilePreviewPanelProps) {
     if (revealFrame !== undefined) cancelAnimationFrame(revealFrame);
   });
 
-  const revealPanel = () => {
+  let panel!: HTMLElement;
+  // The chat beside the panel makes room for it (`panel-layout.css`).
+  onSettled(() => {
+    const conversation = panel.closest(".conversation-panel");
+    return conversation ? holdFlag(conversation, "file-preview-panel") : undefined;
+  });
+
+  const revealPanel = (element: HTMLElement) => {
+    panel = element;
     revealFrame = requestAnimationFrame(() => {
       revealFrame = requestAnimationFrame(() => {
         setRevealed(true);
@@ -192,15 +229,9 @@ export default function FilePreviewPanel(props: FilePreviewPanelProps) {
       <header class="file-preview-header">
         <Show when={props.onBack}>
           {(back) => (
-            <Button
-              variant="ghost"
-              type="button"
-              class="browser-toolbar-button"
-              aria-label={t("preview.panel.back")}
-              onClick={() => back()()}
-            >
+            <HeaderButton label={t("preview.panel.back")} onClick={() => back()()}>
               <ArrowLeft class="browser-toolbar-icon" />
-            </Button>
+            </HeaderButton>
           )}
         </Show>
         <Show when={props.directory} fallback={<File class="file-preview-file-icon" />}>
@@ -208,98 +239,69 @@ export default function FilePreviewPanel(props: FilePreviewPanelProps) {
         </Show>
         <h2 title={props.directory?.path ?? title()}>{title()}</h2>
         <Show when={previewKind() === "markdown"}>
-          <Button
-            variant="ghost"
-            type="button"
-            class="browser-toolbar-button"
-            aria-label={t("preview.panel.rawMarkdown")}
-            aria-pressed={rawSource() ? "true" : "false"}
+          <HeaderButton
+            label={t("preview.panel.rawMarkdown")}
+            pressed={rawSource()}
             onClick={() => setRawSource((raw) => !raw)}
           >
             <Code class="browser-toolbar-icon" />
-          </Button>
+          </HeaderButton>
         </Show>
         <Show when={hasPage()}>
-          <Button
-            variant="ghost"
-            type="button"
-            class="browser-toolbar-button"
-            aria-label={t("preview.panel.rawHtml")}
-            aria-pressed={rawSource() ? "true" : "false"}
+          <HeaderButton
+            label={t("preview.panel.rawHtml")}
+            pressed={rawSource()}
             onClick={() => setRawSource((raw) => !raw)}
           >
             <Code class="browser-toolbar-icon" />
-          </Button>
+          </HeaderButton>
         </Show>
         <Show when={showsSourceText()}>
-          <Button
-            variant="ghost"
-            type="button"
-            class="browser-toolbar-button"
-            aria-label={t("preview.panel.wrapLines")}
-            aria-pressed={wrapLines() ? "true" : "false"}
-            onClick={toggleWrapLines}
-          >
+          <HeaderButton label={t("preview.panel.wrapLines")} pressed={wrapLines()} onClick={toggleWrapLines}>
             <WrapText class="browser-toolbar-icon" />
-          </Button>
+          </HeaderButton>
         </Show>
         <Show when={source()}>
           {(value) => (
-            <CopyButton
-              class="browser-toolbar-button file-preview-copy"
-              value={value()}
-              label={t("preview.panel.copy")}
-              iconOnly
-            />
+            <LabelTooltip content={t("preview.panel.copy")}>
+              <LabelTooltipTrigger
+                as={CopyButton}
+                class="browser-toolbar-button file-preview-copy"
+                value={value()}
+                label={t("preview.panel.copy")}
+                iconOnly
+              />
+            </LabelTooltip>
           )}
         </Show>
         <Show when={file() && props.allowExternalOpen !== false}>
-          <Button
-            variant="ghost"
-            type="button"
-            class="browser-toolbar-button"
-            aria-label={t("preview.panel.openExternally")}
-            onClick={props.onOpenExternally}
-          >
+          <HeaderButton label={t("preview.panel.openExternally")} onClick={props.onOpenExternally}>
             <ExternalLink class="browser-toolbar-icon" />
-          </Button>
+          </HeaderButton>
         </Show>
         <Show when={file() && props.onDownload}>
           {(download) => (
-            <Button
-              variant="ghost"
-              type="button"
-              class="browser-toolbar-button"
-              aria-label={t("preview.panel.download")}
-              onClick={() => download()()}
-            >
+            <HeaderButton label={t("preview.panel.download")} onClick={() => download()()}>
               <Download class="browser-toolbar-icon" />
-            </Button>
+            </HeaderButton>
           )}
         </Show>
         <Show when={file() && props.onReveal}>
           {(reveal) => (
-            <Button
-              variant="ghost"
-              type="button"
-              class="browser-toolbar-button"
-              aria-label={t("preview.panel.reveal")}
-              onClick={() => reveal()()}
-            >
+            <HeaderButton label={t("preview.panel.reveal")} onClick={() => reveal()()}>
               <FolderOpen class="browser-toolbar-icon" />
-            </Button>
+            </HeaderButton>
           )}
         </Show>
-        <Button
-          variant="ghost"
-          type="button"
-          class="browser-toolbar-button"
-          aria-label={t("preview.panel.close")}
+        {/* In the side panel, the file tab closes the file, so this button hides there. */}
+        <HeaderButton
+          label={t("preview.panel.close")}
+          class="side-panel-pane-close"
           data-cuelume-tap="close"
           onClick={props.onClose}
         >
           <X class="browser-toolbar-icon" />
-        </Button>
+        </HeaderButton>
       </header>
       <div class="file-preview-content">
         <Show when={props.directory}>
@@ -365,6 +367,7 @@ export default function FilePreviewPanel(props: FilePreviewPanelProps) {
             html={pageHtml() ?? undefined}
             title={title()}
             onOpenLink={props.onOpenLink}
+            macWindowControls={props.macWindowControls}
           />
         </Show>
         <Show when={showsSourceText()}>
@@ -411,6 +414,34 @@ export default function FilePreviewPanel(props: FilePreviewPanelProps) {
         </Show>
       </div>
     </aside>
+  );
+}
+
+/** An icon-only header button. Its label names it for a screen reader and in a tooltip. */
+function HeaderButton(props: {
+  label: string;
+  class?: string;
+  pressed?: boolean;
+  onClick: () => void;
+  "data-cuelume-tap"?: string;
+  children: JSX.Element;
+}) {
+  const pressed = () => (props.pressed === undefined ? undefined : String(props.pressed));
+  return (
+    <LabelTooltip content={props.label}>
+      <LabelTooltipTrigger
+        as={Button}
+        variant="ghost"
+        type="button"
+        class={["browser-toolbar-button", props.class]}
+        aria-label={props.label}
+        aria-pressed={pressed()}
+        data-cuelume-tap={props["data-cuelume-tap"]}
+        onClick={() => props.onClick()}
+      >
+        {props.children}
+      </LabelTooltipTrigger>
+    </LabelTooltip>
   );
 }
 

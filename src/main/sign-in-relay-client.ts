@@ -55,11 +55,13 @@ export interface SignInRelayClientDependencies {
 
 interface Waiting {
   page: McpSignInRelayPage;
-  /** The address the browser opens. It goes nowhere until the user, who sees its host name, asks. */
+  /** The address the browser opens. */
   url: string;
   /** `null` for a page that returns nowhere: no callback is its own. */
   state: string | null;
   receive: (query: string) => void;
+  /** Whether a callback came back. The host then completes the sign-in, and nothing waits for a paste. */
+  accepted: () => boolean;
 }
 
 /** A page that the user already chose, as with a link in a conversation. */
@@ -78,11 +80,10 @@ export interface ChosenSignInPage {
  * user pastes the address the browser shows. The query of the callback holds a grant: it goes only to
  * the host, and it is never logged.
  *
- * The host chooses the page, so a host that is not honest could ask for a grant of another account in
- * this browser. The page therefore opens only when the user, who sees its host name, asks; the port is
- * read from the page and not from the host's answer; and a page with no `state` is refused, so the
- * listener hands on only the callback of this sign-in. A page with no `state` that returns nowhere has
- * no callback to take, so the user can only open it.
+ * The page opens in the browser as soon as the sign-in waits, and the dialog shows its host name. The
+ * host chooses the page, so the port is read from the page and not from the host's answer, and a page
+ * with no `state` is refused, so the listener hands on only the callback of this sign-in. A page with
+ * no `state` that returns nowhere has no callback to take, so it only opens.
  */
 export class SignInRelayClient {
   readonly #dependencies: SignInRelayClientDependencies;
@@ -94,7 +95,8 @@ export class SignInRelayClient {
 
   /** What the renderer shows while the sign-in of `key` waits, or `null`. */
   page(key: string): McpSignInRelayPage | null {
-    return this.#waiting.get(key)?.page ?? null;
+    const waiting = this.#waiting.get(key);
+    return waiting && !waiting.accepted() ? waiting.page : null;
   }
 
   /**
@@ -110,7 +112,7 @@ export class SignInRelayClient {
     return false;
   }
 
-  /** Opens the page of the sign-in of `key` in the user's browser, after they checked its host name. */
+  /** Opens the page of the sign-in of `key` in the user's browser again. */
   open(key: string): Promise<void> {
     const waiting = this.#waiting.get(key);
     if (!waiting) return Promise.reject(new Error(sourceText("error.mcp.relayEnded")));
@@ -124,13 +126,15 @@ export class SignInRelayClient {
     if (waiting.state === null) throw new Error(sourceText("error.mcp.relayAddressInvalid"));
     const query = relayCallbackQuery(address, waiting.state);
     if (query === null) throw new Error(sourceText("error.mcp.relayAddressInvalid"));
+    // The sign-in already has its callback, and the host completes it: a second one would change nothing.
+    if (waiting.accepted()) return;
     waiting.receive(query);
   }
 
   /**
-   * Runs one relayed sign-in to its end. An interrupt or a failure cancels the flow on the host. With
-   * `chosen`, the page that the user already chose opens as soon as the callback can come back. The
-   * host names the page, so any other page ends the sign-in unopened.
+   * Runs one relayed sign-in to its end. An interrupt or a failure cancels the flow on the host. The
+   * page opens as soon as the callback can come back. With `chosen`, the host names the page, so any
+   * other page ends the sign-in unopened.
    */
   run<E>(key: string, remote: SignInRelayRemote<E>, chosen: ChosenSignInPage | null = null) {
     return this.#run(key, remote, chosen);
@@ -172,8 +176,9 @@ export class SignInRelayClient {
           url: page.toString(),
           state: null,
           receive: () => undefined,
+          accepted: () => false,
         });
-        yield* self.#openChosen(key, chosen);
+        yield* self.#openPage(key, chosen);
         return yield* awaitResult(remote, flowId);
       }
       if (!state) return { toolCount: 0, error: sourceText("error.mcp.relayNoState") };
@@ -193,8 +198,9 @@ export class SignInRelayClient {
         url: page.toString(),
         state,
         receive: (value) => Deferred.doneUnsafe(query, Effect.succeed(value)),
+        accepted: () => Deferred.isDoneUnsafe(query),
       });
-      yield* self.#openChosen(key, chosen);
+      yield* self.#openPage(key, chosen);
 
       // The host can end the sign-in first: its deadline passed, or another start replaced it.
       const ended = yield* Effect.raceFirst(
@@ -202,7 +208,6 @@ export class SignInRelayClient {
         awaitResult(remote, flowId).pipe(Effect.map((result) => ({ result }))),
       );
       if ("result" in ended) return ended.result;
-      forget();
       const completed = yield* remote.complete(flowId, ended.query);
       return completed.result ?? (yield* awaitResult(remote, flowId));
     }).pipe(
@@ -212,12 +217,21 @@ export class SignInRelayClient {
     );
   });
 
-  /** Opens the chosen page of the sign-in of `key`, which now waits, and tells the caller what it shows. */
-  #openChosen(key: string, chosen: ChosenSignInPage | null) {
+  /** Opens the page of the sign-in of `key`, which now waits. With `chosen`, tells the caller what it shows. */
+  #openPage(key: string, chosen: ChosenSignInPage | null) {
     const waiting = this.#waiting.get(key);
-    if (chosen === null || !waiting) return Effect.void;
-    chosen.onWaiting(waiting.page);
-    return Effect.promise(() => this.#dependencies.openExternal(waiting.url));
+    if (!waiting) return Effect.void;
+    const open = () => this.#dependencies.openExternal(waiting.url);
+    if (chosen !== null) {
+      chosen.onWaiting(waiting.page);
+      return Effect.promise(open);
+    }
+    // The dialog shows the page, so the user can open it again when the browser did not open.
+    return Effect.tryPromise(open).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => logger.warn("OpenBot could not open a relayed sign-in page:", toLogValue(error.cause))),
+      ),
+    );
   }
 
   /**

@@ -22,10 +22,31 @@ export function useAgentUnread(agentId: string) {
   return useSyncExternalStore(liveState.subscribe, select);
 }
 
+/** The host's unread message count of this agent's own chat. Re-renders only when it changes. */
+export function useAgentUnreadCount(agentId: string) {
+  const liveState = useMobileWorkspaceSelector(selectLiveState);
+  const select = useCallback(() => liveState.get().unreadCounts[agentId] ?? 0, [liveState, agentId]);
+  return useSyncExternalStore(liveState.subscribe, select);
+}
+
 /** The agents with unread messages, on every server. Re-renders only when that list changes. */
 export function useUnreadAgentIds() {
   const liveState = useMobileWorkspaceSelector(selectLiveState);
   const select = useCallback(() => liveState.get().unreadAgentIds, [liveState]);
+  return useSyncExternalStore(liveState.subscribe, select);
+}
+
+/** The unread message count of each agent. `useUnreadAgentIds` decides which agents are unread. */
+export function useUnreadCounts() {
+  const liveState = useMobileWorkspaceSelector(selectLiveState);
+  const select = useCallback(() => liveState.get().unreadCounts, [liveState]);
+  return useSyncExternalStore(liveState.subscribe, select);
+}
+
+/** The first unread message of this agent's chat, from the host. Re-renders only when it changes. */
+export function useAgentFirstUnreadMessageId(agentId: string) {
+  const liveState = useMobileWorkspaceSelector(selectLiveState);
+  const select = useCallback(() => liveState.get().firstUnreadMessageIds[agentId] ?? null, [liveState, agentId]);
   return useSyncExternalStore(liveState.subscribe, select);
 }
 
@@ -63,6 +84,12 @@ export function useAgentBrowserTabs(serverId: string, agentId: string, threadId:
   );
   const state = useSyncExternalStore(liveState.subscribe, select);
   return useMemo(() => agentBrowserTabs(state, agentId, threadId), [state, agentId, threadId]);
+}
+/** Whether the host's browser tab list has arrived. Re-renders only when that changes. */
+export function useBrowserTabsLoaded(serverId: string) {
+  const liveState = useMobileWorkspaceSelector(selectLiveState);
+  const select = useCallback(() => liveState.get().browserTabs[serverId] !== undefined, [liveState, serverId]);
+  return useSyncExternalStore(liveState.subscribe, select);
 }
 /** The approvals this server waits on, in the order they arrived. Re-renders only when that list changes. */
 export function useApprovalRequests(serverId: string) {

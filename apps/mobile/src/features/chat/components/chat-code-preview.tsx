@@ -16,7 +16,9 @@ import { expoGoDomOptions } from "@/shared/lib/expo-go-dom";
 import { haptics } from "@/shared/lib/haptics";
 import { useReducedMotion } from "@/shared/lib/motion";
 import { useText } from "@/shared/lib/text";
+import { CODE_LAYOUT_STYLE, CODE_TEXT_STYLE, MIRROR_IN_RTL } from "@/shared/lib/text-direction";
 import HtmlPreview from "./html-preview.dom";
+import { useHistoryShown } from "./use-history-shown";
 import { useListSettled } from "./use-list-settled";
 
 /** The lines of code that the card shows while the block streams, or when it cannot draw it. */
@@ -52,6 +54,8 @@ export const ChatCodePreview = memo(function ChatCodePreview({
   const reducedMotion = useReducedMotion();
   // A card that mounts during a fast fling of the chat draws its page or diagram when the list slows down.
   const settled = useListSettled();
+  // A web view starts only once the chat shows its history, so it does not slow the chat that opens.
+  const historyShown = useHistoryShown();
   const [muted, foreground] = useThemeColor(["muted", "foreground"]);
   const [pressed, setPressed] = useState(false);
   const [width, setWidth] = useState(0);
@@ -97,17 +101,17 @@ export const ChatCodePreview = memo(function ChatCodePreview({
               {t("mobile.chat.preview.lines", { count: lineCount })}
             </Typography.Paragraph>
           </View>
-          <ChevronRight size={18} color={String(muted)} />
+          <ChevronRight size={18} color={String(muted)} style={MIRROR_IN_RTL} />
         </View>
         <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           {streaming ? (
             <CodeExcerpt text={text} />
-          ) : width <= 0 ? null : !settled ? (
+          ) : width <= 0 ? null : !settled || (kind === "html" && !historyShown) ? (
             <View style={{ height: previewHeight }} />
           ) : kind === "html" ? (
             <HtmlCardPreview text={text} title={title} height={previewHeight} />
           ) : (
-            <DiagramCardPreview text={text} title={title} width={width} height={previewHeight} />
+            <DiagramCardPreview text={text} title={title} width={width} height={previewHeight} draw={historyShown} />
           )}
         </View>
       </Animated.View>
@@ -123,14 +127,14 @@ function CodeExcerpt({ text }: { text: string }) {
     .filter(({ line }) => line.trim())
     .slice(0, EXCERPT_LINES);
   return (
-    <View className="gap-0.5 px-3 py-2.5">
+    <View className="gap-0.5 px-3 py-2.5" style={CODE_LAYOUT_STYLE}>
       {excerpt.map(({ line, row }, index) => (
         <Typography.Code
           key={row}
           numberOfLines={1}
           className="bg-transparent p-0 text-muted"
           // The last line fades, so the excerpt reads as the start of a longer block.
-          style={{ fontSize: 12, lineHeight: 17, opacity: index === EXCERPT_LINES - 1 ? 0.45 : 1 }}
+          style={[CODE_TEXT_STYLE, { fontSize: 12, lineHeight: 17, opacity: index === EXCERPT_LINES - 1 ? 0.45 : 1 }]}
         >
           {line}
         </Typography.Code>
@@ -163,24 +167,27 @@ function HtmlCardPreview({ text, title, height }: { text: string; title: string;
 
 /**
  * The diagram from the shared renderer at the full width of the card. A tall diagram shows its
- * top and the card cuts the rest; the screen shows it whole.
+ * top and the card cuts the rest; the screen shows it whole. Until `draw`, a diagram that is not
+ * drawn yet waits in its drawing state, so the renderer's web view does not start.
  */
 function DiagramCardPreview({
   text,
   title,
   width,
   height,
+  draw,
 }: {
   text: string;
   title: string;
   width: number;
   height: number;
+  draw: boolean;
 }) {
   const { t } = useText();
   const { theme } = useUniwind();
-  const diagram = useMermaidDiagram(text, theme === "dark");
-  if (!diagram || diagram.status === "failed") return <CodeExcerpt text={text} />;
-  if (diagram.status === "drawing")
+  const diagram = useMermaidDiagram(text, theme === "dark", draw);
+  if (diagram?.status === "failed") return <CodeExcerpt text={text} />;
+  if (!diagram || diagram.status === "drawing")
     return (
       <Skeleton
         isLoading

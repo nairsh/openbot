@@ -50,3 +50,115 @@ Troubleshooting:
   The server works on the file that is open.
 - A long session calls tools that do not exist: start a new thread. Paper
   gives this advice in <https://paper.design/docs/mcp>.
+
+## Obsidian
+
+The listing runs `npx -y obsidian-mcp-server@3.7.2`
+(<https://github.com/cyanheads/obsidian-mcp-server>). A third party publishes
+this package and it gets write access to the vault, so the listing names one
+version. Move it only in a reviewed commit, after you check that the release
+keeps `OBSIDIAN_API_KEY` and the `http://127.0.0.1:27123` default. The server talks to the
+Local REST API community plugin in the Obsidian app
+(<https://github.com/coddingtonbear/obsidian-local-rest-api>). The user types the
+plugin's API key in the connect dialog, and OpenBot gives it to the server as
+`OBSIDIAN_API_KEY`.
+
+The server uses `http://127.0.0.1:27123` by default. A listing cannot set other
+environment values, so the user turns on the plugin's HTTP server:
+
+1. In Obsidian, install and enable the Local REST API plugin (version 4 or later).
+2. Open Settings > Local REST API. Copy the API key.
+3. Turn on "Enable non-encrypted (HTTP) server". Keep the port at 27123.
+4. Keep Obsidian open while agents use the vault.
+
+Troubleshooting:
+
+- The connection is refused: Obsidian is closed, or the HTTP server is off.
+- The server replies 401: the API key is wrong. Copy it again from the plugin settings.
+
+## Apple apps
+
+The listing starts the community server `mcp-icloud`
+(<https://github.com/MrGo2/icloud-mcp>, MIT) through `npx`. The version is
+pinned because the server can read and send mail and iMessages. To update it,
+review the upstream changes, change the version in `args`, and increase the
+listing `version`. The server has no read-only mode and no setting that limits
+it to some apps.
+
+The listing uses local mode only: the server controls the apps on this Mac
+through AppleScript and needs no key. Its cloud mode needs
+`USE_LOCAL_MODE=false`, and a listing cannot set a fixed environment value.
+
+The app lists `macAutomation`: the Apple apps that the server drives. On a Mac
+that runs the server, the listing page shows a switch, on by default, that asks
+macOS for each app right after the install, and later an "Ask for access"
+button. OpenBot sends one harmless Apple Event (`count windows`) to each app, so
+macOS shows its Automation prompt then and not during an agent's task. An app
+that the request opened is quit again. macOS does not ask again for an app that
+the user refused.
+
+Troubleshooting:
+
+- An error `-1743` ("not authorized to send Apple events"): the user refused
+  the Automation prompt. Turn OpenBot on for the app in System Settings ›
+  Privacy & Security › Automation, or run `tccutil reset AppleEvents` to get
+  the prompts again.
+- Mail or Calendar tools time out: AppleScript is slow on large mailboxes and
+  on many subscribed calendars. Ask for one folder and a smaller count.
+
+## GitLab
+
+The listing connects to GitLab's own MCP server at `https://gitlab.com/api/v4/mcp`
+(<https://docs.gitlab.com/user/model_context_protocol/mcp_server/>). The server
+uses OAuth with dynamic client registration and the `mcp` scope, so the user
+signs in through the browser and types no token.
+
+A listing cannot ask for a server address and a browser sign-in together: a
+`url` field exists only in a `key` flow. GitLab refuses classic personal access
+tokens on this server, so a key flow would need a fine-grained token. For a
+self-hosted GitLab, the user adds `https://<gitlab-host>/api/v4/mcp` in the
+server's MCP servers settings and selects Sign in.
+
+Troubleshooting:
+
+- A self-hosted server refuses the connection or has no MCP endpoint: an admin
+  must allow access to the MCP server for the instance. The server is GA from
+  GitLab 19.5.
+
+## Omnisend
+
+The listing connects to Omnisend's own MCP server at `https://mcp.omnisend.com/mcp`
+(<https://api-docs.omnisend.com/reference/mcp-server>). The server uses OAuth with
+dynamic client registration, so the user signs in through the browser and types
+no key. The user selects the access level on Omnisend's consent screen. The
+account needs the Owner, Admin, Manager or Partner role.
+
+The server shows four tools: `search`, `tool_schema`, `tool_documentation` and
+`execute`. The agent finds an Omnisend operation with `search` and runs it with
+`execute`. With write access, the operations include sending and deleting
+campaigns, automations and segments.
+
+Troubleshooting:
+
+- A write fails with "Permission denied": the user granted read-only access.
+  Disconnect and sign in again with write access.
+- The account has more than one brand: one connection works on one brand.
+  Omnisend's guide adds a separate server for each brand with a `?brand=` query
+  parameter; add it in the MCP servers settings and select Sign in.
+
+## ElevenLabs
+
+The listing connects to ElevenLabs' hosted MCP server at `https://api.elevenlabs.io/v1/mcp`
+(<https://elevenlabs.io/docs/eleven-agents/operate/hosted-mcp>). ElevenLabs deprecated its local
+server. The authorization server has no client registration. It reads OpenBot's client metadata
+document, `https://openbot.run/oauth/mcp-client.json`, so the user signs in through the browser and
+types no key. Generated audio comes back as a short-lived download link.
+
+The data residency servers (`api.eu.residency.elevenlabs.io`, `api.in.residency.elevenlabs.io`,
+`api.sg.residency.elevenlabs.io`) use separate accounts. The user adds `https://<host>/v1/mcp` in
+the server's MCP servers settings and selects Sign in.
+
+Troubleshooting:
+
+- The sign-in page refuses the redirect address: another program uses port 28417, so OpenBot
+  listens on another port that the document does not list. Close that program and restart OpenBot.

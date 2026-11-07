@@ -24,6 +24,7 @@ import type {
   MarketplaceSkillSummary,
   QueueDelivery,
   RemoteDesktopSession,
+  ServerAuditEntry,
   ServerSummary,
   SharedTable,
   SkillPackagePreview,
@@ -222,6 +223,14 @@ export const STORY_MODELS: ClientAgentModelOption[] = [
     name: "Claude Sonnet 5",
     description: "Balanced Claude model for general agent work.",
     defaultReasoningEffort: "high",
+    supportedReasoningEfforts: ["low", "medium", "high"],
+  },
+  {
+    provider: "grok",
+    id: "grok-4.7",
+    name: "Grok 4.7",
+    description: "Discovered from Grok CLI over ACP.",
+    defaultReasoningEffort: "medium",
     supportedReasoningEfforts: ["low", "medium", "high"],
   },
   {
@@ -745,6 +754,106 @@ export const STORY_TEAM_MEMBERS: TeamMemberSummary[] = STORY_PRESENCE.members.ma
   disabled: member.disabled,
 }));
 
+const ALICE = { id: "member-alice", name: "Alice Chen" };
+const NORBERT = { id: "member-self", name: "Norbert" };
+const JON = { id: "member-jon", name: "Jon Bell" };
+const MAYA = { id: "member-maya", name: "Maya Singh" };
+const LEGAL = { id: "role-legal", name: "Legal team" };
+const FINANCE = { id: "role-finance", name: "Finance" };
+const RESEARCH = { id: "research", name: "Research" };
+const SALES = { id: "sales", name: "Sales Outbound" };
+
+/**
+ * The access changes of the story server, newest first: Legal chats with Research, Finance manages
+ * Sales Outbound, and every member no longer manages Research or Sales Outbound.
+ */
+export const STORY_SERVER_AUDIT_ENTRIES: ServerAuditEntry[] = [
+  {
+    id: "audit-14",
+    at: "2026-11-02T14:05:00.000Z",
+    actor: NORBERT,
+    change: { kind: "role-renamed", roleId: LEGAL.id, from: "Legal team", to: "Legal" },
+  },
+  {
+    id: "audit-13",
+    at: "2026-11-02T10:16:00.000Z",
+    actor: ALICE,
+    change: { kind: "agent-level", role: null, agent: SALES, from: "manage", to: "view" },
+  },
+  {
+    id: "audit-12",
+    at: "2026-11-02T10:15:00.000Z",
+    actor: ALICE,
+    change: { kind: "agent-level", role: null, agent: RESEARCH, from: "manage", to: "none" },
+  },
+  {
+    id: "audit-11",
+    at: "2026-11-02T10:02:00.000Z",
+    actor: NORBERT,
+    change: { kind: "member-role", member: ALICE, from: "member", to: "admin" },
+  },
+  {
+    id: "audit-10",
+    at: "2026-10-31T16:40:00.000Z",
+    actor: NORBERT,
+    change: { kind: "role-deleted", role: { id: "role-contractors", name: "Contractors" } },
+  },
+  {
+    id: "audit-09",
+    at: "2026-10-31T16:20:00.000Z",
+    actor: NORBERT,
+    change: { kind: "member-removed", member: { id: "member-sam", name: "Sam Ortiz" } },
+  },
+  {
+    id: "audit-08",
+    at: "2026-10-31T11:07:00.000Z",
+    actor: ALICE,
+    change: { kind: "role-member", role: FINANCE, member: MAYA, added: true },
+  },
+  {
+    id: "audit-07",
+    at: "2026-10-31T11:07:00.000Z",
+    actor: ALICE,
+    change: { kind: "role-member", role: FINANCE, member: JON, added: true },
+  },
+  {
+    id: "audit-06",
+    at: "2026-10-31T11:06:00.000Z",
+    actor: ALICE,
+    change: { kind: "agent-level", role: FINANCE, agent: SALES, from: "none", to: "manage" },
+  },
+  {
+    id: "audit-05",
+    at: "2026-10-31T11:05:00.000Z",
+    actor: ALICE,
+    change: { kind: "role-created", role: FINANCE },
+  },
+  {
+    id: "audit-04",
+    at: "2026-10-30T09:42:00.000Z",
+    actor: NORBERT,
+    change: { kind: "role-member", role: LEGAL, member: JON, added: true },
+  },
+  {
+    id: "audit-03",
+    at: "2026-10-30T09:41:00.000Z",
+    actor: NORBERT,
+    change: { kind: "agent-level", role: LEGAL, agent: RESEARCH, from: "none", to: "chat" },
+  },
+  {
+    id: "audit-02",
+    at: "2026-10-30T09:40:00.000Z",
+    actor: NORBERT,
+    change: { kind: "role-created", role: LEGAL },
+  },
+  {
+    id: "audit-01",
+    at: "2026-10-30T09:12:00.000Z",
+    actor: null,
+    change: { kind: "member-joined", member: MAYA, role: "member" },
+  },
+];
+
 export const STORY_INVITES: TeamInviteSummary[] = [
   {
     id: "invite-1",
@@ -822,6 +931,7 @@ export const STORY_MARKETPLACE_SKILLS: MarketplaceSkillSummary[] = [
     version: 4,
     installs: 1_284,
     featured: true,
+    verified: true,
     iconUrl: skillPreviewIcon("📝", "#7255ce"),
     updatedAt: "2026-08-17T09:12:00.000Z",
   },
@@ -835,6 +945,7 @@ export const STORY_MARKETPLACE_SKILLS: MarketplaceSkillSummary[] = [
     version: 2,
     installs: 862,
     featured: true,
+    verified: false,
     iconUrl: skillPreviewIcon("🗄️", "#2463a6"),
     updatedAt: "2026-08-15T14:40:00.000Z",
   },
@@ -848,6 +959,7 @@ export const STORY_MARKETPLACE_SKILLS: MarketplaceSkillSummary[] = [
     version: 7,
     installs: 517,
     featured: false,
+    verified: false,
     iconUrl: skillPreviewIcon("🎨", "#be4d86"),
     updatedAt: "2026-08-11T11:05:00.000Z",
   },
@@ -861,6 +973,7 @@ export const STORY_MARKETPLACE_SKILLS: MarketplaceSkillSummary[] = [
     version: 1,
     installs: 344,
     featured: false,
+    verified: false,
     iconUrl: skillPreviewIcon("📬", "#e88124"),
     updatedAt: "2026-08-09T07:30:00.000Z",
   },
@@ -874,8 +987,9 @@ export const STORY_MARKETPLACE_SKILLS: MarketplaceSkillSummary[] = [
     version: 3,
     installs: 209,
     featured: false,
+    verified: true,
     iconUrl: skillPreviewIcon("🔎", "#268477"),
-    updatedAt: "2026-08-04T16:20:00.000Z",
+    updatedAt: "2026-08-19T16:20:00.000Z",
   },
   {
     id: "skill-nightly-backup",
@@ -887,6 +1001,7 @@ export const STORY_MARKETPLACE_SKILLS: MarketplaceSkillSummary[] = [
     version: 5,
     installs: 156,
     featured: false,
+    verified: false,
     iconUrl: skillPreviewIcon("💾", "#526178"),
     updatedAt: "2026-07-28T22:00:00.000Z",
   },
@@ -1544,7 +1659,7 @@ const STORY_MARKETPLACE_PLUGIN_AAVE: MarketplacePluginDetail = {
     "simulate lending actions, and prepare non-custodial transactions. Every transaction is returned " +
     "unsigned: the plugin reads the markets and writes the call, and the wallet stays with the user.",
   category: "data-analytics",
-  creatorName: "avara.xyz",
+  creatorName: "Avara",
   creatorAvatarUrl: null,
   iconUrl: skillPreviewIcon("👻", "#6b5ce7"),
   version: "1.0.0",
@@ -1627,7 +1742,7 @@ export const STORY_MARKETPLACE_PLUGINS: MarketplacePluginDetail[] = [
       "Read and write Linear from a conversation: find the issues assigned to a team, open one with the " +
       "right labels and estimate, move it through a cycle, and answer what is left before a project ships.",
     category: "productivity",
-    creatorName: "linear.app",
+    creatorName: "Linear",
     creatorAvatarUrl: null,
     iconUrl: skillPreviewIcon("📐", "#2f2f46"),
     version: "2.3.1",
@@ -1700,7 +1815,7 @@ export const STORY_MARKETPLACE_PLUGINS: MarketplacePluginDetail[] = [
       "Read a Figma file the way a developer reads it: the frames in a page, the variables a component " +
       "binds to, and the comments still waiting for an answer. Nothing in the file is changed.",
     category: "design",
-    creatorName: "figma.com",
+    creatorName: "Figma",
     creatorAvatarUrl: null,
     iconUrl: skillPreviewIcon("🎨", "#d4452c"),
     version: "0.9.4",
@@ -1716,28 +1831,29 @@ export const STORY_MARKETPLACE_PLUGINS: MarketplacePluginDetail[] = [
       {
         id: "app-figma-mcp",
         name: "Figma",
-        description: "Files, pages, frames, variables and comments, read-only, over the Figma MCP server.",
+        description:
+          "Design context, metadata, variables and screenshots, over the MCP server in the Figma desktop app. " +
+          "Read-only for now.",
         iconUrl: skillPreviewIcon("🎨", "#d4452c"),
         server: {
-          name: "figma",
+          name: "figma-desktop",
           transport: "http",
-          url: "https://mcp.figma.com/mcp",
+          url: "http://127.0.0.1:3845/mcp",
           auth: [
             {
-              id: "token",
-              kind: "key",
-              label: "Personal access token",
-              fields: [
-                {
-                  id: "token",
-                  label: "Personal access token",
-                  header: "X-Figma-Token",
-                  placeholder: "figd_…",
-                  hint: "Settings · Security · Personal access tokens.",
-                },
+              id: "figma-desktop",
+              kind: "local",
+              label: "Figma desktop app",
+              steps: [
+                "Open the Figma desktop app and sign in. The server needs a Dev or Full seat on a paid plan.",
+                "Open a design file from a team project, not from Drafts.",
+                'Press ⌘K (Ctrl+K on Windows), search for "MCP", and turn on "Enable desktop MCP server".',
+                "Keep Figma open while agents use it.",
               ],
-              docsUrl: "https://www.figma.com/developers/api#access-tokens",
-              docsLabel: "Get a token",
+              note:
+                "The local server can only read designs: layout, code context, variables and screenshots. " +
+                "It cannot draw or edit yet. We are working on write support.",
+              docsUrl: "https://developers.figma.com/docs/figma-mcp-server/local-server-installation/",
             },
           ],
         },
@@ -1754,6 +1870,105 @@ export const STORY_MARKETPLACE_PLUGINS: MarketplacePluginDetail[] = [
     websiteUrl: "https://figma.com",
     privacyPolicyUrl: "https://figma.com/privacy",
     termsUrl: null,
+  },
+  {
+    id: "plugin-resend",
+    slug: "resend",
+    name: "Resend",
+    tagline: "Transactional email",
+    description:
+      "Resend lets agents send transactional email and check delivery through one API. An API key from " +
+      "the Resend dashboard is passed to the local server as one environment variable.",
+    category: "automation",
+    creatorName: "Resend",
+    creatorAvatarUrl: null,
+    iconUrl: skillPreviewIcon("✉️", "#1f1f1f"),
+    version: "1.0.0",
+    installs: 1_420,
+    featured: false,
+    updatedAt: "2026-09-30T10:20:00.000Z",
+    shareUrl: "https://openbot.run/plugins/resend",
+    prompts: [
+      { id: "prompt-resend-send", text: "Send the launch announcement draft to the beta list." },
+      { id: "prompt-resend-status", text: "Did the invoice email reach the customer?" },
+    ],
+    apps: [
+      {
+        id: "app-resend-mcp",
+        name: "Resend",
+        description: "Email sending and delivery checks, over a local MCP server with a Resend API key.",
+        iconUrl: skillPreviewIcon("✉️", "#1f1f1f"),
+        server: {
+          name: "resend",
+          transport: "stdio",
+          command: "npx",
+          args: ["-y", "resend-mcp"],
+          auth: [
+            {
+              id: "resend-key",
+              kind: "key",
+              label: "API key",
+              fields: [
+                {
+                  id: "token",
+                  label: "API key",
+                  env: "RESEND_API_KEY",
+                  prefix: "",
+                  hint: "Resend dashboard → API keys",
+                },
+              ],
+              docsUrl: "https://resend.com/docs/dashboard/api-keys/introduction",
+              docsLabel: "Get a key",
+            },
+          ],
+        },
+      },
+    ],
+    skills: [],
+    websiteUrl: "https://resend.com",
+    privacyPolicyUrl: "https://resend.com/legal/privacy-policy",
+    termsUrl: "https://resend.com/legal/terms",
+  },
+  {
+    id: "plugin-notion",
+    slug: "notion",
+    name: "Notion",
+    tagline: "Docs and knowledge base",
+    description:
+      "Notion lets agents read and write pages, search the workspace, and keep meeting notes and specs " +
+      "where the team already works. Each user signs in to their own Notion account through the browser.",
+    category: "productivity",
+    creatorName: "Notion",
+    creatorAvatarUrl: null,
+    iconUrl: skillPreviewIcon("📓", "#3a3a3a"),
+    version: "1.0.0",
+    installs: 4_270,
+    featured: false,
+    updatedAt: "2026-10-02T13:05:00.000Z",
+    shareUrl: "https://openbot.run/plugins/notion",
+    prompts: [
+      { id: "prompt-notion-spec", text: "Find the current launch spec and summarize the open questions." },
+      { id: "prompt-notion-notes", text: "Turn these bullets into a structured meeting note in my team space." },
+    ],
+    apps: [
+      {
+        id: "app-notion-mcp",
+        name: "Notion",
+        description:
+          "Page search, reading, writing, and workspace navigation, over Notion's MCP server with browser sign-in.",
+        iconUrl: skillPreviewIcon("📓", "#3a3a3a"),
+        server: {
+          name: "notion",
+          transport: "http",
+          url: "https://mcp.notion.com/mcp",
+          auth: [{ id: "notion-oauth", kind: "link", label: "Sign in" }],
+        },
+      },
+    ],
+    skills: [],
+    websiteUrl: "https://www.notion.so",
+    privacyPolicyUrl: "https://www.notion.so/privacy",
+    termsUrl: "https://www.notion.so/terms",
   },
   {
     id: "plugin-changelog-writer",

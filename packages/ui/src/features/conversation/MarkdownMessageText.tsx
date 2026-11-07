@@ -1,10 +1,12 @@
 import { fileReferenceName, isFileReference } from "@openbot/brand/file-reference";
 import { blockChatMath, chatMathBlockStart, chatMathStart, inlineChatMath } from "@openbot/contracts/chat-math";
 import { chatPreviewKind } from "@openbot/contracts/chat-preview";
+import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import { Button, Checkbox } from "@openbot/ui";
 import { Dynamic } from "@solidjs/web";
 import { Marked, type Token, type Tokens, type TokensList } from "marked";
 import { createMemo, For, Show } from "solid-js";
+import { textDirection } from "../../content-direction";
 import { useText } from "../../text";
 import { AttachmentReferenceVisual, attachmentReferenceTone } from "./AttachmentReference";
 import { CodeBlock } from "./CodeBlock";
@@ -239,6 +241,7 @@ export function MarkdownMessageText(props: MarkdownMessageTextProps) {
       onOpenSharedFile: props.onOpenSharedFile,
       onOpenWorkspaceFile: props.onOpenWorkspaceFile,
       onOpenQuote: props.onOpenQuote,
+      onOpenTag: props.onOpenTag,
       linkFavicons: props.linkFavicons,
       fileDirectory: fileDirectory(),
     }),
@@ -277,6 +280,7 @@ export function MarkdownInlineText(
     onOpenSharedFile: props.onOpenSharedFile,
     onOpenWorkspaceFile: props.onOpenWorkspaceFile,
     onOpenQuote: props.onOpenQuote,
+    onOpenTag: props.onOpenTag,
     linkFavicons: props.linkFavicons,
     fileDirectory: messageFileDirectory(props.body),
   });
@@ -369,7 +373,7 @@ function MarkdownBlock(props: {
       if (!tokenIs(token, "heading")) return token.raw;
       const level = headingLevel(token.depth);
       return (
-        <Dynamic component={`h${level}`} class="message-markdown-heading" data-level={level}>
+        <Dynamic component={`h${level}`} class="message-markdown-heading" data-level={level} dir="auto">
           <MarkdownInline
             tokens={token.tokens}
             content={props.content}
@@ -382,7 +386,7 @@ function MarkdownBlock(props: {
     case "paragraph": {
       if (!tokenIs(token, "paragraph")) return token.raw;
       return (
-        <p>
+        <p dir="auto">
           <MarkdownInline
             tokens={token.tokens}
             content={props.content}
@@ -395,7 +399,7 @@ function MarkdownBlock(props: {
     case "blockquote": {
       if (!tokenIs(token, "blockquote")) return token.raw;
       return (
-        <blockquote>
+        <blockquote dir={tokensDirection(token.tokens)}>
           <MarkdownBlocks
             tokens={token.tokens}
             content={props.content}
@@ -424,7 +428,7 @@ function MarkdownBlock(props: {
       if (!tokenIs(token, "code")) return token.raw;
       if (props.content.excerpt)
         return (
-          <pre class="message-markdown-excerpt-code">
+          <pre class="message-markdown-excerpt-code" dir="ltr">
             <code>{token.text}</code>
           </pre>
         );
@@ -450,7 +454,11 @@ function MarkdownBlock(props: {
     case "hr":
       return <hr />;
     case "html":
-      return <span class="message-markdown-raw-html">{token.raw}</span>;
+      return (
+        <span class="message-markdown-raw-html" dir="ltr">
+          {token.raw}
+        </span>
+      );
     case "text": {
       if (!tokenIs(token, "text")) return token.raw;
       return token.tokens ? (
@@ -501,7 +509,7 @@ function MarkdownList(props: {
   const list = () => (
     <For each={renderedItems()}>
       {(renderedItem, index) => (
-        <li class={renderedItem.item.task ? "message-markdown-task" : undefined}>
+        <li class={renderedItem.item.task ? "message-markdown-task" : undefined} dir="auto">
           <Show when={renderedItem.item.task}>
             <Checkbox
               class="message-markdown-checkbox"
@@ -525,10 +533,14 @@ function MarkdownList(props: {
     </For>
   );
 
+  // The marker side and the indent follow the list's own text, not the interface language.
+  const direction = createMemo(() => tokensDirection(items()));
   return props.token.ordered ? (
-    <ol start={props.token.start === "" ? undefined : props.token.start}>{list()}</ol>
+    <ol start={props.token.start === "" ? undefined : props.token.start} dir={direction()}>
+      {list()}
+    </ol>
   ) : (
-    <ul>{list()}</ul>
+    <ul dir={direction()}>{list()}</ul>
   );
 }
 
@@ -541,7 +553,11 @@ function MarkdownTable(props: { token: Tokens.Table; content: MarkdownContentPro
   const { t } = useText();
   return (
     <section class="message-markdown-table-scroll" aria-label={t("chat.table.data")} tabindex="0">
-      <table class="message-markdown-table">
+      <table
+        class="message-markdown-table"
+        style={`--message-markdown-table-columns: ${headers().length}`}
+        dir={tokensDirection([...headers(), ...rows().flat()].flatMap((cell) => cell.tokens))}
+      >
         <thead>
           <tr>
             <For each={headers()}>
@@ -639,22 +655,24 @@ function MarkdownInline(props: {
           case "codespan": {
             if (!tokenIs(token, "codespan")) return token.raw;
             const file = mentionedFileTarget(token.text, props.content.fileDirectory);
-            return file && file.kind === "shared" && props.content.onOpenSharedFile ? (
+            const openShared = props.content.onOpenSharedFile;
+            const openWorkspace = props.content.onOpenWorkspaceFile;
+            return file && file.kind === "shared" && openShared ? (
               <LocalFileLink
                 path={file.path}
                 label={token.text}
                 kind="shared"
-                onOpen={props.content.onOpenSharedFile}
+                onOpen={(path) => openShared(path, file.asWritten)}
               />
-            ) : file && file.kind === "workspace" && props.content.onOpenWorkspaceFile ? (
+            ) : file && file.kind === "workspace" && openWorkspace ? (
               <LocalFileLink
                 path={file.path}
                 label={token.text}
                 kind="workspace"
-                onOpen={props.content.onOpenWorkspaceFile}
+                onOpen={(path) => openWorkspace(path, file.asWritten)}
               />
             ) : (
-              <code>{token.text}</code>
+              <code dir="ltr">{token.text}</code>
             );
           }
           case "br":
@@ -668,14 +686,12 @@ function MarkdownInline(props: {
               return <RichText body={item.semanticTag} content={props.content} streamingTailAfter={after()} />;
             }
             const url = safeBrowserUrl(token.href);
-            const fileUrl = fileUrlPath(token.href);
-            // The shared-file resolver does not decode, and the workspace resolver does.
-            const sharedPath = sharedFileTarget(fileUrl === null ? token.href : decodedFileUrlPath(fileUrl));
-            const workspacePath = workspaceFileTarget(fileUrl ?? token.href);
+            const { shared: sharedPath, workspace: workspacePath } = linkFileTargets(token.href);
             return url ? (
               <MessageLink
                 url={url}
                 title={token.title || linkTitle(token.text, url)}
+                isolate={linkTitle(token.text, token.href) === undefined}
                 favicon={props.content.linkFavicons !== false}
                 onOpenLink={props.content.onOpenLink}
               >
@@ -789,13 +805,47 @@ function MarkdownInline(props: {
   );
 }
 
+/**
+ * The base direction of a list, a quote or a table, from its first letter, as `dir="auto"` finds
+ * it for a paragraph. `dir="auto"` skips the descendants that set their own direction, and each
+ * block in these containers does, so the container reads its text here. Code, math, raw HTML and
+ * bare URLs are skipped, as they are left to right and isolated. Undefined keeps the inherited
+ * direction.
+ */
+function tokensDirection(tokens: readonly Token[]): "ltr" | "rtl" | undefined {
+  for (const token of tokens) {
+    const direction = tokenDirection(token);
+    if (direction) return direction;
+  }
+  return undefined;
+}
+
+function tokenDirection(token: Token): "ltr" | "rtl" | undefined {
+  switch (token.type) {
+    case "code":
+    case "codespan":
+    case "blockMath":
+    case "inlineMath":
+    case "html":
+    case "image":
+    case "checkbox":
+      return undefined;
+  }
+  if (tokenIs(token, "list")) return tokensDirection(token.items);
+  if (tokenIs(token, "table"))
+    return tokensDirection([...token.header, ...token.rows.flat()].flatMap((cell) => cell.tokens));
+  if (tokenIs(token, "link") && linkTitle(token.text, token.href) === undefined) return undefined;
+  if ("tokens" in token && token.tokens) return tokensDirection(token.tokens);
+  return "text" in token && typeof token.text === "string" ? textDirection(token.text) : undefined;
+}
+
 function textTokenEndsWithTagMarker(token: Token | undefined): boolean {
   return token !== undefined && tokenIs(token, "text") && !token.tokens && token.text.endsWith("@");
 }
 
 function semanticChatTag(token: Token | undefined): string | null {
   if (!token || !tokenIs(token, "link")) return null;
-  const target = /^(agent|skill|quote)(?:\+uri)?:([^\r\n]+)$/u.exec(token.href);
+  const target = /^(agent|skill|quote|tab|thread)(?:\+uri)?:([^\r\n]+)$/u.exec(token.href);
   return target?.[2] ? `@${token.raw}` : null;
 }
 
@@ -974,6 +1024,11 @@ function isEscapedMarkdownCharacter(value: string, index: number): boolean {
   return slashCount % 2 === 1;
 }
 
+/** The text of inline Markdown with no syntax, such as a link's label without its address. */
+export function markdownPlainText(body: string): string {
+  return markdownInlinePlainText(lexInlineTokens(body));
+}
+
 function markdownInlinePlainText(tokens: Token[]): string {
   return tokens
     .map((token) => {
@@ -1016,7 +1071,9 @@ function LocalFileLink(props: {
       onClick={() => props.onOpen(props.path)}
     >
       <AttachmentReferenceVisual name={name} />
-      <span class="inline-file-reference-name">{props.label || name}</span>
+      <span class="inline-file-reference-name" dir="auto">
+        {props.label || name}
+      </span>
     </Button>
   );
 }
@@ -1172,7 +1229,11 @@ function messageFileDirectory(body: string): FileDirectoryContext | null {
   return contexts.size === 1 ? (contexts.values().next().value ?? null) : null;
 }
 
-function mentionedFileTarget(value: string, directory: FileDirectoryContext | null): FileDirectoryContext | null {
+/** The file that a code span names. `asWritten` is the span text when the path joins it to `directory`. */
+function mentionedFileTarget(
+  value: string,
+  directory: FileDirectoryContext | null,
+): (FileDirectoryContext & { asWritten?: string }) | null {
   const path = value.trim();
   if (!isFileReference(path)) return null;
   const shared = sharedFileTarget(path);
@@ -1186,7 +1247,54 @@ function mentionedFileTarget(value: string, directory: FileDirectoryContext | nu
   return {
     path: `${directory.path.replace(/[/\\]+$/u, "")}${separator}${path}`,
     kind: directory.kind,
+    asWritten: path,
   };
+}
+
+const IMAGE_FILE_PATTERN = /\.(?:avif|gif|jpe?g|png|svg|webp)$/iu;
+/** A message shows at most this many named image files, as many as it can attach. */
+const IMAGE_FILE_LIMIT = INPUT_LIMITS.attachments;
+
+/** A local image file that a message names, in a code span or a file link. */
+export type MessageImageFile = FileDirectoryContext;
+
+/**
+ * The image files that the text blocks of a message name in code spans and file links, in order,
+ * without repeats. Each block resolves a file name against its own folder, as its chips do.
+ */
+export function messageImageFiles(blocks: readonly string[]): MessageImageFile[] {
+  const files = new Map<string, MessageImageFile>();
+  for (const body of blocks) {
+    const directory = messageFileDirectory(body);
+    void markdown.walkTokens(lexBlockTokens(body, true), (token) => {
+      const file = tokenIs(token, "codespan")
+        ? mentionedFileTarget(token.text, directory)
+        : tokenIs(token, "link")
+          ? linkFileTarget(token.href)
+          : null;
+      if (file && IMAGE_FILE_PATTERN.test(fileReferenceName(file.path)))
+        files.set(`${file.kind}:${file.path}`, { path: file.path, kind: file.kind });
+    });
+  }
+  return [...files.values()].slice(0, IMAGE_FILE_LIMIT);
+}
+
+/** The shared and workspace paths that a link target can open as a chip. */
+function linkFileTargets(href: string): { shared: string | null; workspace: string | null } {
+  const fileUrl = fileUrlPath(href);
+  // The shared-file resolver does not decode, and the workspace resolver does.
+  return {
+    shared: sharedFileTarget(fileUrl === null ? href : decodedFileUrlPath(fileUrl)),
+    workspace: workspaceFileTarget(fileUrl ?? href),
+  };
+}
+
+/** The file that a link opens as a chip, as the `link` token draws it. */
+function linkFileTarget(href: string): FileDirectoryContext | null {
+  if (safeBrowserUrl(href)) return null;
+  const { shared, workspace } = linkFileTargets(href);
+  if (shared) return { path: shared, kind: "shared" };
+  return workspace ? { path: workspace, kind: "workspace" } : null;
 }
 
 /** What the image viewer calls a markdown image: its alt text, else the file name in its URL. */

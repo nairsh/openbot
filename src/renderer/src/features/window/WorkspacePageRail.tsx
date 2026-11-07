@@ -67,6 +67,8 @@ export function WorkspacePageRail(props: { hidden: boolean }) {
     <PageRail
       hidden={props.hidden}
       current={current()}
+      pinned={layout.railPinned()}
+      onPinChange={layout.setRailPinned}
       usageRows={usageRows()}
       customAgentUsage={localAgentUsage()}
       onAgents={() => showSidebarView("agents")}

@@ -18,7 +18,8 @@ import {
 import { formatUpdatedAt } from "@/shared/lib/format-updated-at";
 import { haptics } from "@/shared/lib/haptics";
 import { useText } from "@/shared/lib/text";
-import { AttachmentThumbnail, useAttachmentFile } from "../components/attachment-preview";
+import { MIRROR_IN_RTL } from "@/shared/lib/text-direction";
+import { AttachmentThumbnail, showsAsImage, useAttachmentFile } from "../components/attachment-preview";
 import { useQueuedChat } from "../context/queued-messages-context";
 import { queuedMessageLocks, queuedMessagePreview } from "../model/queued-message-view";
 
@@ -29,7 +30,9 @@ export function QueuedMessageActionsScreen() {
   const foreground = useThemeColor("foreground");
   const danger = String(useCSSVariable("--openbot-danger-text"));
   const held = queue?.edit?.delivery ?? null;
-  const delivery = held?.id === deliveryId ? held : queue?.queued.find((item) => item.id === deliveryId);
+  // A teammate's answer is not the user's message: steer is its only action.
+  const reply = queue?.replies.find((item) => item.id === deliveryId);
+  const delivery = held?.id === deliveryId ? held : (queue?.queued.find((item) => item.id === deliveryId) ?? reply);
 
   if (!queue || !delivery) {
     return (
@@ -71,46 +74,54 @@ export function QueuedMessageActionsScreen() {
       ) : null}
 
       <SettingsSection>
+        {reply ? null : (
+          <SettingsRow
+            leading={<Pencil color={foreground} size={22} />}
+            disabled={locked || editedElsewhere || !queue.canEdit}
+            onPress={() =>
+              router.push({ pathname: "/queued-messages/edit", params: { chat, deliveryId: delivery.id } })
+            }
+          >
+            <Typography>{t("common.edit")}</Typography>
+          </SettingsRow>
+        )}
         <SettingsRow
-          leading={<Pencil color={foreground} size={22} />}
-          disabled={locked || editedElsewhere || !queue.canEdit}
-          onPress={() => router.push({ pathname: "/queued-messages/edit", params: { chat, deliveryId: delivery.id } })}
-        >
-          <Typography>{t("common.edit")}</Typography>
-        </SettingsRow>
-        <SettingsRow
-          leading={<CornerDownRight color={foreground} size={22} />}
+          leading={<CornerDownRight color={foreground} size={22} style={MIRROR_IN_RTL} />}
           disclosure={false}
           disabled={locked || editedElsewhere || !queue.activeTurnId}
           onPress={() => finish(queue.steer(delivery))}
         >
           <Typography>{t("mobile.chat.queue.steer")}</Typography>
         </SettingsRow>
-        <SettingsRow
-          leading={<ArrowUpToLine color={foreground} size={22} />}
-          disclosure={false}
-          disabled={locked || editedElsewhere || delivery.position === 1}
-          onPress={() => finish(queue.moveFirst(delivery))}
-        >
-          <Typography>{t("mobile.chat.queue.moveFirst")}</Typography>
-        </SettingsRow>
+        {reply ? null : (
+          <SettingsRow
+            leading={<ArrowUpToLine color={foreground} size={22} />}
+            disclosure={false}
+            disabled={locked || editedElsewhere || delivery.position === 1}
+            onPress={() => finish(queue.moveFirst(delivery))}
+          >
+            <Typography>{t("mobile.chat.queue.moveFirst")}</Typography>
+          </SettingsRow>
+        )}
       </SettingsSection>
 
-      <SettingsSection>
-        <SettingsRow
-          leading={<Trash2 color={danger} size={22} />}
-          disclosure={false}
-          disabled={locked}
-          onPress={() =>
-            Alert.alert(t("mobile.chat.queue.deleteTitle"), t("mobile.chat.queue.deleteMessage"), [
-              { text: t("mobile.chat.queue.keep"), style: "cancel" },
-              { text: t("common.delete"), style: "destructive", onPress: () => finish(queue.remove(delivery)) },
-            ])
-          }
-        >
-          <Typography className="text-danger-text">{t("common.delete")}</Typography>
-        </SettingsRow>
-      </SettingsSection>
+      {reply ? null : (
+        <SettingsSection>
+          <SettingsRow
+            leading={<Trash2 color={danger} size={22} />}
+            disclosure={false}
+            disabled={locked}
+            onPress={() =>
+              Alert.alert(t("mobile.chat.queue.deleteTitle"), t("mobile.chat.queue.deleteMessage"), [
+                { text: t("mobile.chat.queue.keep"), style: "cancel" },
+                { text: t("common.delete"), style: "destructive", onPress: () => finish(queue.remove(delivery)) },
+              ])
+            }
+          >
+            <Typography className="text-danger-text">{t("common.delete")}</Typography>
+          </SettingsRow>
+        </SettingsSection>
+      )}
 
       {editedElsewhere ? <SettingsNote>{t("mobile.chat.queue.editedElsewhere")}</SettingsNote> : null}
       {queue.activeTurnId ? null : <SettingsNote>{t("mobile.chat.queue.steerNeedsTurn")}</SettingsNote>}
@@ -127,7 +138,7 @@ export function QueuedMessageActionsScreen() {
 function QueuedAttachmentRow({ attachment, serverId }: { attachment: AttachmentSummary; serverId: string }) {
   const { t, format } = useText();
   const muted = useThemeColor("muted");
-  const image = attachment.kind === "image";
+  const image = showsAsImage(attachment);
   const file = useAttachmentFile(serverId, attachment, image);
   return (
     <SettingsRow

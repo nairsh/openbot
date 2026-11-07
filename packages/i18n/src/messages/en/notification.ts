@@ -13,6 +13,9 @@ export const messages = defineMessages("notification", {
   // A workflow output step that tells the user its result.
   "notification.workflowOutput": "A workflow has a new result.",
   "notification.failed": "Stopped with an error.",
+  // A subagent of a turn failed. {task} is the task that the subagent card shows.
+  "notification.subagentFailed": "A subagent stopped with an error.",
+  "notification.subagentFailedFor": "A subagent stopped with an error: {task}",
   // The title of a notification about an agent in a channel: the agent and the channel name.
   "notification.channelTitle": "{agent} in {channel}",
   // The body of a channel reply notification when the preview of agent words is off.
@@ -26,6 +29,11 @@ export const messages = defineMessages("notification", {
     one: "{count} agent waits. Resets {reset}.",
     other: "{count} agents wait. Resets {reset}.",
   },
+  // A metric of a server machine passed its alert level. {percent} and {level} are formatted percents.
+  "notification.machineAlert.disk": "{server}: disk {percent} full",
+  "notification.machineAlert.memory": "{server}: memory {percent} used",
+  "notification.machineAlert.cpu": "{server}: CPU {percent} busy",
+  "notification.machineAlert.body": "It passed the alert level of {level}. See Server settings > Storage.",
   "notification.test": "Notifications are working.",
   "notification.welcome": "OpenBot will tell you here when an agent needs you.",
   // The toast region in each window.

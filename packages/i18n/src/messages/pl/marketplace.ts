@@ -18,18 +18,36 @@ export const messages = {
   "marketplace.loadMore": "Wczytaj więcej",
   "marketplace.version": "Wersja {version}",
   "marketplace.title": "Marketplace",
-  "marketplace.close": "Zamknij Marketplace",
   "marketplace.kinds": "Typy zawartości Marketplace",
   "marketplace.tab.agents": "Agenci",
   "marketplace.tab.skills": "Umiejętności",
+  "marketplace.description.apps": "Połącz narzędzia i usługi, z którymi pracują Twoi agenci.",
+  "marketplace.description.agents": "Gotowi agenci z własnymi instrukcjami i umiejętnościami.",
+  "marketplace.description.skills": "Instrukcje, które uczą agenta zadania lub narzędzia.",
   "marketplace.plugins.missing": "Tej wtyczki nie ma w katalogu OpenBot.",
   "marketplace.agents.loadingDetail": "Wczytywanie szczegółów agenta…",
   "marketplace.agents.skills": "Umiejętności",
   "marketplace.agents.routines": "Rutyny",
-  "marketplace.agents.routineActive": "Aktywna",
   "marketplace.agents.routineInactive": "Nieaktywna",
+  "marketplace.agents.by": "autor: {name}",
+  "marketplace.agents.routineCount": {
+    one: "{count} rutyna",
+    few: "{count} rutyny",
+    many: "{count} rutyn",
+    other: "{count} rutyny",
+  },
+  "marketplace.agents.yours": "Twoi agenci",
+  "marketplace.agents.all": "Wszyscy agenci",
+  "marketplace.agents.missing": "Tego agenta nie ma w Marketplace.",
+  "marketplace.agents.trust.reviewed":
+    "Utworzony przez innego użytkownika OpenBot. OpenBot sprawdził go przed publikacją.",
+  "marketplace.agents.trust.reviewedBeforeAdd":
+    "Utworzony przez innego użytkownika OpenBot. OpenBot sprawdził go przed publikacją. Po dodaniu może działać w Twoim imieniu.",
+  "marketplace.agents.trust.pending": "Udostępniony przez autora, zanim OpenBot go sprawdził.",
+  "marketplace.agents.trust.pendingBeforeAdd":
+    "Udostępniony przez autora, zanim OpenBot go sprawdził. Po dodaniu może działać w Twoim imieniu.",
+  "marketplace.agents.source.pending": "Jeszcze niesprawdzony",
   "marketplace.skill.loading": "Wczytywanie umiejętności",
-  "marketplace.skill.update": "Zaktualizuj",
   "marketplace.try.readFailed": "OpenBot nie mógł odczytać umiejętności tego agenta. Spróbuj ponownie.",
   "marketplace.try.enable": "Włącz tę umiejętność w ustawieniach agenta, aby ją wypróbować.",
   "marketplace.try.repair": "Napraw tę umiejętność w ustawieniach agenta, aby ją wypróbować.",
@@ -46,15 +64,6 @@ export const messages = {
     many: "{installs} instalacji",
     other: "{installs} instalacji",
   },
-  "marketplace.filter": "Filtr",
-  "marketplace.filter.on": "Filtr: {filters}",
-  "marketplace.filter.all": "Wszystkie",
-  "marketplace.filter.status": "Stan",
-  "marketplace.filter.category": "Kategoria",
-  "marketplace.filter.added": "Dodane",
-  "marketplace.filter.notAdded": "Niedodane",
-  "marketplace.filter.installed": "Zainstalowane",
-  "marketplace.filter.notInstalled": "Niezainstalowane",
   "marketplace.filter.clear": "Wyczyść filtry",
   "marketplace.noMatch.apps": "Żadna aplikacja nie pasuje do wyszukiwania.",
   "marketplace.noMatch.filters": "Nic nie pasuje do filtrów.",
@@ -79,8 +88,6 @@ export const messages = {
   "marketplace.empty.agents": "W Marketplace nie ma jeszcze agentów.",
   "marketplace.empty.apps": "W Marketplace nie ma jeszcze aplikacji.",
   "marketplace.empty.skills": "W Marketplace nie ma jeszcze umiejętności.",
-  "marketplace.properties.agent": "O tym agencie",
-  "marketplace.properties.skill": "O tej umiejętności",
   "marketplace.properties.creator": "Twórca",
   "marketplace.properties.category": "Kategoria",
   "marketplace.properties.version": "Wersja",
@@ -99,17 +106,26 @@ export const messages = {
   "marketplace.app.reconnectNamed": "Połącz ponownie: {name}",
   "marketplace.app.connected": "Połączono",
   "marketplace.app.attention": "Wymaga uwagi",
+  "marketplace.app.partialTitle": "{name} nie jest kompletny",
+  "marketplace.app.partialDescription":
+    "Niektóre aplikacje lub umiejętności nie są zainstalowane. Ponowne połączenie je zainstaluje.",
   "marketplace.app.notConnected": "Nie połączono",
   "marketplace.app.custom": "Serwer MCP",
   "marketplace.app.githubTagline": "Repozytoria, zgłoszenia i pull requesty",
   "marketplace.app.onePasswordTagline": "Loguj się do witryn danymi logowania, które udostępniasz",
+  "marketplace.app.slackTagline": "Wzmianki i wiadomości bezpośrednie w Slacku",
+  "marketplace.app.discordTagline": "Wzmianki i wiadomości bezpośrednie na Discordzie",
+  "marketplace.app.telegramTagline": "Grupy i czaty prywatne w Telegramie",
+  "marketplace.app.whatsappTagline": "Własny czat i dozwolone osoby w WhatsApp",
+  "marketplace.app.bitwardenTagline": "Loguj się do witryn danymi logowania z udostępnionego folderu",
+  "marketplace.app.protonPassTagline": "Loguj się do witryn danymi logowania z udostępnionego sejfu",
   "marketplace.app.onePasswordCategory": "Zarządzanie logowaniem i danymi uwierzytelniającymi",
   "marketplace.app.yourApps": "Twoje aplikacje",
-  "marketplace.app.moreApps": "Więcej aplikacji",
+  "marketplace.app.addCustom": "Dodaj własną",
   "marketplace.app.server": "Serwer",
   "marketplace.app.command": "Polecenie",
   "marketplace.app.address": "Adres",
-  "marketplace.app.disconnect.title": "Rozłącz",
+  "marketplace.app.disconnect.title": "Odłącz {name}",
   "marketplace.app.disconnect.description":
     "Usuń aplikację {name} i jej umiejętności z tego komputera. Możesz później połączyć ją ponownie.",
   "marketplace.app.disconnect.action": "Rozłącz",
@@ -119,6 +135,34 @@ export const messages = {
   "marketplace.app.remove.action": "Usuń",
   "marketplace.app.remove.confirmTitle": "Usunąć: {name}?",
   "marketplace.app.remove.keep": "Zachowaj",
+  "marketplace.app.connection": "Połączenie",
+  "marketplace.app.setup.account": "Zaloguj się w przeglądarce na konto {name}.",
+  "marketplace.app.setup.key": "Wymaga klucza API z konta {name}.",
+  "marketplace.app.setup.keySaved": "{field} – zapisano na: {host}.",
+  "marketplace.app.account.removeDescription": "OpenBot usunie dane logowania tego konta – miejsce: {host}.",
+  "marketplace.app.setup.desktop": "Działa w aplikacji desktopowej {name} pod adresem {address}.",
+  "marketplace.app.setup.desktopConnected": "Połączono z {address}.",
+  "marketplace.app.setup.open": "Nie wymaga logowania ani klucza.",
+  "marketplace.app.connectAgain": "Połącz ponownie",
+  "marketplace.app.automation.askOnInstall": "Poproś macOS o dostęp przy instalacji",
+  "marketplace.app.automation.title": "Dostęp do aplikacji Apple",
+  "marketplace.app.automation.description":
+    "macOS pokazuje jedno pytanie dla każdej aplikacji. Zamknięta aplikacja otwiera się na chwilę, a potem się zamyka.",
+  "marketplace.app.automation.request": "Poproś o dostęp",
+  "marketplace.app.automation.allowed": "OpenBot może teraz sterować wszystkimi aplikacjami Apple.",
+  "marketplace.app.automation.refused":
+    "macOS nie dał dostępu do: {apps}. Zezwól OpenBot w Ustawienia systemowe › Prywatność i ochrona › Automatyzacja.",
+  "marketplace.app.automation.failed": "OpenBot nie mógł zapytać macOS o: {apps}. Spróbuj ponownie.",
+  "marketplace.app.automation.app.calendar": "Kalendarz",
+  "marketplace.app.automation.app.contacts": "Kontakty",
+  "marketplace.app.automation.app.mail": "Mail",
+  "marketplace.app.automation.app.notes": "Notatki",
+  "marketplace.app.automation.app.reminders": "Przypomnienia",
+  "marketplace.app.automation.app.messages": "Wiadomości",
+  "marketplace.app.automation.app.safari": "Safari",
+  "marketplace.app.signInTitle": "Zaloguj się ponownie do {name}",
+  "marketplace.app.signInDescription":
+    "Aplikacja {name} odrzuciła zapisane logowanie. Agenci nie mogą jej używać, dopóki nie zalogujesz się ponownie.",
   "marketplace.plugin.aave.tagline": "Dane i transakcje Aave",
   "marketplace.plugin.aave.description":
     "Aave pozwala przeglądać aktywne rynki Aave V3 i V4, sprawdzać pozycje portfela i zarządzanie DAO, symulować operacje pożyczkowe oraz przygotowywać transakcje bez powierzania środków. Każda transakcja jest zwracana bez podpisu: wtyczka odczytuje rynki i zapisuje wywołanie, a portfel pozostaje u użytkownika.",
@@ -185,6 +229,35 @@ export const messages = {
     "Użyj stylów z tego repozytorium i zaprojektuj stronę ustawień w Paper.",
   "marketplace.plugin.paper.prompt.tokens":
     "Wypisz tokeny projektu z otwartego pliku Paper i porównaj je z naszym motywem.",
+  "marketplace.plugin.higgsfield.tagline": "Obrazy, wideo i audio z AI",
+  "marketplace.plugin.higgsfield.description":
+    "Higgsfield pozwala agentom generować obrazy, wideo, postacie i audio modelami Higgsfield, takimi jak Seedance, Kling, Veo i MiniMax Hailuo, sprawdzać saldo kredytów i przeglądać Asset Library. Wyniki są zapisywane w Assets Higgsfield użytkownika. Każdy użytkownik loguje się do własnego konta Higgsfield w przeglądarce. Każde generowanie zużywa kredyty tego konta według standardowych stawek, także w planie bez limitu.",
+  "marketplace.plugin.higgsfield.app":
+    "Generowanie obrazów, wideo i audio, postacie, kredyty i zasoby przez serwer MCP Higgsfield z logowaniem w przeglądarce.",
+  "marketplace.plugin.higgsfield.prompt.credits": "Ile mam kredytów w Higgsfield?",
+  "marketplace.plugin.higgsfield.prompt.productShot":
+    "Zrób w Higgsfield zdjęcie produktowe ceramicznego kubka na drewnianym stole.",
+  "marketplace.plugin.higgsfield.prompt.clip": "Zrób w Higgsfield 5-sekundowe wideo fal o zachodzie słońca.",
+  "marketplace.plugin.elevenlabs.tagline": "Mowa, głosy i agenci głosowi",
+  "marketplace.plugin.elevenlabs.description":
+    "ElevenLabs pozwala agentom zamieniać tekst na mowę, pracować z głosami oraz tworzyć, testować i przeglądać agentów głosowych ElevenLabs i ich rozmowy. Wygenerowane audio wraca jako krótko ważny link do pobrania. Każdy użytkownik loguje się do własnego konta ElevenLabs w przeglądarce, a każde generowanie zużywa kredyty tego konta.",
+  "marketplace.plugin.elevenlabs.app":
+    "Zamiana tekstu na mowę, głosy i zarządzanie agentami głosowymi przez serwer MCP ElevenLabs z logowaniem w przeglądarce.",
+  "marketplace.plugin.elevenlabs.prompt.speech":
+    "Przeczytaj ten akapit spokojnym głosem ElevenLabs i daj mi plik audio.",
+  "marketplace.plugin.elevenlabs.prompt.agents":
+    "Wypisz moich agentów głosowych ElevenLabs i głos, którego używa każdy z nich.",
+  "marketplace.plugin.elevenlabs.prompt.conversations":
+    "Podsumuj ostatnie dziesięć rozmów mojego agenta głosowego wsparcia.",
+  "marketplace.plugin.appleApps.tagline": "Mail, Kalendarz i więcej na Twoim Macu",
+  "marketplace.plugin.appleApps.description":
+    "Apple apps pozwala agentom korzystać z aplikacji Mail, Kalendarz, Kontakty, Przypomnienia, Notatki, Wiadomości i Safari na tym Macu. Działa tylko w macOS. OpenBot uruchamia mcp-icloud, serwer społeczności, którego nie tworzy Apple ani OpenBot. Serwer steruje aplikacjami przez AppleScript na tym komputerze i nie wymaga konta ani klucza. Podczas instalacji OpenBot może od razu poprosić macOS o dostęp do wszystkich tych aplikacji, z jednym pytaniem dla każdej. Jeśli tego nie zrobisz, macOS zapyta, gdy agent po raz pierwszy użyje aplikacji. Aby zmienić to później, otwórz Ustawienia systemowe › Prywatność i ochrona › Automatyzacja. Agenci mogą wysyłać e-maile i wiadomości iMessage oraz zmieniać lub usuwać wydarzenia, kontakty i przypomnienia, więc sprawdź każdy zapis, zanim go zatwierdzisz. To, co odczytują narzędzia, na przykład treść e-maili, trafia do dostawcy modelu agenta.",
+  "marketplace.plugin.appleApps.app":
+    "Mail, Kalendarz, Kontakty, Przypomnienia, Notatki, Wiadomości i Safari przez lokalny serwer mcp-icloud. Wymaga macOS i dostępu w Automatyzacji.",
+  "marketplace.plugin.appleApps.prompt.unread": "Podsumuj moje dzisiejsze nieprzeczytane e-maile w Apple Mail.",
+  "marketplace.plugin.appleApps.prompt.today": "Co mam w Kalendarzu Apple dziś i jutro?",
+  "marketplace.plugin.appleApps.prompt.schedule":
+    "Znajdź najnowszy e-mail o spotkaniu projektowym i dodaj to spotkanie do mojego kalendarza.",
   "marketplace.plugin.sentry.tagline": "Błędy i analiza awarii",
   "marketplace.plugin.sentry.description":
     "Sentry pozwala agentom przeszukiwać ostatnie błędy, sprawdzać ślady stosu i dotknięte wydania oraz podsumowywać, co się zepsuło po wdrożeniu. Każdy użytkownik loguje się na własne konto Sentry przez przeglądarkę.",
@@ -194,6 +267,15 @@ export const messages = {
   "marketplace.plugin.sentry.prompt.topCrash":
     "Wyjaśnij najczęstszą awarię w projekcie mobilnym i jej prawdopodobną przyczynę.",
   "marketplace.plugin.sentry.prompt.releaseHealth": "Jaka jest kondycja bieżącego wydania w porównaniu z poprzednim?",
+  "marketplace.plugin.gitlab.tagline": "Zgłoszenia, merge requesty i pipeline'y",
+  "marketplace.plugin.gitlab.description":
+    "GitLab pozwala agentom wyszukiwać projekty, czytać i tworzyć zgłoszenia, przeglądać i aktualizować merge requesty, czytać pliki i commity w repozytorium oraz sprawdzać pipeline'y i zadania CI na GitLab.com. Każdy użytkownik loguje się na własne konto GitLab przez przeglądarkę. Agenci mają te same uprawnienia co użytkownik: mogą wypychać commity, zmieniać zgłoszenia i merge requesty oraz je scalać. Dla GitLaba na własnym serwerze dodaj w ustawieniach serwerów MCP serwer z adresem GitLaba i końcówką /api/v4/mcp, a potem zaloguj się tam.",
+  "marketplace.plugin.gitlab.app":
+    "Projekty, zgłoszenia, merge requesty, repozytoria i pipeline'y CI przez serwer MCP GitLaba z logowaniem w przeglądarce.",
+  "marketplace.plugin.gitlab.prompt.reviewQueue": "Które merge requesty czekają na mój przegląd?",
+  "marketplace.plugin.gitlab.prompt.failedPipeline": "Dlaczego ostatni pipeline na domyślnej gałęzi się nie powiódł?",
+  "marketplace.plugin.gitlab.prompt.newIssue":
+    "Utwórz zgłoszenie dotyczące awarii w kolejce synchronizacji z krokami odtworzenia.",
   "marketplace.plugin.vercel.tagline": "Wdrożenia, logi budowania i projekty",
   "marketplace.plugin.vercel.description":
     "Vercel pozwala agentom wyświetlać projekty i ostatnie wdrożenia, czytać logi budowania i działania oraz ustalać, dlaczego budowanie się nie powiodło. Każdy użytkownik loguje się na własne konto Vercel przez przeglądarkę i wybiera zespoły, których mogą używać agenci. W tych zespołach agenci mają takie same uprawnienia jak konto użytkownika. Mogą też zmieniać zmienne środowiskowe, domeny, rekordy DNS i wdrożenia oraz kupować domeny.",
@@ -210,6 +292,14 @@ export const messages = {
   "marketplace.plugin.cloudflare.prompt.workers": "Które Workers są wdrożone na moim koncie Cloudflare?",
   "marketplace.plugin.cloudflare.prompt.errors": "Które Cloudflare Workers zapisały błędy w ostatniej godzinie?",
   "marketplace.plugin.cloudflare.prompt.dns": "Wyświetl rekordy DNS każdej strefy na moim koncie Cloudflare.",
+  "marketplace.plugin.supabase.tagline": "Bazy danych, logi i edge functions",
+  "marketplace.plugin.supabase.description":
+    "Supabase pozwala agentom wyświetlać projekty, uruchamiać SQL, czytać schematy tabel i logi, sprawdzać zalecenia advisors dotyczące bezpieczeństwa i wydajności, zarządzać edge functions i gałęziami oraz przeszukiwać dokumentację Supabase. Każdy użytkownik loguje się na własne konto Supabase przez przeglądarkę i wybiera organizację. Agenci mają pełny dostęp: mogą uruchamiać SQL, który zmienia lub usuwa dane, stosować migracje, wdrażać edge functions oraz tworzyć i wstrzymywać projekty.",
+  "marketplace.plugin.supabase.app":
+    "Bazy danych, logi i edge functions przez serwer MCP Supabase z logowaniem w przeglądarce.",
+  "marketplace.plugin.supabase.prompt.projects": "Jakie projekty są w mojej organizacji Supabase?",
+  "marketplace.plugin.supabase.prompt.tables": "Wyświetl tabele i kolumny mojej bazy danych Supabase.",
+  "marketplace.plugin.supabase.prompt.errors": "Jakie błędy zapisał mój projekt Supabase w ostatniej godzinie?",
   "marketplace.plugin.context7.tagline": "Aktualna dokumentacja bibliotek",
   "marketplace.plugin.context7.description":
     "Context7 pobiera aktualną dokumentację i opisy API bibliotek oraz frameworków, więc odpowiedzi dotyczą wersji, której projekt faktycznie używa. Nie wymaga konta ani klucza.",
@@ -226,6 +316,17 @@ export const messages = {
   "marketplace.plugin.stripe.prompt.payment": "Znajdź tę płatność i wyjaśnij, dlaczego się nie powiodła.",
   "marketplace.plugin.stripe.prompt.customer": "Podsumuj faktury tego klienta i saldo do zapłaty.",
   "marketplace.plugin.stripe.prompt.link": "Utwórz szkic linku płatności dla planu Pro za 49 miesięcznie.",
+  "marketplace.plugin.revenuecat.tagline": "Subskrypcje, produkty i paywalle",
+  "marketplace.plugin.revenuecat.description":
+    "RevenueCat pozwala agentom czytać i zmieniać konfigurację subskrypcji w aplikacji: aplikacje, produkty, uprawnienia (entitlements), oferty, pakiety, paywalle i eksperymenty. Agenci mogą też wyszukiwać klientów i ich zakupy oraz czytać wykresy i metryki. Tajny klucz API RevenueCat trafia do jednego nagłówka Authorization. Klucz daje dostęp do jednego projektu. Z kluczem tylko do odczytu agenci mogą tylko czytać. Z kluczem do zapisu agenci mogą wysyłać produkty do weryfikacji w App Store, przyznawać klientom uprawnienia oraz usuwać pakiety, reguły targetowania i webhooki.",
+  "marketplace.plugin.revenuecat.app":
+    "Produkty, uprawnienia, oferty, paywalle i metryki przez serwer MCP RevenueCat z tajnym kluczem API.",
+  "marketplace.plugin.revenuecat.prompt.offerings": "Jakie oferty i pakiety ma mój projekt w RevenueCat?",
+  "marketplace.plugin.revenuecat.prompt.revenue":
+    "Jak w tym miesiącu zmieniły się moje przychody i aktywne subskrypcje w RevenueCat?",
+  "marketplace.plugin.revenuecat.prompt.customer": "Jakie uprawnienia ma ten klient RevenueCat i kiedy wygasają?",
+  "marketplace.plugin.revenuecat.hint.apiKey":
+    "W panelu RevenueCat otwórz API keys w swoim projekcie i utwórz tajny klucz API. Klucz tylko do odczytu wystarczy, aby przeglądać dane.",
   "marketplace.plugin.posthog.tagline": "Analityka produktu i flagi",
   "marketplace.plugin.posthog.description":
     "PostHog pozwala agentom wykonywać zapytania o zdarzenia i lejki, sprawdzać flagi funkcji oraz podsumowywać zmiany po wydaniu. Osobisty klucz API z ustawień projektu trafia do jednego nagłówka Authorization.",
@@ -256,6 +357,16 @@ export const messages = {
   "marketplace.plugin.braveSearch.prompt.search": "Co recenzenci mówią o tej wersji frameworka?",
   "marketplace.plugin.braveSearch.prompt.news": "Znajdź dzisiejsze ogłoszenia z tego obszaru produktów.",
   "marketplace.plugin.braveSearch.prompt.compare": "Porównaj tych dwóch dostawców i podaj źródła.",
+  "marketplace.plugin.obsidian.tagline": "Notatki w Twoim sejfie",
+  "marketplace.plugin.obsidian.description":
+    "Obsidian pozwala agentom wyszukiwać, czytać i zapisywać notatki w Twoim sejfie, więc sejf może być ich pamięcią. Lokalny serwer łączy się z wtyczką Local REST API w aplikacji Obsidian na tym komputerze. Klucz API wtyczki trafia do lokalnego serwera jako jedna zmienna środowiskowa. Nie zamykaj Obsidiana, gdy agenci z niego korzystają.",
+  "marketplace.plugin.obsidian.app":
+    "Wyszukiwanie, czytanie i edycja notatek przez lokalny serwer MCP z kluczem wtyczki Local REST API.",
+  "marketplace.plugin.obsidian.prompt.recall": "Co moje notatki mówią o decyzjach w tym projekcie?",
+  "marketplace.plugin.obsidian.prompt.save": "Zapisz tę decyzję jako nową notatkę w moim sejfie.",
+  "marketplace.plugin.obsidian.prompt.log": "Dodaj podsumowanie dzisiejszej pracy do mojej notatki Dziennik pracy.",
+  "marketplace.plugin.obsidian.hint.apiKey":
+    'W Obsidianie otwórz Settings > Local REST API. Skopiuj klucz API i włącz "Enable non-encrypted (HTTP) server".',
   "marketplace.plugin.resend.tagline": "E-maile transakcyjne",
   "marketplace.plugin.resend.description":
     "Resend pozwala agentom wysyłać e-maile transakcyjne i sprawdzać ich dostarczenie przez jedno API. Klucz API z panelu Resend jest przekazywany do lokalnego serwera jako jedna zmienna środowiskowa.",
@@ -264,6 +375,16 @@ export const messages = {
   "marketplace.plugin.resend.prompt.send": "Wyślij szkic ogłoszenia premiery do listy beta.",
   "marketplace.plugin.resend.prompt.status": "Czy e-mail z fakturą dotarł do klienta?",
   "marketplace.plugin.resend.prompt.template": "Napisz szkic e-maila resetu hasła dla nowego procesu.",
+  "marketplace.plugin.omnisend.tagline": "Marketing e-mail i SMS",
+  "marketplace.plugin.omnisend.description":
+    "Omnisend pozwala agentom czytać raporty kampanii i formularzy, wyszukiwać kontakty i segmenty oraz tworzyć i edytować kampanie, automatyzacje, szablony e-maili, formularze i produkty. Każdy użytkownik loguje się do własnego konta Omnisend w przeglądarce i wybiera poziom dostępu na ekranie zgody. Z dostępem do zapisu agenci mogą też wysyłać kampanie i usuwać dane. Wybierz dostęp tylko do odczytu, gdy agentom wystarczą raporty.",
+  "marketplace.plugin.omnisend.app":
+    "Kampanie, automatyzacje, kontakty, segmenty, formularze i raporty przez serwer MCP Omnisend z logowaniem w przeglądarce.",
+  "marketplace.plugin.omnisend.prompt.lastCampaign":
+    "Jak wypadły kampanie z zeszłego tygodnia w porównaniu z tygodniem wcześniej?",
+  "marketplace.plugin.omnisend.prompt.segment": "Ile kontaktów jest w segmencie VIP i jak zmienił się w tym miesiącu?",
+  "marketplace.plugin.omnisend.prompt.draftCampaign":
+    "Przygotuj szkic kampanii dla nowej kolekcji, ale jej nie wysyłaj.",
   "marketplace.plugin.composio.tagline": "Wiele aplikacji przez twój link Composio",
   "marketplace.plugin.composio.description":
     "Composio łączy agentów z Gmailem, Slackiem, GitHubem i setkami innych aplikacji przez jeden serwer MCP. Połącz wybrane aplikacje na swoim koncie Composio, a potem wklej tu jego adres URL MCP i klucz API.",
@@ -274,28 +395,216 @@ export const messages = {
   "marketplace.plugin.composio.prompt.apps": "Jakich aplikacji i akcji możesz używać przez Composio?",
   "marketplace.plugin.composio.hint.url": "Adres URL serwera MCP na twoim koncie Composio",
   "marketplace.plugin.composio.hint.apiKey": "Znajdziesz go na koncie Composio, w Settings > Sessions & API Key.",
+  "marketplace.plugin.neon.tagline": "Projekty, gałęzie i migracje Postgres",
+  "marketplace.plugin.neon.description":
+    "Neon pozwala agentom wyświetlać projekty i gałęzie, uruchamiać SQL, czytać schematy tabel, testować zmiany schematu w tymczasowej gałęzi, znajdować wolne zapytania i przeszukiwać dokumentację Neon. Każdy użytkownik loguje się na własne konto Neon przez przeglądarkę i podczas autoryzacji może wybrać dostęp tylko do odczytu. Przy pełnym dostępie agenci mogą uruchamiać SQL, który zmienia lub usuwa dane, oraz tworzyć, resetować i usuwać gałęzie, bazy danych i projekty. Neon zaleca swój serwer MCP do programowania i testów, a nie do produkcyjnych baz danych.",
+  "marketplace.plugin.neon.app":
+    "Projekty, gałęzie, SQL i migracje Postgres przez serwer MCP Neon z logowaniem w przeglądarce.",
+  "marketplace.plugin.neon.prompt.projects": "Jakie projekty i gałęzie są na moim koncie Neon?",
+  "marketplace.plugin.neon.prompt.slowQueries":
+    "Które zapytania są najwolniejsze w mojej bazie danych Neon i dlaczego?",
+  "marketplace.plugin.neon.prompt.migration":
+    "Dodaj indeks do tabeli orders w tymczasowej gałęzi i pokaż mi wynik, zanim go zastosujesz.",
+  "marketplace.plugin.prisma.tagline": "Bazy danych Postgres, kopie zapasowe i aplikacje Compute",
+  "marketplace.plugin.prisma.description":
+    "Prisma pozwala agentom wyświetlać i tworzyć bazy danych Prisma Postgres, czytać schematy, uruchamiać SQL, wyświetlać kopie zapasowe i przywracać je do nowej bazy danych, zarządzać zasobnikami Object Storage, czytać buildy i logi Compute oraz przeszukiwać dokumentację Prisma. Każdy użytkownik loguje się na własne konto Prisma przez przeglądarkę i wybiera obszar roboczy. Agenci dostają pełny dostęp: mogą uruchamiać SQL, który zmienia lub usuwa dane, aktualizować schematy, usuwać bazy danych i zasobniki oraz zatrzymywać, wycofywać i usuwać wdrożenia Compute.",
+  "marketplace.plugin.prisma.app":
+    "Bazy danych, SQL, kopie zapasowe i aplikacje Compute przez serwer MCP Prisma z logowaniem w przeglądarce.",
+  "marketplace.plugin.prisma.prompt.databases": "Jakie bazy danych są w moim obszarze roboczym Prisma?",
+  "marketplace.plugin.prisma.prompt.backups": "Pokaż wszystkie dostępne kopie zapasowe mojej bazy danych.",
+  "marketplace.plugin.prisma.prompt.logs": "Pokaż logi działania mojego najnowszego wdrożenia Compute.",
+  "marketplace.plugin.netlify.tagline": "Projekty, wdrożenia i logi żądań",
+  "marketplace.plugin.netlify.description":
+    "Netlify pozwala agentom wyświetlać projekty i wdrożenia, czytać logi żądań brzegowych, tworzyć projekty i wdrażać kod do istniejącego projektu. Każdy użytkownik loguje się na własne konto Netlify przez przeglądarkę. Agenci mają taki sam dostęp jak konto użytkownika: mogą zmieniać zmienne środowiskowe, formularze i dostęp odwiedzających, instalować i usuwać rozszerzenia oraz usuwać zgłoszenia formularzy i zmienne środowiskowe.",
+  "marketplace.plugin.netlify.app":
+    "Projekty, wdrożenia, logi żądań i ustawienia witryny przez serwer MCP Netlify z logowaniem w przeglądarce.",
+  "marketplace.plugin.netlify.prompt.latestDeploy":
+    "Jaki jest status najnowszego wdrożenia każdego z moich projektów Netlify?",
+  "marketplace.plugin.netlify.prompt.errors":
+    "Które adresy URL mojej witryny zwróciły błędy serwera w ostatniej dobie?",
+  "marketplace.plugin.netlify.prompt.deploy": "Wdróż ten folder do mojego istniejącego projektu Netlify.",
+  "marketplace.plugin.railway.tagline": "Projekty, usługi i wdrożenia",
+  "marketplace.plugin.railway.description":
+    "Railway pozwala agentom wyświetlać projekty i usługi, tworzyć projekty, ponownie wdrażać usługi i zarządzać flagami funkcji. Agenci mogą też przekazać pracę z wieloma krokami do Railway Agent, który czyta logi, ustala, dlaczego wdrożenie się nie powiodło, tworzy usługi i ustawia zmienne. Każdy użytkownik loguje się na własne konto Railway przez przeglądarkę i wybiera obszary robocze i projekty, których mogą używać agenci. W tych projektach agenci mają pełny dostęp: mogą wdrażać przygotowane zmiany, usuwać flagi funkcji oraz zmieniać usługi, zmienne, bazy danych i sieć przez Railway Agent.",
+  "marketplace.plugin.railway.app":
+    "Projekty, usługi i wdrożenia przez serwer MCP Railway z logowaniem w przeglądarce.",
+  "marketplace.plugin.railway.prompt.projects": "Jakie projekty i usługi są w moim obszarze roboczym Railway?",
+  "marketplace.plugin.railway.prompt.crash": "Dlaczego moja usługa backendu na Railway ulega awarii przy wdrożeniu?",
+  "marketplace.plugin.railway.prompt.redeploy": "Wdróż ponownie usługę API w moim projekcie Railway.",
+  "marketplace.plugin.render.tagline": "Usługi, wdrożenia i logi",
+  "marketplace.plugin.render.description":
+    "Render pozwala agentom wyświetlać obszary robocze i usługi, czytać logi, zdarzenia i metryki, przeglądać historię wdrożeń, uruchamiać wdrożenia i wykonywać zapytania SQL tylko do odczytu w Render Postgres. Klucz API Render trafia do jednego nagłówka Authorization. Klucz daje dostęp do każdego obszaru roboczego konta Render. Agenci mogą tworzyć usługi webowe, strony statyczne, zadania cron, bazy danych Postgres i instancje Key Value, co może kosztować, oraz zastępować zmienne środowiskowe usługi. Serwer nie może usunąć żadnego zasobu.",
+  "marketplace.plugin.render.app": "Usługi, wdrożenia, logi i metryki przez serwer MCP Render z kluczem API.",
+  "marketplace.plugin.render.prompt.services": "Jakie usługi są w moim obszarze roboczym Render?",
+  "marketplace.plugin.render.prompt.logs":
+    "Jakie błędy zapisała moja usługa webowa na Render w ciągu ostatniej godziny?",
+  "marketplace.plugin.render.prompt.deploy": "Dlaczego ostatnie wdrożenie mojej usługi na Render się nie powiodło?",
+  "marketplace.plugin.atlassian.tagline": "Elementy pracy w Jira i strony Confluence",
+  "marketplace.plugin.atlassian.description":
+    "Atlassian pozwala agentom wyszukiwać i czytać elementy pracy w Jira, strony Confluence i pull requesty w Bitbucket oraz tworzyć i aktualizować elementy pracy, strony i komentarze. Każdy użytkownik loguje się na własne konto Atlassian przez przeglądarkę i zatwierdza dostęp na ekranie zgody. Agenci mają takie same uprawnienia jak użytkownik: mogą zmieniać elementy pracy i strony, zmieniać uprawnienia stron i scalać pull requesty. Narzędzia, które usuwają dane Jira, pozostają wyłączone, dopóki administrator organizacji ich nie włączy. Każde wywołanie narzędzia zużywa kredyty Rovo.",
+  "marketplace.plugin.atlassian.app":
+    "Jira, Confluence i Bitbucket przez serwer MCP Atlassian z logowaniem w przeglądarce.",
+  "marketplace.plugin.atlassian.prompt.assigned": "Jakie otwarte elementy pracy w Jira są do mnie przypisane?",
+  "marketplace.plugin.atlassian.prompt.releasePage":
+    "Znajdź stronę Confluence o naszym procesie wydawania i ją podsumuj.",
+  "marketplace.plugin.atlassian.prompt.newItem":
+    "Utwórz element pracy w Jira dla błędu logowania z krokami odtworzenia.",
+  "marketplace.plugin.todoist.tagline": "Zadania, projekty i przypomnienia",
+  "marketplace.plugin.todoist.description":
+    "Todoist pozwala agentom wyszukiwać zadania według daty, tekstu, etykiety lub filtra, dodawać zadania i zmieniać ich terminy oraz zarządzać projektami, sekcjami, etykietami, komentarzami i przypomnieniami. Każdy użytkownik loguje się na własne konto Todoist przez przeglądarkę. Agenci mają dostęp do odczytu i zapisu: mogą zmieniać, kończyć i usuwać zadania, projekty i inne elementy.",
+  "marketplace.plugin.todoist.app":
+    "Zadania, projekty i przypomnienia przez serwer MCP Todoist z logowaniem w przeglądarce.",
+  "marketplace.plugin.todoist.prompt.today": "Które zadania w Todoist mają termin na dziś?",
+  "marketplace.plugin.todoist.prompt.capture": "Dodaj te punkty do działania do mojej skrzynki odbiorczej w Todoist.",
+  "marketplace.plugin.todoist.prompt.overdue": "Przenieś moje zaległe zadania w Todoist na jutro.",
+  "marketplace.plugin.ticktick.tagline": "Zadania, listy, nawyki i skupienie",
+  "marketplace.plugin.ticktick.description":
+    "TickTick pozwala agentom wyszukiwać i filtrować zadania, dodawać i zmieniać zadania oraz zarządzać listami, sekcjami, folderami, tagami i komentarzami. Agenci mogą też czytać i zmieniać nawyki oraz sesje skupienia, a także czytać wydarzenia z kalendarzy połączonych z TickTick. Każdy użytkownik loguje się do własnego konta TickTick w przeglądarce. Agenci dostają dostęp do odczytu i zapisu: mogą kończyć, przenosić i usuwać zadania oraz usuwać tagi i sesje skupienia.",
+  "marketplace.plugin.ticktick.app":
+    "Zadania, listy, nawyki i sesje skupienia przez serwer MCP TickTick z logowaniem w przeglądarce.",
+  "marketplace.plugin.ticktick.prompt.today": "Które zadania w TickTick mają termin na dziś?",
+  "marketplace.plugin.ticktick.prompt.capture": "Dodaj te punkty do działania do mojej skrzynki w TickTick.",
+  "marketplace.plugin.ticktick.prompt.week": "Które zadania w TickTick zostały ukończone w zeszłym tygodniu?",
+  "marketplace.plugin.trello.tagline": "Tablice, listy i karty",
+  "marketplace.plugin.trello.description":
+    "Trello pozwala agentom wyszukiwać i czytać tablice, listy, karty, listy kontrolne i komentarze, tworzyć tablice i karty, przenosić listy i karty, oznaczać karty jako ukończone oraz dodawać listy kontrolne, komentarze i etykiety. Agenci mogą też czytać i dodawać karty w skrzynce odbiorczej Trello użytkownika oraz czytać wydarzenia z Plannera, które mogą pochodzić z połączonego kalendarza Google lub Outlook. Każdy użytkownik loguje się na własne konto Trello przez przeglądarkę i wybiera obszary robocze na ekranie zgody. Agenci mają w tych obszarach roboczych te same uprawnienia co użytkownik. Mogą archiwizować karty i listy, ale serwer nie może niczego trwale usunąć.",
+  "marketplace.plugin.trello.app": "Tablice, listy i karty przez serwer MCP Trello z logowaniem w przeglądarce.",
+  "marketplace.plugin.trello.prompt.myCards": "Które karty w Trello są przypisane do mnie?",
+  "marketplace.plugin.trello.prompt.board": "Podsumuj, co jest w toku na mojej tablicy w Trello.",
+  "marketplace.plugin.trello.prompt.newCards": "Dodaj te punkty do działania jako karty na mojej tablicy w Trello.",
+  "marketplace.plugin.clickup.tagline": "Zadania, dokumenty i aktualizacje zespołu",
+  "marketplace.plugin.clickup.description":
+    "ClickUp pozwala agentom wyszukiwać zadania, dokumenty, komentarze i czaty, tworzyć i aktualizować zadania, listy i dokumenty, dodawać komentarze, wysyłać wiadomości na czacie i rejestrować czas. Każdy użytkownik loguje się na własne konto ClickUp przez przeglądarkę. Agenci mają te same uprawnienia co użytkownik. Mogą przenosić zadania do kosza i usuwać komentarze.",
+  "marketplace.plugin.clickup.app":
+    "Zadania, dokumenty, komentarze, czat i rejestracja czasu przez serwer MCP ClickUp z logowaniem w przeglądarce.",
+  "marketplace.plugin.clickup.prompt.findTasks": "Znajdź moje otwarte zadania w ClickUp z terminem w tym tygodniu.",
+  "marketplace.plugin.clickup.prompt.createTask":
+    "Utwórz zadanie w ClickUp z tych punktów do działania i przypisz je do mnie.",
+  "marketplace.plugin.clickup.prompt.summarizeDoc":
+    "Znajdź najnowszą aktualizację projektu w ClickUp i podsumuj otwarte pytania.",
+  "marketplace.plugin.coinbase.tagline": "Kursy kryptowalut, portfele i handel",
+  "marketplace.plugin.coinbase.description":
+    "Coinbase pozwala agentom czytać kursy, salda, portfele, zlecenia i opłaty w Coinbase Advanced Trade, podglądać i składać zlecenia, wymieniać aktywa oraz przenosić środki między portfelami. Każdy użytkownik loguje się na własne konto Coinbase przez przeglądarkę. Agenci mają te same uprawnienia co użytkownik. Zlecenia i wymiany używają prawdziwych środków, a agenci mogą płacić za żądania x402 z salda USDC.",
+  "marketplace.plugin.coinbase.app":
+    "Kursy, salda, portfele, zlecenia i wymiany przez serwer MCP Coinbase z logowaniem w przeglądarce.",
+  "marketplace.plugin.coinbase.prompt.balances": "Jakie mam salda na Coinbase w każdym portfelu?",
+  "marketplace.plugin.coinbase.prompt.price": "Pokaż kurs BTC-USD na Coinbase i jak zmienił się w tym tygodniu.",
+  "marketplace.plugin.coinbase.prompt.previewOrder":
+    "Pokaż podgląd zakupu ETH za 50 USD po cenie rynkowej na Coinbase. Nie składaj zlecenia.",
+  "marketplace.plugin.robinhood.tagline": "Rachunki maklerskie i handel przez agentów",
+  "marketplace.plugin.robinhood.description":
+    "Robinhood pozwala agentom czytać rachunki, pozycje, salda, historię transakcji i listy obserwowanych klienta Robinhood, czytać dane rynkowe oraz składać zlecenia na akcje, opcje i kryptowaluty. Każdy użytkownik loguje się na własne konto Robinhood przez przeglądarkę. Przy pierwszym logowaniu Robinhood prosi użytkownika o otwarcie osobnego rachunku Agentic. Agenci mogą handlować tylko na tym rachunku i domyślnie składają zlecenia bez prośby o zatwierdzenie każdego z nich.",
+  "marketplace.plugin.robinhood.app":
+    "Rachunki, pozycje, dane rynkowe i transakcje przez serwer MCP Robinhood z logowaniem w przeglądarce.",
+  "marketplace.plugin.robinhood.prompt.positions": "Podsumuj moje pozycje w Robinhood i jak zmieniły się dzisiaj.",
+  "marketplace.plugin.robinhood.prompt.watchlist":
+    "Jak w tym tygodniu zmieniła się każda akcja z mojej listy obserwowanych w Robinhood?",
+  "marketplace.plugin.robinhood.prompt.agenticCash": "Ile gotówki jest na moim rachunku Agentic w Robinhood?",
+  "marketplace.plugin.huggingface.tagline": "Modele, zbiory danych i publikacje w Hub",
+  "marketplace.plugin.huggingface.description":
+    "Hugging Face pozwala agentom wyszukiwać modele, zbiory danych, Spaces, kolekcje i publikacje w Hugging Face Hub, czytać karty modeli i pliki repozytoriów, podglądać zbiory danych oraz przeszukiwać dokumentację Hugging Face. Korzysta z publicznych danych Hub i nie wymaga konta ani klucza. Narzędzia tylko czytają: agenci nie mogą tworzyć repozytoriów ani uruchamiać zadań.",
+  "marketplace.plugin.huggingface.app":
+    "Wyszukiwanie modeli, zbiorów danych, Spaces, publikacji i dokumentacji przez serwer MCP Hugging Face bez logowania.",
+  "marketplace.plugin.huggingface.prompt.models": "Znajdź na Hugging Face małe otwarte modele do rozpoznawania mowy.",
+  "marketplace.plugin.huggingface.prompt.papers": "Które publikacje są dziś popularne na Hugging Face?",
+  "marketplace.plugin.huggingface.prompt.dataset":
+    "Znajdź zbiór danych z szeregami czasowymi pogody i pokaż jego kolumny.",
   "marketplace.auth.apiKey": "Klucz API",
   "marketplace.auth.personalApiKey": "Osobisty klucz API",
   "marketplace.auth.mcpUrl": "Adres URL MCP",
   "marketplace.auth.createKey": "Utwórz klucz",
-  "marketplace.skill.installMenu.install": "Zainstaluj",
-  "marketplace.skill.installMenu.installNamed": "Zainstaluj: {name}",
-  "marketplace.skill.installMenu.allAgents": "Wszyscy agenci",
-  "marketplace.skill.installMenu.agents": {
+  "marketplace.skill.doc": "SKILL.md",
+  "marketplace.try.in": "Wypróbuj w: {name}",
+  "marketplace.skills.yours": "Twoje umiejętności",
+  "marketplace.skills.seeAll": "Pokaż wszystko",
+  "marketplace.skills.seeAllName": "Pokaż wszystko: {name}",
+  "marketplace.skills.none": "Żaden agent nie ma jeszcze umiejętności.",
+  "marketplace.skills.noneHint": "Umiejętność uczy agenta jednego zadania. Dodaj ją poniżej albo utwórz własną.",
+  "marketplace.skills.sourceLabel": "Źródło",
+  "marketplace.skills.source.all": "Wszystkie",
+  "marketplace.skills.source.verified": "Zweryfikowane",
+  "marketplace.skills.source.public": "Publiczne",
+  "marketplace.skills.source.verifiedLong": "Zweryfikowana przez OpenBot",
+  "marketplace.skills.source.publicLong": "Sprawdzona przez OpenBot",
+  "marketplace.skills.sortLabel": "Sortuj",
+  "marketplace.skills.sortName": "Sortuj: {name}",
+  "marketplace.skills.sort.installs": "Najczęściej używane",
+  "marketplace.skills.sort.updated": "Ostatnio aktualizowane",
+  "marketplace.skills.sort.name": "Nazwa",
+  "marketplace.skills.featured": "Polecane",
+  "marketplace.skills.all": "Wszystkie umiejętności",
+  "marketplace.skills.count": {
+    one: "{count} umiejętność",
+    few: "{count} umiejętności",
+    many: "{count} umiejętności",
+    other: "{count} umiejętności",
+  },
+  "marketplace.skills.searchIn": "Szukaj w: {name}",
+  "marketplace.skills.missing": "Tej umiejętności nie ma w Marketplace.",
+  "marketplace.skills.state.off": "Wyłączona",
+  "marketplace.skills.state.repair": "Wymaga naprawy",
+  "marketplace.skills.state.update": "Dostępna aktualizacja",
+  "marketplace.skills.state.modified": "Zmieniona przez ciebie",
+  "marketplace.skills.stateOn": "{state}: {agents}",
+  "marketplace.skills.version": "Wersja {version}",
+  "marketplace.skills.origin.local": "Utworzona na tym komputerze",
+  "marketplace.skills.origin.workspace": "W folderze tego agenta",
+  "marketplace.skills.origin.marketplace": "Z Marketplace · wersja {version}",
+  "marketplace.skills.status.notAdded": "Niedodana",
+  "marketplace.skills.status.on": "Włączona: {agents}",
+  "marketplace.skills.agentCount": {
     one: "{count} agent",
-    few: "{count} agentów",
+    few: "{count} agenci",
     many: "{count} agentów",
     other: "{count} agenta",
   },
-  "marketplace.skill.installMenu.here": "Jesteś tutaj",
-  "marketplace.skill.installMenu.change": {
-    one: "Umiejętność {name} jest zainstalowana u: {label}. Zmień",
-    few: "Umiejętność {name} jest zainstalowana u: {label}. Zmień",
-    many: "Umiejętność {name} jest zainstalowana u: {label}. Zmień",
-    other: "Umiejętność {name} jest zainstalowana u: {label}. Zmień",
+  "marketplace.skills.allAgents": "wszyscy agenci",
+  "marketplace.skills.agentsTitle": "Agenci · {total}",
+  "marketplace.skills.agents.search": "Szukaj agentów",
+  "marketplace.skills.agents.searchName": "Szukaj agentów z umiejętnością {name}",
+  "marketplace.skills.agents.noMatch": "Żaden agent nie pasuje do „{query}”.",
+  "marketplace.skills.agents.removeAll": "Usuń wszystkie",
+  "marketplace.skills.agents.removeAllName": {
+    one: "Usuń {name} z {count} agenta",
+    few: "Usuń {name} ze wszystkich agentów ({count})",
+    many: "Usuń {name} ze wszystkich agentów ({count})",
+    other: "Usuń {name} ze wszystkich agentów ({count})",
   },
-  "marketplace.skill.doc": "SKILL.md",
-  "marketplace.try.in": "Wypróbuj w: {name}",
+  "marketplace.skills.agent.toggle": "{name} dla: {agent}",
+  "marketplace.skills.agent.remove": "Usuń",
+  "marketplace.skills.agent.removeName": "Usuń {name} z: {agent}",
+  "marketplace.skills.add": "Dodaj",
+  "marketplace.skills.addName": "Dodaj {name} do agentów",
+  "marketplace.skills.addToAgents": "Dodaj do agentów",
+  "marketplace.skills.onOf": "Włączona u {have} z {total}",
+  "marketplace.skills.chooseAgents": "{name} jest u: {agents}. Wybierz agentów",
+  "marketplace.skills.dialog.list": "Agenci z umiejętnością {name}",
+  "marketplace.skills.dialog.search": {
+    one: "Szukaj: {count} agent",
+    few: "Szukaj wśród agentów: {count}",
+    many: "Szukaj wśród agentów: {count}",
+    other: "Szukaj wśród agentów: {count}",
+  },
+  "marketplace.skills.dialog.all": {
+    one: "{count} agent",
+    few: "Wszyscy agenci: {count}",
+    many: "Wszyscy agenci: {count}",
+    other: "Wszyscy agenci: {count}",
+  },
+  "marketplace.skills.dialog.allMatches": {
+    one: "{count} wynik",
+    few: "Wszystkie wyniki: {count}",
+    many: "Wszystkie wyniki: {count}",
+    other: "Wszystkie wyniki: {count}",
+  },
+  "marketplace.skills.dialog.checked": "{checked} z {total}",
+  "marketplace.skills.dialog.save": "Zapisz",
+  "marketplace.skills.dialog.saveBoth": "Zapisz: dodaj {added}, usuń {removed}",
+  "marketplace.skills.dialog.addTo": "Dodaj do: {agents}",
+  "marketplace.skills.dialog.removeFrom": "Usuń z: {agents}",
+  "marketplace.skills.dialog.full": "Osiągnięto limit umiejętności",
+  "marketplace.skills.dialog.unread": "Nie wczytano umiejętności",
+  "marketplace.skills.local.gone": "Teraz żaden agent nie ma tej umiejętności.",
   "marketplace.notice.agentAdded": "Dodano: {name}.",
   "marketplace.notice.agentUpdated": "Zaktualizowano: {name}.",
   "marketplace.notice.appConnected": "Połączono: {name}.",

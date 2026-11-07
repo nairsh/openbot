@@ -8,15 +8,18 @@ export interface ConversationPort {
   agent: Pick<
     OpenBotDesktopApi["agent"],
     | "readAgentSessionSettings"
+    | "listAgentNotificationLevels"
     | "askSideQuestion"
     | "setAgentSessionSetting"
     | "resetAgentSessionSetting"
     | "onScopedEvent"
+    | "deleteConversationMessage"
     | "deleteTable"
     | "listMemories"
     | "listRoutines"
     | "listTables"
     | "markConversationRead"
+    | "markConversationUnread"
     | "readConversationPage"
     | "releaseFilePreview"
     | "searchConversationMessages"
@@ -44,6 +47,8 @@ export interface ConversationPort {
   >;
   storage: Pick<OpenBotDesktopApi["storage"], "openLocation">;
   spelling: OpenBotDesktopApi["spelling"];
+  /** The reader's level for each agent of a joined server, which decides what Delete offers. */
+  hostAdmin: Pick<OpenBotDesktopApi["hostAdmin"], "getAgentAccess">;
   browserDock: Pick<OpenBotDesktopApi["browserDock"], "publishPresentation" | "onAction" | "onShown">;
 }
 

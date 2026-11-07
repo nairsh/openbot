@@ -1,10 +1,10 @@
 import type {
   AddMessagingOrchestratorResult,
+  ConnectorMessagingPlatform,
   DiscordAccess,
   DiscordRoleList,
   MessagingDesktopApi,
   MessagingOverview,
-  MessagingPlatform,
   MessagingRole,
 } from "@openbot/contracts/ipc";
 import { sourceText } from "@openbot/i18n/source";
@@ -30,13 +30,16 @@ type MessagingConnectTarget = { platform: WorkspacePlatform } | { platform: "tel
 /** A Slack workspace or a Discord server has its own orchestrator; every Telegram chat shares one. */
 type MessagingOrchestratorTarget = { platform: WorkspacePlatform; workspaceId: string } | { platform: "telegram" };
 
-/** The Slack, Discord and Telegram connections of one place: this computer or a joined server. */
+/**
+ * The Slack, Discord and Telegram connections of one place: this computer or a joined server. WhatsApp
+ * has its own controller (`whatsapp-connector.ts`): only this computer links it.
+ */
 export interface MessagingApi {
-  overview: (platform: MessagingPlatform) => Promise<MessagingOverview>;
+  overview: (platform: ConnectorMessagingPlatform) => Promise<MessagingOverview>;
   connect: (target: MessagingConnectTarget) => Promise<void>;
-  disconnect: (platform: MessagingPlatform, workspaceId: string) => Promise<void>;
-  reconnect: (platform: MessagingPlatform, workspaceId: string) => Promise<void>;
-  setEnabled: (platform: MessagingPlatform, workspaceId: string, enabled: boolean) => Promise<void>;
+  disconnect: (platform: ConnectorMessagingPlatform, workspaceId: string) => Promise<void>;
+  reconnect: (platform: ConnectorMessagingPlatform, workspaceId: string) => Promise<void>;
+  setEnabled: (platform: ConnectorMessagingPlatform, workspaceId: string, enabled: boolean) => Promise<void>;
   addOrchestrator: (
     target: MessagingOrchestratorTarget,
     choice: SlackOrchestratorChoice | null,
@@ -100,7 +103,7 @@ const ACTION_FAILED = {
   slack: "connector.slack.actionFailed",
   discord: "connector.discord.actionFailed",
   telegram: "connector.telegram.actionFailed",
-} as const satisfies Record<MessagingPlatform, string>;
+} as const satisfies Record<ConnectorMessagingPlatform, string>;
 
 /**
  * A joined server without `discord-access-v1` cannot choose roles. Its Discord servers let everyone.
@@ -129,7 +132,7 @@ export interface MessagingConnectorOptions {
  * state calls `watch`. Each action reads the connections again when it ends.
  */
 export function createMessagingConnector(
-  platform: MessagingPlatform,
+  platform: ConnectorMessagingPlatform,
   api: MessagingApi,
   options: MessagingConnectorOptions,
 ): ConnectorController {
@@ -237,6 +240,13 @@ export function createMessagingConnector(
   const connections = () => overview()?.connections ?? [];
   const shared = {
     disconnect: (workspaceId: string) => run(() => api.disconnect(platform, workspaceId), "disconnected"),
+    /** Disconnects every connection that shows, one after another, in one action. */
+    disconnectAll: () => {
+      const workspaceIds = untrack(connections).map((connection) => connection.workspaceId);
+      run(async () => {
+        for (const workspaceId of workspaceIds) await api.disconnect(platform, workspaceId);
+      }, "disconnected");
+    },
     reconnect: (workspaceId: string) => run(() => api.reconnect(platform, workspaceId), "connect_started"),
     setEnabled: (workspaceId: string, enabled: boolean) =>
       run(() => api.setEnabled(platform, workspaceId, enabled), enabled ? "enabled" : "disabled"),
@@ -295,6 +305,7 @@ export function createMessagingConnector(
               });
             }),
           onDisconnectChat: shared.disconnect,
+          onDisconnectAll: shared.disconnectAll,
           onReconnect: shared.reconnect,
           onSetEnabled: shared.setEnabled,
           onAddOrchestrator: (choice) => addOrchestrator({ platform }, choice),
@@ -348,6 +359,7 @@ export function createMessagingConnector(
         onRetry: reload,
         onConnectWorkspace: connect,
         onDisconnectWorkspace: shared.disconnect,
+        onDisconnectAll: shared.disconnectAll,
         onReconnect: shared.reconnect,
         onSetEnabled: shared.setEnabled,
         onAddOrchestrator: (workspaceId, choice) => addOrchestrator({ platform, workspaceId }, choice),

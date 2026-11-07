@@ -50,7 +50,8 @@ export class ProviderAccountsHost {
         ? [
             {
               provider: row.id,
-              accounts: row.accounts.map((account) => ({
+              // `provider-accounts-v1` carries no model list: the account's models stay on this computer.
+              accounts: row.accounts.map(({ models: _models, ...account }) => ({
                 ...account,
                 message: account.message?.slice(0, PROVIDER_ACCOUNTS_MESSAGE_LIMIT) ?? null,
               })),
@@ -126,9 +127,14 @@ export class ProviderAccountsHost {
     return this.#dependencies.service.removeProviderAccount(provider, accountId).pipe(Effect.asVoid);
   }
 
-  /** Moves the agent to an account of its provider; null is the provider's own sign-in. */
+  /**
+   * Moves the agent to an account of its provider; null is the provider's own sign-in. Only the
+   * Team API calls this, and its protocol has no `pendingRuntime`, so a change during work is refused.
+   */
   setAgentAccount(agentId: string, accountId: string | null) {
-    return this.#dependencies.service.updateAgent({ agentId, providerAccountId: accountId }).pipe(Effect.asVoid);
+    return this.#dependencies.service
+      .updateAgent({ agentId, providerAccountId: accountId }, undefined, false)
+      .pipe(Effect.asVoid);
   }
 
   close() {

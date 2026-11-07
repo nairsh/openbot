@@ -1,8 +1,16 @@
 /* The steps of an agent's turn: under the activity line while it runs, above the answer after. */
 
+/* The working rings reach about 10px past a face, and the channel's faces sit 2px from the edge.
+   The clip margin keeps the rings whole. It goes when the line leaves, so open steps do not show
+   below the closing row. */
 .agent-activity-body {
   min-height: 0;
-  overflow: hidden;
+  overflow: clip;
+  overflow-clip-margin: var(--openbot-space-3);
+}
+
+.agent-activity-entry[data-state="exiting"] .agent-activity-body {
+  overflow-clip-margin: 0;
 }
 
 /* The entry ignores the pointer so the chat scrolls under it; its controls take it back. */
@@ -24,23 +32,24 @@
 .agent-activity-steps {
   display: grid;
   grid-template-rows: 1fr;
-  padding: 0 0 var(--openbot-space-2) var(--openbot-space-6);
+  padding-block: 0 var(--openbot-space-2);
+  padding-inline: var(--openbot-space-6) 0;
   transition:
     grid-template-rows var(--openbot-duration-overlay) var(--openbot-ease-out),
-    padding-bottom var(--openbot-duration-overlay) var(--openbot-ease-out),
+    padding-block-end var(--openbot-duration-overlay) var(--openbot-ease-out),
     opacity var(--openbot-duration-normal) var(--openbot-ease-out);
 }
 
 @starting-style {
   .agent-activity-steps {
     grid-template-rows: 0fr;
-    padding-bottom: 0;
+    padding-block-end: 0;
     opacity: 0;
   }
 }
 
 .agent-activity-steps[data-closed] {
-  padding-bottom: 0;
+  padding-block-end: 0;
 }
 
 .agent-steps-chevron {
@@ -74,14 +83,14 @@
   max-width: 100%;
   align-items: center;
   gap: var(--openbot-space-2);
-  margin-left: calc(-1 * var(--openbot-space-1-5));
+  margin-inline-start: calc(-1 * var(--openbot-space-1-5));
   border-radius: var(--openbot-radius-sm);
   padding: var(--openbot-space-0-5) var(--openbot-space-1-5);
   color: inherit;
   font-size: var(--openbot-text-md);
   font-weight: var(--openbot-weight-regular);
   line-height: var(--openbot-leading-md);
-  text-align: left;
+  text-align: start;
 }
 
 /* The open list is not a lit toggle, so the header has no fill. */
@@ -139,8 +148,8 @@
   min-height: 0;
   max-height: 220px;
   overflow: hidden;
-  padding-left: var(--openbot-space-3);
-  border-left: 1px solid var(--openbot-border);
+  padding-inline-start: var(--openbot-space-3);
+  border-inline-start: 1px solid var(--openbot-border);
 }
 
 .agent-steps-viewport[data-scrolls] {
@@ -149,7 +158,7 @@
 
 .agent-steps-panel > .agent-steps-viewport {
   min-height: 0;
-  margin-left: var(--openbot-space-3);
+  margin-inline-start: var(--openbot-space-3);
 }
 
 .agent-steps-list {
@@ -227,4 +236,13 @@
   .agent-step {
     animation: none;
   }
+}
+
+/* In RTL the right chevron points left, so the open row turns it the other way to point down. */
+:dir(rtl) svg[class~="lucide-chevron-right"].agent-steps-chevron {
+  transform: scaleX(-1);
+}
+
+:dir(rtl) .agent-steps-header[aria-expanded="true"] svg[class~="lucide-chevron-right"].agent-steps-chevron {
+  rotate: -90deg;
 }

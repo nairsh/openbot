@@ -8,6 +8,12 @@ export const messages = {
   "mobile.settings.language.system": "Systemstandard",
   "mobile.settings.language.footer":
     "Systemstandard verwendet die erste Sprache in den Telefoneinstellungen. Noch nicht übersetzter Text erscheint auf Englisch.",
+  "mobile.settings.language.restartTitle": "OpenBot neu starten?",
+  "mobile.settings.language.restartBody":
+    "Diese Sprache liest sich in die andere Richtung. Die Ansichten wechseln die Richtung, wenn OpenBot neu startet. Wenn die Ansichten nach dem Neustart noch falsch aussehen, schließe OpenBot im App-Umschalter und öffne es erneut.",
+  "mobile.settings.language.restartNow": "Jetzt neu starten",
+  "mobile.settings.language.restartFailed":
+    "OpenBot konnte nicht neu starten. Die Ansichten wechseln die Richtung, wenn du OpenBot das nächste Mal öffnest.",
   "mobile.settings.dictation.language": "Diktiersprache",
   "mobile.settings.about.development": "Entwicklung",
   "mobile.settings.about.openFailed": "Der Link konnte nicht geöffnet werden. Versuche es erneut.",
@@ -20,11 +26,14 @@ export const messages = {
   "mobile.settings.home.support": "Support",
   "mobile.settings.home.supportHint": "Hilfe erhalten und ein Supportprotokoll speichern",
   "mobile.settings.support.help": "Hilfe erhalten",
+  "mobile.settings.support.discord": "Ticket auf Discord öffnen",
+  "mobile.settings.support.discordHint": "Der schnellste Weg zu Hilfe",
   "mobile.settings.support.message": "Schreib uns auf X",
   "mobile.settings.support.issues": "Problem auf GitHub melden",
   "mobile.settings.support.helpFooter":
-    "Beschreibe, was wann passiert ist. Hänge die Supportprotokolldatei an dein GitHub-Issue an.",
+    "Beschreibe, was wann passiert ist. Hänge die Supportprotokolldatei an dein Discord-Ticket oder dein GitHub-Issue an.",
   "mobile.settings.support.log": "Supportprotokoll",
+  "mobile.settings.support.show": "Protokoll anzeigen",
   "mobile.settings.support.save": "Protokolldatei speichern",
   "mobile.settings.support.events": {
     one: "{count} Ereignis",
@@ -37,8 +46,8 @@ export const messages = {
     "Das Protokoll bleibt auf diesem Telefon und wird von OpenBot nicht gesendet. Es erfasst Verbindungsschritte, Anfragen und Fehler. Es erfasst keine Nachrichten oder Dateien und maskiert Passwörter und Tokens. Lies die Datei, bevor du sie teilst.",
   "mobile.settings.support.saveFailed": "Die Protokolldatei konnte nicht gespeichert werden. Versuche es erneut.",
   "mobile.settings.support.sharingUnavailable": "Teilen ist auf diesem Telefon nicht verfügbar.",
-  "mobile.settings.support.recent": "Letzte Ereignisse",
-  "mobile.settings.support.recentFooter": "Neueste zuerst. Die gespeicherte Datei enthält alle Ereignisse.",
+  "mobile.settings.support.newestFirst": "Neueste zuerst.",
+  "mobile.settings.support.showOlder": "Ältere Ereignisse anzeigen",
   "mobile.settings.support.empty": "Noch keine Ereignisse.",
   "mobile.settings.sessions.kindDesktop": "Desktop",
   "mobile.settings.sessions.kindMobile": "Mobil",
@@ -56,9 +65,8 @@ export const messages = {
   "mobile.settings.sessions.disconnectBody":
     "Dies beendet auch die aktiven Remote-Verbindungen des Kontos. Das Gerät kann sich erneut anmelden.",
   "mobile.settings.sessions.disconnect": "Trennen",
-  "mobile.settings.dictation.title": "Diktat",
   "mobile.settings.dictation.footer":
-    "Die Sprache, in der du eine Nachricht diktierst. Automatisch verwendet die erste Sprache in den Telefoneinstellungen, die von der Spracherkennung unterstützt wird.",
+    "Die Sprache, die du mit der Erkennung des Telefons sprichst, in einem Sprachgespräch und beim Diktieren. Automatisch verwendet die erste Sprache in den Telefoneinstellungen, die sie unterstützt.",
   "mobile.settings.dictation.automatic": "Automatisch",
   "mobile.settings.appearance.title": "Darstellung",
   "mobile.settings.appearance.footer": "System folgt der Darstellung deines Geräts.",
@@ -74,12 +82,9 @@ export const messages = {
   "mobile.settings.animations.footer":
     "Schalte Animationen aus, um Bewegungen in der ganzen App zu reduzieren. Wenn „Bewegung reduzieren“ in den Einstellungen deines Telefons aktiviert ist, reduziert die App die Bewegungen ebenfalls. Die Animationen unten bleiben dann aus.",
   "mobile.settings.animations.all": "Animationen",
-  "mobile.settings.animations.chatZoom": "In Chats zoomen",
-  "mobile.settings.animations.chatZoomFooter":
-    "Ein Chat öffnet sich aus seinem Avatar in der Liste und schließt sich wieder in ihn. Wenn dies aus ist, gleitet ein Chat von der Seite herein.",
   "mobile.settings.animations.agentFaces": "Animierte Agentengesichter",
   "mobile.settings.animations.agentFacesFooter":
-    "Die Gesichter der Agenten-Avatare bewegen sich, während die Agenten arbeiten und ruhen. Wenn dies aus ist, bleiben die Gesichter still.",
+    "Die Gesichter der Agenten-Avatare bewegen sich, während die Agenten arbeiten und ruhen. Wenn dies aus ist, bleiben die Gesichter still, und die Figuren auf dem Willkommensbildschirm und dem leeren Startbildschirm schweben nicht mehr.",
   "mobile.settings.animations.composerResize": "Kompaktes Nachrichtenfeld",
   "mobile.settings.animations.composerResizeFooter":
     "Das Nachrichtenfeld wird zu einer kleinen Leiste, solange die Tastatur geschlossen ist. Wenn dies aus ist, bleibt das Feld in voller Größe.",
@@ -126,7 +131,6 @@ export const messages = {
     "Mitteilungen und die Live-Aktivität spielen diesen Ton. Die Live-Aktivität schaltet dabei auch den Bildschirm ein. Der OpenBot-Ton ist der Ton, den die Desktop-App spielt, wenn eine Aufgabe fertig ist. Die vier Töne danach sind die Töne der Klangthemen der Desktop-App.",
   "mobile.settings.notifications.soundFooterAndroid":
     "Benachrichtigungen spielen diesen Ton. Der OpenBot-Ton ist der Ton, den die Desktop-App spielt, wenn eine Aufgabe fertig ist. Die vier Töne danach sind die Töne der Klangthemen der Desktop-App.",
-  "mobile.settings.notifications.notifyAbout": "Benachrichtige mich über",
   "mobile.settings.notifications.level.all": "Alle Aktivitäten",
   "mobile.settings.notifications.level.needsMe": "Nur wenn ich gebraucht werde",
   "mobile.settings.notifications.level.nothing": "Nichts",
@@ -143,12 +147,30 @@ export const messages = {
     "Die Ereignisse dieses Servers, die dieses Telefon benachrichtigen. Die Desktop-App hat eigene Einstellungen.",
   "mobile.settings.notifications.serverUnsupported":
     "Dieser Server kann keine Mitteilungen senden. Aktualisiere OpenBot auf dem Computer, auf dem er läuft.",
+  "mobile.settings.notifications.thisPhone": "Dieses Telefon",
+  "mobile.settings.notifications.whatYouHear": "Was dich erreicht",
+  "mobile.settings.notifications.wholeServer": "Ganzer Server",
+  "mobile.settings.notifications.levelShort.all": "Alle",
+  "mobile.settings.notifications.levelShort.needsMe": "Braucht mich",
+  "mobile.settings.notifications.levelShort.nothing": "Aus",
+  "mobile.settings.notifications.thisPhoneOnly": "Nur dieses Telefon",
+  "mobile.settings.notifications.offForEveryone": "Für alle auf diesem Server aus",
+  "mobile.settings.notifications.turnOn": "Einschalten",
+  "mobile.settings.notifications.turnOnFor": "Benachrichtigungen von {name} für alle auf diesem Server einschalten",
+  "mobile.settings.notifications.chooseAgent": "Für einen Agenten wählen",
+  "mobile.settings.notifications.chooseAnotherAgent": "Weiteren Agenten wählen",
+  "mobile.settings.notifications.levelsFooter":
+    "Tippe noch einmal auf die Stufe eines Agents, damit er wieder dem Server folgt.",
+  "mobile.settings.notifications.agentsUnsupported": "Aktualisiere OpenBot auf diesem Server, um Agents zu wählen.",
+  "mobile.settings.notifications.agentsOffline": "Agents erscheinen, wenn dieser Server online ist.",
+  "mobile.settings.notifications.scopeFooter":
+    "Deine Auswahl gilt auf allen deinen Geräten. Stummschalten gilt nur für dieses Telefon.",
   "mobile.settings.notifications.channel": "Agenten-Benachrichtigungen ({sound})",
   "mobile.settings.notifications.channelSilent": "Agenten-Benachrichtigungen (ohne Ton)",
   "mobile.settings.privacy.title": "Datenschutz",
   "mobile.settings.privacy.footer":
-    "Teile die Nutzung von Funktionen und Verbindungsergebnisse dieses Telefons. Nachrichteninhalte und Dateien werden nicht gesendet.",
-  "mobile.settings.privacy.analytics": "Nutzungsdaten teilen",
+    "Die Nutzung von Funktionen und Verbindungsergebnisse dieses Telefons gehen immer an die Analyse von OpenBot. An: mit deiner Konto-ID und E-Mail-Adresse. Aus: nur mit einer zufälligen Installations-ID. Nachrichteninhalte und Dateien werden nicht gesendet.",
+  "mobile.settings.privacy.analytics": "Analysedaten mit meinem Konto verknüpfen",
   "mobile.settings.privacy.retry": "Datenschutzeinstellung erneut speichern",
   "mobile.settings.conversations.title": "Unterhaltungen",
   "mobile.settings.conversations.hiddenChats": "Ausgeblendete Chats",
@@ -170,4 +192,99 @@ export const messages = {
   "mobile.settings.profile.signOutBody":
     "Verbinde dich erneut, indem du einen neuen Code aus OpenBot auf deinem Desktop scannst.",
   "mobile.settings.profile.signOut": "Abmelden",
+  "mobile.settings.voice.title": "Stimme",
+  "mobile.settings.voice.sample": "Hallo. So lese ich dir meine Antworten vor.",
+  "mobile.settings.voice.voice": "Stimme",
+  "mobile.settings.voice.listen": "Anhören",
+  "mobile.settings.voice.stop": "Stopp",
+  "mobile.settings.voice.unavailable":
+    "Diese App-Version kann Antworten nicht vorlesen. Aktualisiere die App für Sprachgespräche.",
+  "mobile.settings.voice.removeFailed": "Entfernen fehlgeschlagen. Versuche es erneut.",
+  "mobile.settings.voice.engine.title": "Antwortstimme",
+  "mobile.settings.voice.engine.footer": "Die markierte Stimme liest die Antworten des Agenten im Sprachgespräch vor.",
+  "mobile.settings.voice.engine.supertonic": "Supertonic 3",
+  "mobile.settings.voice.engine.elevenLabs": "ElevenLabs",
+  "mobile.settings.voice.supertonic.title": "Supertonic 3",
+  "mobile.settings.voice.supertonic.footer":
+    "Lade das Modell einmal herunter, am besten im WLAN. Es bleibt auf diesem Telefon, bis du es entfernst.",
+  "mobile.settings.voice.supertonic.model": "Sprachmodell",
+  "mobile.settings.voice.supertonic.downloading": "Lädt… {percent}",
+  "mobile.settings.voice.supertonic.ready": "Heruntergeladen · {size}",
+  "mobile.settings.voice.supertonic.missing": "Nicht heruntergeladen · {size}",
+  "mobile.settings.voice.supertonic.verifyFailed": "Eine Datei war beschädigt. Lade erneut herunter.",
+  "mobile.settings.voice.supertonic.downloadFailed":
+    "Der Download wurde unterbrochen. Prüfe die Verbindung und lade erneut herunter.",
+  "mobile.settings.voice.supertonic.download": "Laden",
+  "mobile.settings.voice.supertonic.remove": "Entfernen",
+  "mobile.settings.voice.supertonic.removeTitle": "Sprachmodell entfernen?",
+  "mobile.settings.voice.supertonic.removeBody":
+    "Supertonic 3 liest Antworten erst wieder vor, wenn du es erneut herunterlädst.",
+  "mobile.settings.voice.supertonic.female": "Weibliche Stimme {number}",
+  "mobile.settings.voice.supertonic.male": "Männliche Stimme {number}",
+  "mobile.settings.voice.elevenLabs.title": "ElevenLabs",
+  "mobile.settings.voice.elevenLabs.footer":
+    "OpenBot sendet den Text jeder Antwort mit deinem Schlüssel an ElevenLabs, und ElevenLabs berechnet dein Konto. Der Schlüssel bleibt im Schlüsselbund dieses Telefons.",
+  "mobile.settings.voice.elevenLabs.key": "API-Schlüssel",
+  "mobile.settings.voice.elevenLabs.keySaved": "Auf diesem Telefon gespeichert",
+  "mobile.settings.voice.elevenLabs.chooseVoice": "Stimme wählen",
+  "mobile.settings.voice.elevenLabs.voicesFailed": "Deine ElevenLabs-Stimmen konnten nicht geladen werden.",
+  "mobile.settings.voice.elevenLabs.removeKey": "Schlüssel entfernen",
+  "mobile.settings.voice.elevenLabs.removeTitle": "ElevenLabs-Schlüssel entfernen?",
+  "mobile.settings.voice.elevenLabs.removeBody": "Supertonic 3 liest die Antworten wieder vor.",
+  "mobile.settings.voice.elevenLabs.saveKey": "Schlüssel speichern",
+  "mobile.settings.voice.elevenLabs.testing": "Schlüssel wird geprüft",
+  "mobile.settings.voice.elevenLabs.keyHint": "OpenBot prüft die ersten zwei Berechtigungen vor dem Speichern.",
+  "mobile.settings.voice.elevenLabs.testFailed": "ElevenLabs hat nicht geantwortet. Versuche es erneut.",
+  "mobile.settings.voice.elevenLabs.getKey": "API-Schlüssel holen",
+  "mobile.settings.voice.engine.supertonicReady": "Auf diesem Telefon · {voice}",
+  "mobile.settings.voice.engine.supertonicMissing": "Download nötig · {size}",
+  "mobile.settings.voice.engine.elevenLabsNoKey": "Füge einen API-Schlüssel hinzu",
+  "mobile.settings.voice.choiceFooter":
+    "Tippe auf eine Stimme, um sie zu verwenden. Tippe auf Abspielen, um sie vorher zu hören.",
+  "mobile.settings.voice.choiceDownloadFirst":
+    "Lade Supertonic 3 unter Einstellungen > Stimme herunter, um die Stimmen zu hören.",
+  "mobile.settings.voice.playVoice": "{name} abspielen",
+  "mobile.settings.voice.stopVoice": "{name} stoppen",
+  "mobile.settings.voice.elevenLabs.missingVoicesPermission":
+    "Dem Schlüssel fehlt die Berechtigung Voices: Read. Aktiviere sie für diesen Schlüssel in ElevenLabs.",
+  "mobile.settings.voice.elevenLabs.missingSpeechPermission":
+    "Dem Schlüssel fehlt die Berechtigung Text to Speech: Access. Aktiviere sie für diesen Schlüssel in ElevenLabs.",
+  "mobile.settings.voice.elevenLabs.permissionsTitle": "Nötige Berechtigungen",
+  "mobile.settings.voice.elevenLabs.permissionSpeech": "Text to Speech: Access",
+  "mobile.settings.voice.elevenLabs.permissionSpeechHint": "Liest die Antworten vor.",
+  "mobile.settings.voice.elevenLabs.permissionVoices": "Voices: Read",
+  "mobile.settings.voice.elevenLabs.permissionVoicesHint": "Listet die Stimmen zur Auswahl.",
+  "mobile.settings.voice.elevenLabs.permissionsFooter":
+    "Öffne in ElevenLabs Developers > API keys und erstelle einen Schlüssel. Wenn du Restrict key aktivierst, setze diese Berechtigungen und lass die anderen aus. Ein Schlüssel ohne Einschränkungen funktioniert auch.",
+  "mobile.settings.voice.recognition.title": "Spracherkennung",
+  "mobile.settings.voice.recognition.footer":
+    "Die markierte Erkennung versteht, was du in einem Sprachgespräch und beim Diktieren sagst.",
+  "mobile.settings.voice.recognition.system": "Erkennung des Telefons",
+  "mobile.settings.voice.recognition.systemHint": "Kein Download · eine Sprache auf einmal",
+  "mobile.settings.voice.recognition.parakeet": "Parakeet v3",
+  "mobile.settings.voice.recognition.parakeetReady": "Auf diesem Telefon · erkennt die Sprache selbst",
+  "mobile.settings.voice.recognition.parakeetUnsupported": "Braucht ein Telefon mit mindestens 6 GB Arbeitsspeicher",
+  "mobile.settings.voice.recognition.parakeetFooter":
+    "Parakeet läuft auf diesem Telefon, wie auf dem Desktop. Es erkennt die Sprache, die du sprichst, in 25 europäischen Sprachen, und deine Sprache bleibt auf dem Telefon. Bis das Modell geladen ist, hört die Erkennung des Telefons zu.",
+  "mobile.settings.voice.recognition.elevenLabs": "ElevenLabs Scribe",
+  "mobile.settings.voice.recognition.elevenLabsHint": "Mehr als 90 Sprachen · sendet deine Sprache an ElevenLabs",
+  "mobile.settings.voice.recognition.model": "Sprachmodell",
+  "mobile.settings.voice.recognition.removeTitle": "Sprachmodell entfernen?",
+  "mobile.settings.voice.recognition.removeBody": "Die Erkennung des Telefons hört zu, bis du das Modell erneut lädst.",
+  "mobile.settings.voice.elevenLabs.permissionTranscription": "Speech to Text: Access",
+  "mobile.settings.voice.elevenLabs.permissionTranscriptionHint":
+    "Erkennt deine Sprache, wenn ElevenLabs Scribe markiert ist.",
+  "mobile.settings.voice.elevenLabs.keyPlaceholder": "sk_…",
+  "mobile.settings.voice.tab.listening": "Zuhören",
+  "mobile.settings.voice.tab.speaking": "Sprechen",
+  "mobile.settings.voice.pause.title": "Pause vor dem Senden",
+  "mobile.settings.voice.pause.label": "Auf neue Wörter warten",
+  "mobile.settings.voice.pause.footer":
+    "In einem Sprachgespräch sendet OpenBot deine Worte, wenn es so lange keine neuen Wörter erkennt. Lärm ohne Wörter hält das Zuhören nicht offen. Wähle eine längere Pause, wenn du langsam sprichst oder zum Nachdenken innehältst.",
+  "mobile.settings.voice.pause.seconds": "{seconds} s",
+  "mobile.settings.voice.speed.title": "Antworttempo",
+  "mobile.settings.voice.speed.footer": "Das Tempo der Antworten, die OpenBot vorliest, auch in einem Sprachgespräch.",
+  "mobile.settings.voice.speed.value": "{speed}×",
+  "mobile.settings.voice.elevenLabs.recognitionFooter":
+    "OpenBot streamt deine Sprache mit einem Einmal-Token an ElevenLabs, und ElevenLabs rechnet über dein Konto ab. Der Schlüssel bleibt auf diesem Telefon.",
 } as const satisfies PartialTranslation<typeof source>;

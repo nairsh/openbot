@@ -1,6 +1,8 @@
 import type { ServerSummary } from "@openbot/contracts/ipc";
 import { BITWARDEN_CONNECTOR_CAPABILITY } from "@openbot/contracts/team-protocol/bitwarden-connector-v1";
 import { ONEPASSWORD_CONNECTOR_CAPABILITY } from "@openbot/contracts/team-protocol/onepassword-connector-v1";
+import { PASSWORD_MANAGERS_CAPABILITY } from "@openbot/contracts/team-protocol/password-managers-v1";
+import { WHATSAPP_CONNECTOR_CAPABILITY } from "@openbot/contracts/team-protocol/whatsapp-connector-v1";
 import { createMemo } from "solid-js";
 import { createSimpleContext } from "../../simple-context";
 import { resolveCreationModel } from "../agents/agent-creation-model";
@@ -21,20 +23,22 @@ import {
 } from "./connector-registry";
 import { githubConnectorPort, hostGitHubConnectorPort } from "./github-connector-port";
 import { hostMessagingApi } from "./host-messaging-port";
-import { localMessagingApi, type MessagingConnectorOptions } from "./messaging-connector";
+import { localMessagingApi, type MessagingApi, type MessagingConnectorOptions } from "./messaging-connector";
 import { hostOnePasswordConnectorPort } from "./onepassword-connector-port";
+import { hostPasswordManagerPort } from "./password-manager-port";
+import { hostWhatsAppPort, whatsappPort } from "./whatsapp-connector";
 
 const context = createSimpleContext({
   name: "ConnectorsProvider",
   init: () => {
-    const { activeServer } = useServers();
-    const { serverSettingsTarget } = useServerSettings();
+    const { activeServer, hostStatus } = useServers();
+    const { publishLocalServer } = useServerSettings();
     const { agentList, agentStatus, modelOptions, serverSetupChoice, developmentCreation } = useAgents();
     const { setupState } = useSetup();
     const endpoints = useCustomProviders();
     const localAgents = useCustomAgents();
     const { collapseSidebarSection } = useSidebar();
-    // The Slack, Discord and Telegram Orchestrators of this computer run here, so their pickers list
+    // The Slack, Discord, Telegram and WhatsApp Orchestrators of this computer run here, so their pickers list
     // this computer's models: none while a joined server is on screen, and then they start on a new
     // agent's default.
     const models = () => {
@@ -43,13 +47,41 @@ const context = createSimpleContext({
       return {
         modelOptions: options,
         agentStatus: agentStatus(),
-        initial: resolveCreationModel(serverSetupChoice() ?? setupState(), options, developmentCreation()),
+        initial: resolveCreationModel(
+          serverSetupChoice() ?? setupState(),
+          options,
+          agentStatus(),
+          developmentCreation(),
+        ),
         customProviders: endpoints.customProviders(),
         customAgents: localAgents.customAgents(),
       };
     };
+    const localMessaging = localMessagingApi();
+    // Slack, Discord and Telegram need this computer's server to have a name. Turning one on also
+    // publishes the server (#3393), which names it when it has no name, so the user does not have to
+    // do either first. A failed publish does not stop the connection: it reports its own error.
+    const publishFirst = async () => {
+      if (hostStatus().phase !== "online") await publishLocalServer().catch(() => undefined);
+    };
+    const messaging: MessagingApi = {
+      ...localMessaging,
+      connect: async (target) => {
+        await publishFirst();
+        await localMessaging.connect(target);
+      },
+      reconnect: async (platform, workspaceId) => {
+        await publishFirst();
+        await localMessaging.reconnect(platform, workspaceId);
+      },
+      setEnabled: async (platform, workspaceId, enabled) => {
+        if (enabled) await publishFirst();
+        await localMessaging.setEnabled(platform, workspaceId, enabled);
+      },
+    };
     const computer = createConnectorSet(
-      { github: githubConnectorPort, ...LOCAL_CONNECTOR_TRANSPORTS, messaging: localMessagingApi() },
+      // WhatsApp does not go through Signal, so it does not publish the server first.
+      { github: githubConnectorPort, ...LOCAL_CONNECTOR_TRANSPORTS, messaging, whatsapp: whatsappPort },
       {
         agents: agentList,
         models,
@@ -70,20 +102,27 @@ const context = createSimpleContext({
       // A separate capability: a host that serves `connectors-v1` can be older than the 1Password routes.
       const onePasswordTarget = createMemo(() => remoteAdminServer(server(), ONEPASSWORD_CONNECTOR_CAPABILITY));
       const bitwardenTarget = createMemo(() => remoteAdminServer(server(), BITWARDEN_CONNECTOR_CAPABILITY));
+      const whatsappTarget = createMemo(() => remoteAdminServer(server(), WHATSAPP_CONNECTOR_CAPABILITY));
+      const passwordManagersTarget = createMemo(() => remoteAdminServer(server(), PASSWORD_MANAGERS_CAPABILITY));
       const options: MessagingConnectorOptions = {
         agents: agentList,
-        hostName: () => (target() ?? onePasswordTarget() ?? bitwardenTarget())?.name,
+        hostName: () =>
+          (target() ?? onePasswordTarget() ?? bitwardenTarget() ?? whatsappTarget() ?? passwordManagersTarget())?.name,
         serverId: () => target()?.id,
       };
       const github = hostGitHubConnectorPort(() => target()?.id);
       const onePassword = hostOnePasswordConnectorPort(() => onePasswordTarget()?.id);
       const bitwarden = hostBitwardenConnectorPort(() => bitwardenTarget()?.id);
+      const whatsapp = hostWhatsAppPort(() => whatsappTarget()?.id);
+      const passwordManagers = hostPasswordManagerPort(() => passwordManagersTarget()?.id);
       const host = createConnectorSet(
         {
           github: () => github,
           onePassword: () => onePassword,
           bitwarden: () => bitwarden,
+          passwordManagers: () => passwordManagers,
           messaging: hostMessagingApi(() => target()?.id),
+          whatsapp: () => whatsapp,
         },
         options,
       );
@@ -92,8 +131,6 @@ const context = createSimpleContext({
     return {
       /** The connectors of the server on screen: the Marketplace and the chat cards. */
       active: registry(activeServer),
-      /** The connectors of the server whose settings are open, which can be another one. */
-      settings: registry(serverSettingsTarget),
     };
   },
 });

@@ -38,7 +38,6 @@ export const messages = {
   "connector.github.statusConnected": "Conectado",
   "connector.github.statusConnecting": "Conectando",
   "connector.github.statusExpired": "Caducado",
-  "connector.github.statusNotSetUp": "Sin configurar",
   "connector.github.accountTitle": "Cuenta",
   "connector.github.filterPlaceholder": {
     one: "Filtrar {count} repositorio",
@@ -81,18 +80,9 @@ export const messages = {
   "connector.dangerZone": "Zona de peligro",
   "connector.statusUnknown": "Desconocido",
   "connector.readFailed": "OpenBot no pudo leer el estado de esta conexión.",
-  "connector.hub.onThisComputer": "En este equipo",
-  "connector.hub.onHost": "En {host}",
-  "connector.hub.notSetUp": "Sin configurar",
-  "connector.hub.available": "Disponible",
-  "connector.hub.localOnly": "Solo tu equipo",
-  "connector.hub.open": "Abrir {name}",
-  "connector.hub.setUp": "Configurar",
-  "connector.hub.usedBy": "Lo usan {names}",
   "connector.slack.title": "Slack",
   "connector.slack.description":
     "Las personas mencionan a @OpenBot en Slack o le envían un mensaje directo. El Orquestador de Slack consulta al agente adecuado y responde.",
-  "connector.slack.statusNotSetUp": "Sin configurar",
   "connector.slack.statusConnected": "Conectado",
   "connector.slack.statusAttention": "Requiere atención",
   "connector.slack.summaryConnected": "{workspace} · Responde el Orquestador de Slack",
@@ -105,9 +95,14 @@ export const messages = {
   "connector.slack.connect": "Conectar Slack",
   "connector.slack.addAgent": "Añadir agente",
   "connector.slack.actionFailed": "Slack no aceptó el cambio",
-  "connector.slack.workspaceTitle": "Espacio de trabajo",
+  "connector.slack.workspaceTitle": "Espacios de trabajo",
   "connector.slack.workspaceDescription": "Las personas mencionan a @OpenBot o le envían un mensaje directo.",
   "connector.slack.disconnectWorkspace": "Desconectar",
+  "connector.slack.disconnectAllTitle": "Desconectar Slack",
+  "connector.slack.disconnectAllSummary":
+    "Se desconectan todos los espacios de trabajo. Nadie podrá contactar con tus agentes a través de @OpenBot.",
+  "connector.slack.disconnectAllSummaryOrchestrator":
+    "Se desconectan todos los espacios de trabajo. El Orquestador de Slack y sus conversaciones se eliminan de OpenBot.",
   "connector.slack.missingScopes":
     "OpenBot no tiene estos permisos en Slack: {scopes}. Desconecta el espacio de trabajo y vuelve a conectarlo.",
   "connector.slack.retryAt": "Slack pidió a OpenBot que esperara. Lo intentará de nuevo a las {time}.",
@@ -168,7 +163,6 @@ export const messages = {
   "connector.discord.title": "Discord",
   "connector.discord.description":
     "Las personas mencionan a @OpenBot en un canal de un servidor de Discord. El Orquestador de Discord consulta al agente adecuado y responde.",
-  "connector.discord.statusNotSetUp": "Sin configurar",
   "connector.discord.statusConnected": "Conectado",
   "connector.discord.statusAttention": "Requiere atención",
   "connector.discord.summaryConnected": "{workspace} · Responde el Orquestador de Discord",
@@ -181,9 +175,14 @@ export const messages = {
   "connector.discord.connect": "Conectar Discord",
   "connector.discord.addAgent": "Añadir agente",
   "connector.discord.actionFailed": "Discord no aceptó el cambio",
-  "connector.discord.workspaceTitle": "Servidor de Discord",
+  "connector.discord.workspaceTitle": "Servidores de Discord",
   "connector.discord.workspaceDescription": "Menciona a @OpenBot en un canal. Responde a OpenBot para continuar.",
   "connector.discord.disconnectWorkspace": "Desconectar",
+  "connector.discord.disconnectAllTitle": "Desconectar Discord",
+  "connector.discord.disconnectAllSummary":
+    "Se desconectan todos los servidores. Nadie podrá contactar con tus agentes a través de @OpenBot.",
+  "connector.discord.disconnectAllSummaryOrchestrator":
+    "Se desconectan todos los servidores. El Orquestador de Discord y sus conversaciones se eliminan de OpenBot.",
   "connector.discord.missingScopes":
     "OpenBot no tiene estos permisos en Discord: {scopes}. Desconecta el servidor de Discord y vuelve a conectarlo.",
   "connector.discord.retryAt": "Discord pidió a OpenBot que esperara. Lo intentará de nuevo a las {time}.",
@@ -256,7 +255,6 @@ export const messages = {
   "connector.telegram.title": "Telegram",
   "connector.telegram.description":
     "Añade el bot de OpenBot a un grupo de Telegram o abre un chat directo con él. El Orquestador de Telegram consulta al agente adecuado y responde.",
-  "connector.telegram.statusNotSetUp": "Sin configurar",
   "connector.telegram.statusConnected": "Conectado",
   "connector.telegram.statusAttention": "Requiere atención",
   "connector.telegram.summaryConnected": {
@@ -290,10 +288,13 @@ export const messages = {
   "connector.telegram.resume": "Reanudar",
   "connector.telegram.reconnect": "Reconectar",
   "connector.telegram.disconnectChat": "Desconectar",
+  "connector.telegram.disconnectAllTitle": "Desconectar Telegram",
+  "connector.telegram.disconnectAllSummary":
+    "Se desconectan todos los chats. Nadie podrá contactar con tus agentes a través del bot de OpenBot.",
+  "connector.telegram.disconnectAllSummaryOrchestrator":
+    "Se desconectan todos los chats. El Orquestador de Telegram y sus conversaciones se eliminan de OpenBot.",
   "connector.telegram.rowAction": "{action}: {name}",
-  "connector.telegram.linkTitle": "Vincular otro chat",
-  "connector.telegram.linkDescription": "Telegram se abre en tu navegador. El chat aparece aquí cuando esté vinculado.",
-  "connector.telegram.linkWaiting": "Esperando a Telegram. Selecciona el chat en Telegram.",
+  "connector.telegram.linkChat": "Vincular un chat",
   "connector.telegram.addToGroup": "Añadir a un grupo",
   "connector.telegram.openDirectChat": "Abrir un chat directo",
   "connector.telegram.orchestratorTitle": "Orquestador de Telegram",
@@ -333,6 +334,153 @@ export const messages = {
     "Es el último chat, así que el Orquestador de Telegram y sus conversaciones se eliminan de OpenBot.",
   "connector.telegram.keep": "Mantener la conexión",
   "connector.telegram.close": "Cerrar",
+  "connector.whatsapp.title": "WhatsApp",
+  "connector.whatsapp.description":
+    "Vincula un número de WhatsApp a este equipo. El Orquestador de WhatsApp consulta al agente adecuado y responde.",
+  "connector.whatsapp.descriptionHost":
+    "Vincula un número de WhatsApp a este servidor. El Orquestador de WhatsApp consulta al agente adecuado y responde.",
+  "connector.whatsapp.statusConnected": "Conectado",
+  "connector.whatsapp.statusAttention": "Requiere atención",
+  "connector.whatsapp.summaryConnected": {
+    one: "{count} número · Responde el Orquestador de WhatsApp",
+    other: "{count} números · Responde el Orquestador de WhatsApp",
+  },
+  "connector.whatsapp.summaryNoAgent": {
+    one: "{count} número · Aún no responde ningún agente",
+    other: "{count} números · Aún no responde ningún agente",
+  },
+  "connector.whatsapp.attentionTitle": {
+    one: "{count} número requiere atención",
+    other: "{count} números requieren atención",
+  },
+  "connector.whatsapp.attentionDescription": "El estado que aparece abajo indica qué hacer.",
+  "connector.whatsapp.connect": "Vincular WhatsApp",
+  "connector.whatsapp.addAgent": "Añadir agente",
+  "connector.whatsapp.actionFailed": "WhatsApp no aceptó el cambio",
+  "connector.whatsapp.numbersTitle": "Números",
+  "connector.whatsapp.linkNumber": "Vincular un número",
+  "connector.whatsapp.ownNumberNote":
+    "Tu chat «Envíate un mensaje» y las personas que permitas pueden contactar con OpenBot.",
+  "connector.whatsapp.dedicatedNote":
+    "Las personas que permitas pueden contactar con OpenBot. Las demás reciben un código para dártelo.",
+  "connector.whatsapp.helpLoggedOut":
+    "WhatsApp quitó este equipo de los dispositivos vinculados. Vuelve a vincular el número.",
+  "connector.whatsapp.helpLoggedOutHost":
+    "WhatsApp quitó este servidor de los dispositivos vinculados. Vuelve a vincular el número.",
+  "connector.whatsapp.helpError":
+    "OpenBot no puede acceder a WhatsApp en este número. Vuelve a conectar o desconecta el número.",
+  "connector.whatsapp.retryAt": "WhatsApp pidió a OpenBot que esperara. Lo intentará de nuevo a las {time}.",
+  "connector.whatsapp.pause": "Pausar",
+  "connector.whatsapp.resume": "Reanudar",
+  "connector.whatsapp.reconnect": "Reconectar",
+  "connector.whatsapp.linkAgain": "Volver a vincular",
+  "connector.whatsapp.disconnect": "Desconectar",
+  "connector.whatsapp.disconnectAllTitle": "Desconectar WhatsApp",
+  "connector.whatsapp.disconnectAllSummary":
+    "Se desconectan todos los números. Nadie podrá contactar con tus agentes a través de WhatsApp.",
+  "connector.whatsapp.disconnectAllSummaryOrchestrator":
+    "Se desconectan todos los números. El Orquestador de WhatsApp y sus conversaciones se eliminan de OpenBot.",
+  "connector.whatsapp.rowAction": "{action}: {name}",
+  "connector.whatsapp.ownNumber": "Número personal",
+  "connector.whatsapp.ownNumberDescription":
+    "Solo pueden escribir tu chat «Envíate un mensaje» y las personas que permitas. Desactívalo para un número solo para OpenBot.",
+  "connector.whatsapp.orchestratorTitle": "Orquestador de WhatsApp",
+  "connector.whatsapp.orchestratorDescription":
+    "Este agente recibe los mensajes para OpenBot de todos tus números vinculados. Responde él mismo a los cortos, asigna el resto del trabajo al agente adecuado y responde en WhatsApp.",
+  "connector.whatsapp.orchestratorNone": "Aún no responde ningún agente",
+  "connector.whatsapp.orchestratorNoneDescription":
+    "Añade el Orquestador de WhatsApp o WhatsApp no recibirá respuesta.",
+  "connector.whatsapp.note":
+    "En tu número personal, escribe en tu chat «Envíate un mensaje». Las personas que permitas escriben al número.",
+  "connector.whatsapp.stepNumber": "Número",
+  "connector.whatsapp.stepAgent": "Agente",
+  "connector.whatsapp.connectTitle": "Vincular WhatsApp",
+  "connector.whatsapp.connectDescription":
+    "Selecciona el número y luego vincula este equipo desde WhatsApp en tu teléfono.",
+  "connector.whatsapp.connectDescriptionHost":
+    "Selecciona el número y luego vincula este servidor desde WhatsApp en tu teléfono.",
+  "connector.whatsapp.kindLabel": "Número",
+  "connector.whatsapp.kindPersonal": "Mi número personal",
+  "connector.whatsapp.kindPersonalDescription":
+    "OpenBot solo responde a tu chat «Envíate un mensaje» y a las personas que permitas.",
+  "connector.whatsapp.kindDedicated": "Un número solo para OpenBot",
+  "connector.whatsapp.kindDedicatedDescription":
+    "Las personas desconocidas reciben un código para dártelo. Tú las apruebas aquí.",
+  "connector.whatsapp.methodLabel": "Cómo vincular",
+  "connector.whatsapp.methodQr": "Código QR",
+  "connector.whatsapp.methodCode": "Código de vinculación",
+  "connector.whatsapp.phoneLabel": "Número de teléfono",
+  "connector.whatsapp.phoneDescription": "Con el código de país, por ejemplo +44 7700 900123.",
+  "connector.whatsapp.phoneInvalid": "Escribe el número de teléfono con su código de país.",
+  "connector.whatsapp.showQr": "Mostrar código QR",
+  "connector.whatsapp.getCode": "Obtener código",
+  "connector.whatsapp.starting": "Pidiendo un código a WhatsApp…",
+  "connector.whatsapp.connectStepOpen": "Abre WhatsApp en tu teléfono",
+  "connector.whatsapp.connectStepDevices":
+    "Toca Ajustes, luego Dispositivos vinculados y luego Vincular un dispositivo",
+  "connector.whatsapp.connectStepScan": "Apunta el teléfono a este código",
+  "connector.whatsapp.connectWaiting": "Esperando al teléfono. El código cambia cada 20 segundos aproximadamente.",
+  "connector.whatsapp.qrLabel": "Código QR para vincular WhatsApp",
+  "connector.whatsapp.codeStepDevices": "En WhatsApp, abre Dispositivos vinculados y toca Vincular un dispositivo",
+  "connector.whatsapp.codeStepPhone": "Toca Vincular con el número de teléfono",
+  "connector.whatsapp.codeStepType": "Escribe este código en el teléfono",
+  "connector.whatsapp.codeLabel": "Código de vinculación {code}",
+  "connector.whatsapp.copyCode": "Copiar código",
+  "connector.whatsapp.codeWaiting": "Esperando al teléfono.",
+  "connector.whatsapp.failedTitle": "WhatsApp no se vinculó",
+  "connector.whatsapp.failedTimeout": "El código caducó antes de que el teléfono lo usara.",
+  "connector.whatsapp.failedRefused": "WhatsApp rechazó la vinculación. Espera unos minutos y vuelve a intentarlo.",
+  "connector.whatsapp.failedBusy": "Hay otra vinculación en curso. Espera a que termine y vuelve a intentarlo.",
+  "connector.whatsapp.failedUnavailable": "OpenBot no puede acceder a WhatsApp. Comprueba la conexión a internet.",
+  "connector.whatsapp.tryAgain": "Reintentar",
+  "connector.whatsapp.agentStepTitle": "Añadir el Orquestador de WhatsApp",
+  "connector.whatsapp.agentStepDescription":
+    "Este nuevo agente responde a los mensajes para OpenBot en {number} y en cada número que vincules más adelante.",
+  "connector.whatsapp.orchestratorName": "Orquestador de WhatsApp",
+  "connector.whatsapp.orchestratorRole": "Responde en WhatsApp y consulta al equipo",
+  "connector.whatsapp.orchestratorDoesReceive": "Recibe primero cada mensaje de WhatsApp para OpenBot",
+  "connector.whatsapp.orchestratorDoesDelegate": "Asigna cada tarea al agente más adecuado",
+  "connector.whatsapp.orchestratorDoesAnswer": "Responde en el chat de WhatsApp",
+  "connector.whatsapp.orchestratorModel": "Modelo",
+  "connector.whatsapp.doneTitle": "OpenBot está vinculado a {number}",
+  "connector.whatsapp.done": "Listo",
+  "connector.whatsapp.disconnectTitle": "¿Desconectar {number}?",
+  "connector.whatsapp.disconnectDescription":
+    "OpenBot cierra la sesión de WhatsApp en {number}. Si OpenBot estaba apagado, quita también el dispositivo en WhatsApp > Dispositivos vinculados.",
+  "connector.whatsapp.disconnectEffect": "Nadie podrá contactar con tus agentes a través de {number}.",
+  "connector.whatsapp.removeEffectKept": "Las conversaciones y el Orquestador de WhatsApp permanecen en OpenBot.",
+  "connector.whatsapp.removeEffectDeleted":
+    "Es el último número, así que el Orquestador de WhatsApp y sus conversaciones se eliminan de OpenBot.",
+  "connector.whatsapp.keep": "Mantener vinculado",
+  "connector.whatsapp.close": "Cerrar",
+  "connector.whatsapp.sendersTitle": "Quién puede escribir a {number}",
+  "connector.whatsapp.sendersDescription": "Estos contactos y grupos pueden asignar trabajo a tus agentes.",
+  "connector.whatsapp.sendersEmpty": "Solo tú puedes escribir. Añade un contacto o un grupo.",
+  "connector.whatsapp.sendersLimit": "Un número puede permitir hasta {count} contactos y grupos.",
+  "connector.whatsapp.senderGroup": "Grupo",
+  "connector.whatsapp.removeSender": "Quitar",
+  "connector.whatsapp.addContact": "Añadir contacto",
+  "connector.whatsapp.addGroup": "Añadir grupo",
+  "connector.whatsapp.contactTitle": "Añadir un contacto",
+  "connector.whatsapp.contactDescription": "Esta persona puede asignar trabajo a tus agentes desde WhatsApp.",
+  "connector.whatsapp.contactName": "Nombre",
+  "connector.whatsapp.contactNameDescription": "Opcional. Si lo dejas vacío, la lista muestra el número de teléfono.",
+  "connector.whatsapp.add": "Añadir",
+  "connector.whatsapp.groupTitle": "Añadir un grupo",
+  "connector.whatsapp.groupDescription": "Las personas de este grupo pueden asignar trabajo a tus agentes.",
+  "connector.whatsapp.groupSearch": "Buscar grupos",
+  "connector.whatsapp.groupsLoading": "Leyendo los grupos…",
+  "connector.whatsapp.groupsLoadFailed": "OpenBot no pudo leer los grupos",
+  "connector.whatsapp.groupsEmpty": "Este número no está en ningún grupo.",
+  "connector.whatsapp.groupsNoMatch": "Ningún grupo tiene este nombre.",
+  "connector.whatsapp.groupAdded": "Añadido",
+  "connector.whatsapp.requestsTitle": "Solicitudes para {number}",
+  "connector.whatsapp.requestsDescription":
+    "Estas personas escribieron al número y recibieron un código. Aprueba a una persona solo si te dio el mismo código.",
+  "connector.whatsapp.requestsEmpty": "No hay solicitudes.",
+  "connector.whatsapp.requestDetail": "Código {code} · {number}",
+  "connector.whatsapp.approve": "Aprobar",
+  "connector.whatsapp.deny": "Rechazar",
   "connector.onePassword.title": "1Password",
   "connector.onePassword.description":
     "Comparte con OpenBot una bóveda exclusiva de 1Password mediante una cuenta de servicio para que los agentes puedan iniciar sesión en sitios desde el navegador de OpenBot.",
@@ -359,7 +507,9 @@ export const messages = {
   "connector.onePassword.stepVaultTitle": "Crear la bóveda compartida",
   "connector.onePassword.stepVaultDescription":
     "OpenBot crea la bóveda «Shared with OpenBot» y una cuenta de servicio que solo puede leerla. 1Password te pide que lo apruebes.",
-  "connector.onePassword.useToken": "Usar un token de cuenta de servicio en su lugar",
+  "connector.onePassword.useTokenDescription":
+    "En lugar de estos pasos, pega un token de cuenta de servicio de 1Password.com.",
+  "connector.onePassword.useTokenAction": "Usar token",
   "connector.onePassword.tokenLabel": "Token de cuenta de servicio",
   "connector.onePassword.tokenPlaceholder": "ops_…",
   "connector.onePassword.connectWithToken": "Conectar",
@@ -383,7 +533,6 @@ export const messages = {
   "connector.onePassword.actionFailed": "OpenBot no pudo cambiar la conexión de 1Password.",
   "connector.onePassword.statusConnected": "Conectado",
   "connector.onePassword.statusConnecting": "Conectando",
-  "connector.onePassword.statusNotSetUp": "Sin configurar",
   "connector.onePassword.descriptionHost":
     "Comparte con OpenBot en {host} una bóveda exclusiva de 1Password mediante una cuenta de servicio, para que los agentes de {host} puedan iniciar sesión en sitios desde su navegador.",
   "connector.onePassword.howItWorksHost":
@@ -401,8 +550,12 @@ export const messages = {
   "connector.bitwarden.sessionKey": "Clave de sesión de Bitwarden",
   "connector.bitwarden.connect": "Conectar Bitwarden",
   "connector.bitwarden.disconnect": "Desconectar Bitwarden",
+  "connector.bitwarden.disconnectAction": "Desconectar",
+  "connector.bitwarden.disconnectSummary":
+    "OpenBot olvida la clave de sesión. Los agentes ya no pueden rellenar inicios de sesión desde Bitwarden. Los demás clientes de Bitwarden siguen desbloqueados.",
+  "connector.bitwarden.disconnectSummaryHost":
+    "{host} elimina la clave de API y la contraseña maestra. Los agentes de {host} ya no pueden rellenar inicios de sesión desde Bitwarden.",
   "connector.bitwarden.connected": "Conectado",
-  "connector.bitwarden.disconnected": "Sin conexión",
   "connector.bitwarden.actionFailed": "OpenBot no pudo cambiar la conexión de Bitwarden.",
   "connector.bitwarden.descriptionHost":
     "Rellena los inicios de sesión del navegador en {host} desde Bitwarden o Vaultwarden.",
@@ -413,9 +566,84 @@ export const messages = {
   "connector.bitwarden.sessionHost":
     "{host} guarda la clave de API y la contraseña maestra cifradas, para poder desbloquear de nuevo después de reiniciarse. Este ordenador no las guarda. Desconectar las elimina de {host}. {host} debe llegar a la dirección del servidor por HTTPS.",
   "connector.bitwarden.serverUrl": "Dirección del servidor",
+  "connector.bitwarden.folderTitle": "Carpeta compartida",
+  "connector.bitwarden.folderDescription":
+    "Mueve un inicio de sesión a esta carpeta en Bitwarden para que los agentes puedan usarlo. Retíralo para impedir su uso.",
+  "connector.bitwarden.folderName": "Shared with OpenBot",
+  "connector.bitwarden.folderKind": "Carpeta en Bitwarden",
   "connector.bitwarden.clientId": "client_id de la clave de API",
   "connector.bitwarden.clientSecret": "client_secret de la clave de API",
   "connector.bitwarden.masterPassword": "Contraseña maestra",
   "connector.bitwarden.connecting": "Conectando",
-  "connector.bitwarden.connectedServer": "Conectado a {server}.",
+  "connector.protonPass.title": "Proton Pass",
+  "connector.protonPass.description":
+    "Permite que los agentes inicien sesión en sitios con las credenciales de una bóveda compartida de Proton Pass.",
+  "connector.protonPass.descriptionHost":
+    "Permite que los agentes de {host} inicien sesión en sitios con las credenciales de una bóveda compartida de Proton Pass.",
+  "connector.protonPass.connect": "Conectar",
+  "connector.protonPass.moreWays": "Más formas de conectar",
+  "connector.protonPass.useKey": "Usar una clave de acceso",
+  "connector.protonPass.keyLabel": "Clave de acceso",
+  "connector.protonPass.keyPlaceholder": "pst_…",
+  "connector.protonPass.setupTitle": "Configurar",
+  "connector.protonPass.setupDescription":
+    "Conectar abre el inicio de sesión de Proton en tu navegador. Después, OpenBot crea la bóveda compartida y solo guarda una clave de solo lectura para ella.",
+  "connector.protonPass.setupDescriptionHost":
+    "Conectar abre el inicio de sesión de Proton en tu navegador. Después, {host} crea la bóveda compartida y solo guarda una clave de solo lectura para ella.",
+  "connector.protonPass.vaultName": "Shared with OpenBot",
+  "connector.protonPass.vaultSetup":
+    "OpenBot crea esta bóveda al conectar. Mueve credenciales a ella para compartirlas.",
+  "connector.protonPass.showSteps": "Ver pasos",
+  "connector.protonPass.stepsLabel": "Pasos de conexión",
+  "connector.protonPass.stepSignIn": "Iniciar sesión",
+  "connector.protonPass.stepVault": "Crear la bóveda compartida",
+  "connector.protonPass.stepDone": "Listo",
+  "connector.protonPass.signInTitle": "Inicia sesión en Proton",
+  "connector.protonPass.signInStarting":
+    "OpenBot inicia el inicio de sesión. La página de Proton se abre en tu navegador.",
+  "connector.protonPass.signInDescription":
+    "El inicio de sesión está abierto en tu navegador. Proton pide tu contraseña y tu segundo factor.",
+  "connector.protonPass.signInDescriptionHost":
+    "El inicio de sesión para {host} está abierto en tu navegador. Proton pide tu contraseña y tu segundo factor.",
+  "connector.protonPass.extraPasswordDescription": "Proton Pass pide tu contraseña adicional.",
+  "connector.protonPass.extraPasswordWrong": "La contraseña adicional no es correcta. Escríbela de nuevo.",
+  "connector.protonPass.extraPasswordLabel": "Contraseña adicional",
+  "connector.protonPass.continue": "Continuar",
+  "connector.protonPass.setupStepTitle": "Creando la bóveda compartida",
+  "connector.protonPass.setupStepDescription":
+    "OpenBot crea la bóveda «{vault}» y una clave de solo lectura para ella. Después cierra tu sesión de Proton.",
+  "connector.protonPass.doneTitle": "Proton Pass está conectado",
+  "connector.protonPass.doneDescription":
+    "Mueve credenciales a «{vault}» para que los agentes inicien sesión con ellas.",
+  "connector.protonPass.failedTitle": "Proton Pass no se conectó",
+  "connector.protonPass.copyLink": "Copiar enlace",
+  "connector.protonPass.linkCopied": "Copiado",
+  "connector.protonPass.openAgain": "Abrir de nuevo",
+  "connector.protonPass.done": "Listo",
+  "connector.protonPass.close": "Cerrar",
+  "connector.protonPass.statusConnecting": "Conectando",
+  "connector.protonPass.statusConnected": "Conectado",
+  "connector.protonPass.statusExpired": "Clave caducada",
+  "connector.protonPass.expiredTitle": "La clave de Proton Pass caducó",
+  "connector.protonPass.expiredDescription":
+    "Los agentes no pueden iniciar sesión con tus credenciales compartidas hasta que vuelvas a iniciar sesión.",
+  "connector.protonPass.reconnect": "Reconectar",
+  "connector.protonPass.planTitle": "Proton Pass necesita un plan de pago",
+  "connector.protonPass.planDescription":
+    "La CLI de Proton Pass solo funciona con un plan de pago de Proton. Cambia tu plan y vuelve a conectar.",
+  "connector.protonPass.vaultTitle": "Bóveda compartida",
+  "connector.protonPass.vaultDescription":
+    "Los agentes pueden iniciar sesión con las credenciales de esta bóveda. Mueve una credencial a ella para compartirla.",
+  "connector.protonPass.loginCount": { one: "{count} inicio de sesión", other: "{count} inicios de sesión" },
+  "connector.protonPass.loginsLoading": "Contando credenciales…",
+  "connector.protonPass.keyExpires": "Solo lectura. Caduca el {date}.",
+  "connector.protonPass.keyExpired": "Solo lectura. Caducó el {date}.",
+  "connector.protonPass.keyNoExpiry": "Solo lectura. No caduca.",
+  "connector.protonPass.disconnectTitle": "Desconectar Proton Pass",
+  "connector.protonPass.disconnectSummary":
+    "OpenBot elimina su clave de acceso en este equipo. La bóveda y sus credenciales se quedan en tu cuenta de Proton.",
+  "connector.protonPass.disconnectSummaryHost":
+    "OpenBot elimina su clave de acceso en {host}. La bóveda y sus credenciales se quedan en tu cuenta de Proton.",
+  "connector.protonPass.disconnect": "Desconectar",
+  "connector.protonPass.actionFailed": "OpenBot no pudo cambiar la conexión de Proton Pass.",
 } as const satisfies PartialTranslation<typeof source>;

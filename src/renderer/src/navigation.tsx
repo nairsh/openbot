@@ -6,6 +6,7 @@ import { desktopAnalytics } from "./analytics";
 import { toAgentMessage } from "./app-message-projection";
 import { appPort } from "./app-port";
 import { type ChatHistoryEntry, chatHistoryShortcut, createChatHistory } from "./chat-history";
+import { useAgentThreads } from "./features/agent-threads/agent-threads-context";
 import { useAgents } from "./features/agents/agents-context";
 import { useChannels } from "./features/channels/channels-context";
 import { useConversation } from "./features/conversation/conversation-context";
@@ -45,6 +46,7 @@ const Navigation = createSimpleContext({
     } = useAgents();
     const { activeDirectMember, setDirectTyping, clearDirectSelection, openDirectConversation } = useDirectMessages();
     const channels = useChannels();
+    const agentThreads = useAgentThreads();
     const windowPage = useWindowPage();
     const scopeIsCurrent = createScopeGuard();
     const {
@@ -62,9 +64,14 @@ const Navigation = createSimpleContext({
       nonce: number;
     } | null>(null);
 
-    /** False when the chat opens in another window. */
-    function selectAgent(agentId: string): boolean {
+    /**
+     * False when the chat opens in another window. With `tabId`, the agent opens at that thread tab, not
+     * at the tab it showed last: a link from a message opens a conversation of that message.
+     */
+    function selectAgent(agentId: string, tabId?: string): boolean {
       if (agentSetupOpen() && creatingAgent()) return false;
+      // The tab is written first, so a chat window that opens for the agent reads it.
+      if (tabId !== undefined) agentThreads.open(agentId, tabId);
       // A chat window shows its one chat, and main marks that chat in the sidebar. Another agent
       // opens in its own chat window, from search, a schedule or the Dynamic Island.
       const chatWindow = platform.chatWindow;
@@ -122,6 +129,10 @@ const Navigation = createSimpleContext({
       setGlobalSearchOpen(open);
     }
 
+    /** The side thread of each message that the last search found there, by agent and message id. */
+    const searchHitThreads = new Map<string, string>();
+    const searchHitKey = (agentId: string, messageId: string) => `${agentId}\n${messageId}`;
+
     async function searchGlobalMessages(
       query: string,
       cursor?: string,
@@ -132,7 +143,12 @@ const Navigation = createSimpleContext({
           query,
           ...(cursor === undefined ? {} : { cursor }),
           limit: 100,
+          includeSideThreads: true,
         });
+        if (cursor === undefined) searchHitThreads.clear();
+        for (const result of page.results) {
+          if (result.taskId) searchHitThreads.set(searchHitKey(result.agentId, result.message.id), result.taskId);
+        }
         // One search counts once, not once per page.
         if (cursor === undefined) {
           analytics.track("search_action", { scope: "global", result: "succeeded", result_count: page.total });
@@ -154,6 +170,14 @@ const Navigation = createSimpleContext({
     }
 
     function selectGlobalSearchMessage(agentId: string, messageId: string): void {
+      // A side thread loads its whole conversation in its tab. Its tab is written first, so a chat
+      // window that opens for the agent reads it.
+      const taskId = searchHitThreads.get(searchHitKey(agentId, messageId));
+      if (taskId) {
+        agentThreads.open(agentId, taskId);
+        selectAgent(agentId);
+        return;
+      }
       // The other window reads the chat when it opens. This one does not mark its messages read.
       if (!selectAgent(agentId) && platform.chatWindow) return;
       void openAgentMessage(agentId, messageId);
@@ -203,7 +227,7 @@ const Navigation = createSimpleContext({
     /** The index that Back or Forward opens. The chat records it when it opens; a refused open keeps it until then. */
     let historyTarget: number | null = null;
 
-    /** The chat that the sidebar marks as open. A page, the Tasks page or the new agent form has none. */
+    /** The chat that the sidebar marks as open. A page or the new agent form has none. */
     const openChat = (): ChatHistoryEntry | null => {
       if (windowPage.page() !== "agents" || agentSetupOpen()) return null;
       const channelId = channels.state.selectedId;
@@ -236,7 +260,12 @@ const Navigation = createSimpleContext({
       else if (entry.kind === "channel") void channels.open(entry.id);
       else void selectDirectMember(entry.id);
     }
-    const goBack = () => goInHistory(-1);
+    /** Back first leaves an open settings detail page, such as Providers › ChatGPT, for its list. */
+    const goBack = () => {
+      const pageBack = windowPage.pageBack();
+      if (pageBack) pageBack.back();
+      else goInHistory(-1);
+    };
     const goForward = () => goInHistory(1);
 
     /** A dialog or menu over the chat keeps its keys and mouse buttons. */
@@ -278,7 +307,7 @@ const Navigation = createSimpleContext({
       globalSearchOpener: () => globalSearchOpener,
       searchGlobalMessages,
       selectGlobalSearchMessage,
-      chatHistory: { previous: history.previous, next: history.next, goBack, goForward },
+      chatHistory: { previous: history.previous, next: history.next, pageBack: windowPage.pageBack, goBack, goForward },
     };
   },
 });

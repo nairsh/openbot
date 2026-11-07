@@ -1,8 +1,9 @@
 import type { BrowserPreview, BrowserTab } from "@openbot/contracts/ipc";
-import { Button, ChevronRight, Maximize2, Monitor, Plus, Skeleton, X } from "@openbot/ui";
+import { Button, Maximize2, Monitor, Skeleton, X } from "@openbot/ui";
 import { PanelResizer } from "@openbot/ui/components/PanelResizer";
 import { useText } from "@openbot/ui/text";
-import { createEffect, createMemo, createSignal, createStore, For, onSettled, Show } from "solid-js";
+import { holdFlag } from "@openbot/ui/utils";
+import { createEffect, createMemo, createSignal, createStore, For, onSettled, Show, untrack } from "solid-js";
 
 const BROWSER_PANEL_MIN = 220;
 const BROWSER_PANEL_MAX = 1600;
@@ -23,11 +24,16 @@ interface BrowserPreviewSidebarProps {
   onOpenTab: (tabId: string, trigger: HTMLButtonElement) => void;
   onCloseTab?: (tabId: string) => void;
   onNewTab?: () => void;
-  onCollapse: () => void;
 }
 
 export default function BrowserPreviewSidebar(props: BrowserPreviewSidebarProps) {
   const { t } = useText();
+  let panel!: HTMLElement;
+  // The chat beside the panel makes room for it, also while the full view hides it (`panel-layout.css`).
+  onSettled(() => {
+    const conversation = panel.closest(".conversation-panel");
+    return conversation ? holdFlag(conversation, "browser-side-panel") : undefined;
+  });
   const defaultPanelWidth = () =>
     Math.round(Math.min(BROWSER_PANEL_MAX, Math.max(BROWSER_PANEL_MIN, props.defaultWidth())));
   const storedPanelWidth = props.readCustomWidth();
@@ -68,6 +74,7 @@ export default function BrowserPreviewSidebar(props: BrowserPreviewSidebarProps)
 
   return (
     <aside
+      ref={panel}
       id="browser-side-panel"
       class="browser-panel browser-preview-sidebar"
       aria-label={t("browser.previews.label")}
@@ -88,24 +95,6 @@ export default function BrowserPreviewSidebar(props: BrowserPreviewSidebarProps)
         onReset={resetPanelWidth}
       />
 
-      <header class="window-drag browser-preview-header">
-        <span class="side-panel-pane-title">{t("browser.panel.label")}</span>
-        <Show when={props.onNewTab}>
-          <Button variant="ghost" size="icon-sm" aria-label={t("browser.newTab")} onClick={() => props.onNewTab?.()}>
-            <Plus />
-          </Button>
-        </Show>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          class="side-panel-pane-close"
-          aria-label={t("browser.previews.collapse")}
-          data-cuelume-tap="close"
-          onClick={props.onCollapse}
-        >
-          <ChevronRight />
-        </Button>
-      </header>
       <div class="browser-preview-list">
         <For each={props.tabs} keyed={(tab) => tab.id}>
           {(tab) => (
@@ -170,44 +159,49 @@ export function BrowserPreviewCard(props: {
     JSON.stringify([pageKey(), props.tab.loading, props.enabled && visible() && documentVisible()]),
   );
   createEffect(pageKey, () => setState(() => ({ preview: null, failed: false })));
-  createEffect(captureKey, () => {
-    const capturePreview = props.capturePreview;
-    if (!capturePreview || !props.enabled || !visible() || !documentVisible()) return;
-    const id = props.tab.id;
-    let disposed = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    // A page that is still loading often cannot be captured yet. Keep the skeleton until the load
-    // ends; the end of the load starts a new capture.
-    const failed = () => {
-      if (!disposed) setState(() => ({ preview: null, failed: !(props.tab.loading && !state.preview) }));
-    };
-    const refresh = () => {
-      if (disposed) return;
-      if (pending) {
-        void pending.then(refresh);
-        return;
-      }
-      try {
-        pending = capturePreview(id)
-          .then((preview) => {
-            if (!disposed) setState(() => ({ preview, failed: false }));
-          })
-          .catch(failed)
-          .finally(() => {
-            pending = undefined;
-            if (!disposed) timer = setTimeout(refresh, 3000);
-          });
-      } catch {
-        failed();
-        if (!disposed) timer = setTimeout(refresh, 3000);
-      }
-    };
-    refresh();
-    return () => {
-      disposed = true;
-      if (timer) clearTimeout(timer);
-    };
-  });
+  createEffect(
+    () => {
+      captureKey();
+      // Read here, not in the callback: a prop can be a compiled memo, and the callback has no owner.
+      return untrack(() => ({ capturePreview: props.capturePreview, enabled: props.enabled, id: props.tab.id }));
+    },
+    ({ capturePreview, enabled, id }) => {
+      if (!capturePreview || !enabled || !visible() || !documentVisible()) return;
+      let disposed = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      // A page that is still loading often cannot be captured yet. Keep the skeleton until the load
+      // ends; the end of the load starts a new capture.
+      const failed = () => {
+        if (!disposed) setState(() => ({ preview: null, failed: !(props.tab.loading && !state.preview) }));
+      };
+      const refresh = () => {
+        if (disposed) return;
+        if (pending) {
+          void pending.then(refresh);
+          return;
+        }
+        try {
+          pending = capturePreview(id)
+            .then((preview) => {
+              if (!disposed) setState(() => ({ preview, failed: false }));
+            })
+            .catch(failed)
+            .finally(() => {
+              pending = undefined;
+              if (!disposed) timer = setTimeout(refresh, 3000);
+            });
+        } catch {
+          failed();
+          if (!disposed) timer = setTimeout(refresh, 3000);
+        }
+      };
+      refresh();
+      return () => {
+        disposed = true;
+        if (timer) clearTimeout(timer);
+      };
+    },
+  );
 
   return (
     <div ref={(node) => (element = node)} class="browser-preview-card">

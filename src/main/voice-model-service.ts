@@ -2,8 +2,10 @@ import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { createReadStream, existsSync } from "node:fs";
 import { mkdir, open, rename, rm, stat } from "node:fs/promises";
+import { availableParallelism } from "node:os";
 import { join } from "node:path";
 import type { LocalVoiceModelId, SpeechModelId, VoiceModelStatus } from "@openbot/contracts/ipc";
+import { PARAKEET_MODEL_FILES, SUPERTONIC_MODEL_FILES } from "@openbot/contracts/speech-models";
 import { sourceText } from "@openbot/i18n/source";
 import { Effect, Exit, Fiber, Result, Schema, Scope, Stream } from "effect";
 import { causeHelpers } from "../backend/effect-boundary";
@@ -11,46 +13,53 @@ import { causeHelpers } from "../backend/effect-boundary";
 /** The N-API addon of sherpa-onnx. Its libraries are in the same directory. */
 export const VOICE_RUNTIME_ADDON = "sherpa-onnx.node";
 
+/**
+ * ONNX Runtime session settings, as files that `scripts/prepare-voice.ts` writes to the voice
+ * runtime directory. A host gives sherpa-onnx `cpu:<file>`. `scripts/voice-host-bench.ts` measures
+ * each file with each model.
+ */
+export const VOICE_SESSION_CONFIGS = {
+  /**
+   * Without the CPU memory arena, a host gives back the memory of each decode. Prepacking stays on:
+   * without it Parakeet holds about 750 MB less, but decodes 20-60% slower, and Bark many times slower.
+   */
+  "no-arena.cfg": "EnableCpuMemArena=0\n",
+} as const;
+/** A settings file, or empty for the ONNX Runtime defaults. */
+export type VoiceSessionConfig = keyof typeof VOICE_SESSION_CONFIGS | "";
+
+/**
+ * Without the arena, Parakeet and Bark hold about 230 MB less at about the same speed. Whisper
+ * holds about 880 MB less, but decodes 15-30% slower, so it keeps the defaults. Cohere Transcribe
+ * holds about 820 MB less, but decodes about twice as slowly, so it keeps the defaults too.
+ */
+export const TRANSCRIPTION_SESSION_CONFIGS: Readonly<Record<LocalVoiceModelId, VoiceSessionConfig>> = {
+  "parakeet-tdt-0.6b-v3": "no-arena.cfg",
+  "parakeet-unified-en-0.6b": "no-arena.cfg",
+  "bark-3.0-plus": "no-arena.cfg",
+  "whisper-turbo": "",
+  "cohere-transcribe-03-2026": "",
+};
+/** Without the CPU memory arena, Supertonic holds about 110 MB less at about the same speed. */
+export const SPEECH_SESSION_CONFIG: VoiceSessionConfig = "no-arena.cfg";
+
+/** Supertonic is not faster with more than 4 threads. */
+export const SPEECH_HOST_THREADS = 4;
+
+/**
+ * Half the logical processors, from 4 to 6; half leaves out SMT siblings. On a 12-processor M4 Pro,
+ * 6 threads decode Parakeet and Whisper 10-25% faster than 4, and 8 are not faster than 6.
+ */
+export function transcriptionHostThreads(processors = availableParallelism()): number {
+  return Math.min(6, Math.max(4, Math.floor(processors / 2)));
+}
+
 export interface VoiceModelFile {
   name: string;
   url: string;
   bytes: number;
   sha256: string;
 }
-
-const PARAKEET_MODEL_REVISION = "2bda32ec70b097a55adaa07d9a7173915b43cc78";
-const PARAKEET_MODEL_BASE_URL = `https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/${PARAKEET_MODEL_REVISION}`;
-
-/** The directory name of the model in `<userData>/runtimes`. A new pin needs a new name. */
-export const PARAKEET_MODEL_DIRECTORY = "parakeet-tdt-0.6b-v3-int8";
-
-/** NVIDIA Parakeet TDT 0.6B v3 (CC-BY-4.0), int8 ONNX export for sherpa-onnx. */
-export const PARAKEET_MODEL_FILES: readonly VoiceModelFile[] = [
-  {
-    name: "encoder.int8.onnx",
-    url: `${PARAKEET_MODEL_BASE_URL}/encoder.int8.onnx`,
-    bytes: 652_184_281,
-    sha256: "acfc2b4456377e15d04f0243af540b7fe7c992f8d898d751cf134c3a55fd2247",
-  },
-  {
-    name: "decoder.int8.onnx",
-    url: `${PARAKEET_MODEL_BASE_URL}/decoder.int8.onnx`,
-    bytes: 11_845_275,
-    sha256: "179e50c43d1a9de79c8a24149a2f9bac6eb5981823f2a2ed88d655b24248db4e",
-  },
-  {
-    name: "joiner.int8.onnx",
-    url: `${PARAKEET_MODEL_BASE_URL}/joiner.int8.onnx`,
-    bytes: 6_355_277,
-    sha256: "3164c13fc2821009440d20fcb5fdc78bff28b4db2f8d0f0b329101719c0948b3",
-  },
-  {
-    name: "tokens.txt",
-    url: `${PARAKEET_MODEL_BASE_URL}/tokens.txt`,
-    bytes: 93_939,
-    sha256: "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d",
-  },
-];
 
 const BARK_PLUS_MODEL_REVISION = "5f95a80a9da9d392a38df8e9a6609e25be643d07";
 const BARK_PLUS_MODEL_BASE_URL = `https://huggingface.co/velddev/Underdog-Bark-3.0-Plus-sherpa-onnx/resolve/${BARK_PLUS_MODEL_REVISION}`;
@@ -120,75 +129,97 @@ const WHISPER_TURBO_MODEL_FILES: readonly VoiceModelFile[] = [
   },
 ];
 
-const SUPERTONIC_MODEL_REVISION = "cca5a0e6c96e1d2c720986bf7e75fcc81dee3ae4";
-const SUPERTONIC_MODEL_BASE_URL = `https://huggingface.co/csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11/resolve/${SUPERTONIC_MODEL_REVISION}`;
+const PARAKEET_UNIFIED_MODEL_REVISION = "8c3a10fb13408c7a7054f6898958bf1c64a8d6c7";
+const PARAKEET_UNIFIED_MODEL_BASE_URL = `https://huggingface.co/csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming/resolve/${PARAKEET_UNIFIED_MODEL_REVISION}`;
 
-/** The directory name of Supertonic 3 in `<userData>/runtimes`. A new pin needs a new name. */
-export const SUPERTONIC_MODEL_DIRECTORY = "supertonic-3-int8";
+/** The directory name of Parakeet Unified EN in `<userData>/runtimes`. A new pin needs a new name. */
+export const PARAKEET_UNIFIED_MODEL_DIRECTORY = "parakeet-unified-en-0.6b-int8";
 
 /**
- * Supertone Supertonic 3 (OpenRAIL-M weights, MIT code), int8 ONNX export for sherpa-onnx. The
- * export's MIT notice is a file of the model, so it stays next to the weights.
+ * NVIDIA Parakeet Unified EN 0.6B (NVIDIA Open Model License), int8 ONNX export of its offline
+ * mode for sherpa-onnx. It has the file names of the Parakeet TDT export.
  */
-const SUPERTONIC_MODEL_FILES: readonly VoiceModelFile[] = [
+const PARAKEET_UNIFIED_MODEL_FILES: readonly VoiceModelFile[] = [
   {
-    name: "duration_predictor.int8.onnx",
-    url: `${SUPERTONIC_MODEL_BASE_URL}/duration_predictor.int8.onnx`,
-    bytes: 3_700_147,
-    sha256: "c3eb91414d5ff8a7a239b7fe9e34e7e2bf8a8140d8375ffb14718b1c639325db",
+    name: "encoder.int8.onnx",
+    url: `${PARAKEET_UNIFIED_MODEL_BASE_URL}/encoder.int8.onnx`,
+    bytes: 654_040_552,
+    sha256: "6716910b7a0833997fec7a410494c995d70124001a0e9b66d6370d6aced577e0",
   },
   {
-    name: "text_encoder.int8.onnx",
-    url: `${SUPERTONIC_MODEL_BASE_URL}/text_encoder.int8.onnx`,
-    bytes: 36_416_150,
-    sha256: "c7befd5ea8c3119769e8a6c1486c4edc6a3bc8365c67621c881bbb774b9902ff",
+    name: "decoder.int8.onnx",
+    url: `${PARAKEET_UNIFIED_MODEL_BASE_URL}/decoder.int8.onnx`,
+    bytes: 7_257_753,
+    sha256: "a5e223392c90e75f8144cdb5eb95af7625db389e39edef2bd1a9c872b3298fe6",
   },
   {
-    name: "vector_estimator.int8.onnx",
-    url: `${SUPERTONIC_MODEL_BASE_URL}/vector_estimator.int8.onnx`,
-    bytes: 78_400_833,
-    sha256: "20cd86fa5c6effedfda0e7cffe5b0569ca401c440a0c3a1d72bf39286c0db3fd",
+    name: "joiner.int8.onnx",
+    url: `${PARAKEET_UNIFIED_MODEL_BASE_URL}/joiner.int8.onnx`,
+    bytes: 1_735_860,
+    sha256: "869f43f7d24595c55581ad3bf249a935fb8a71389fbdaa7504b9f46f93140f8a",
   },
   {
-    name: "vocoder.int8.onnx",
-    url: `${SUPERTONIC_MODEL_BASE_URL}/vocoder.int8.onnx`,
-    bytes: 25_991_073,
-    sha256: "e923d60f53f95eb1ce235f1dc33ec56d9c057823c96fa6f8acf98f32b0da6152",
+    name: "tokens.txt",
+    url: `${PARAKEET_UNIFIED_MODEL_BASE_URL}/tokens.txt`,
+    bytes: 8_952,
+    sha256: "dc0b4584ab2e4ddbf888425c076c61b736e7356a015250db7d307e6f1a8188ff",
+  },
+];
+
+const COHERE_TRANSCRIBE_MODEL_REVISION = "156a470cf08eefe706a0004f3c52d9ee567ca7a0";
+const COHERE_TRANSCRIBE_MODEL_BASE_URL = `https://huggingface.co/csukuangfj2/sherpa-onnx-cohere-transcribe-14-lang-int8-2026-04-01/resolve/${COHERE_TRANSCRIBE_MODEL_REVISION}`;
+
+/** The directory name of Cohere Transcribe in `<userData>/runtimes`. A new pin needs a new name. */
+export const COHERE_TRANSCRIBE_MODEL_DIRECTORY = "cohere-transcribe-14-lang-int8";
+
+/**
+ * Cohere Labs Cohere Transcribe 03-2026 (Apache-2.0), int8 ONNX export for sherpa-onnx. The
+ * encoder keeps its weights in `encoder.int8.onnx.data`, which must stay next to it.
+ */
+const COHERE_TRANSCRIBE_MODEL_FILES: readonly VoiceModelFile[] = [
+  {
+    name: "encoder.int8.onnx",
+    url: `${COHERE_TRANSCRIBE_MODEL_BASE_URL}/encoder.int8.onnx`,
+    bytes: 3_090_822,
+    sha256: "cf704f8cfa90e3f0a76f9ffc05998bdf00ba9ae983192c14a85a3a5eb008b367",
   },
   {
-    name: "unicode_indexer.bin",
-    url: `${SUPERTONIC_MODEL_BASE_URL}/unicode_indexer.bin`,
-    bytes: 262_144,
-    sha256: "8402ca48e5189a8950138580b0fff64db6f072f24ac07cd54ba8b2fbb9883b30",
+    name: "encoder.int8.onnx.data",
+    url: `${COHERE_TRANSCRIBE_MODEL_BASE_URL}/encoder.int8.onnx.data`,
+    bytes: 2_731_503_072,
+    sha256: "bcf1b7148c8518ae52df1ad2d2fc2b4e89261ea23e6c874eef1d9f55bcbaa4a3",
   },
   {
-    name: "voice.bin",
-    url: `${SUPERTONIC_MODEL_BASE_URL}/voice.bin`,
-    bytes: 517_168,
-    sha256: "67d5209b0ee8ce6c74105ffbe12fe6a7628aea3b4ba2fcb308a4a67938a93ce8",
+    name: "decoder.int8.onnx",
+    url: `${COHERE_TRANSCRIBE_MODEL_BASE_URL}/decoder.int8.onnx`,
+    bytes: 153_250_705,
+    sha256: "8372ca6c8ff4db8b916ca3592f5c757a715e691b9edec751ba19b29fc854baf9",
   },
   {
-    name: "tts.json",
-    url: `${SUPERTONIC_MODEL_BASE_URL}/tts.json`,
-    bytes: 8_253,
-    sha256: "42078d3aef1cd43ab43021f3c54f47d2d75ceb4e75f627f118890128b06a0d09",
-  },
-  {
-    name: "LICENSE",
-    url: `${SUPERTONIC_MODEL_BASE_URL}/LICENSE`,
-    bytes: 1_070,
-    sha256: "0dfe0d0ba84416fe3879d9a34f4909d8d0137c78d1e95834177b0414ac096fa2",
+    name: "tokens.txt",
+    url: `${COHERE_TRANSCRIBE_MODEL_BASE_URL}/tokens.txt`,
+    bytes: 207_437,
+    sha256: "013ede043ae2480e3a9205cc34550d9686100cc682bacc90f702facdfbb93035",
   },
 ];
 
 /** A model that OpenBot downloads: a dictation model or the speech model. */
 type DownloadedModelId = LocalVoiceModelId | SpeechModelId;
 
+/** The directory name of Supertonic 3 in `<userData>/runtimes`. The phone uses the same name. */
+export {
+  PARAKEET_MODEL_DIRECTORY,
+  PARAKEET_MODEL_FILES,
+  SUPERTONIC_MODEL_DIRECTORY,
+} from "@openbot/contracts/speech-models";
+
 /** The files of each model. */
 const VOICE_MODEL_FILES: Record<DownloadedModelId, readonly VoiceModelFile[]> = {
   "parakeet-tdt-0.6b-v3": PARAKEET_MODEL_FILES,
+  "parakeet-unified-en-0.6b": PARAKEET_UNIFIED_MODEL_FILES,
   "bark-3.0-plus": BARK_PLUS_MODEL_FILES,
   "whisper-turbo": WHISPER_TURBO_MODEL_FILES,
+  "cohere-transcribe-03-2026": COHERE_TRANSCRIBE_MODEL_FILES,
   "supertonic-3": SUPERTONIC_MODEL_FILES,
 };
 

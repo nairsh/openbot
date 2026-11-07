@@ -1,10 +1,11 @@
-import { randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 import type { LocalMcpSession } from "./local-mcp-bridge";
 import type { ClaudeMcpServer } from "./mcp-provider-shapes";
+import { isInheritedProfileValue } from "./mcp-redaction";
 import { providerCall } from "./provider-client-effects";
 
 // Pi owns MCP framing, reconnection, cancellation and tool registration. This extension only
@@ -37,30 +38,42 @@ export const createPiMcpExtension = Effect.fn("PiMcp.createExtension")(function*
   const path = join(folder, "mcp.mjs");
   const environment: Record<string, string> = {};
   const secrets: string[] = [];
-  // Pi replaces a tool name longer than 64 characters with a hash, and the model then cannot find
-  // tools such as tool_search by name. Eight hex characters keep the names short.
-  const prefix = `openbot_${randomBytes(4).toString("hex")}`;
+  let count = 0;
+  // Pi keeps the tool names in the session that OpenBot resumes, so a name must not change when
+  // OpenBot restarts: the model calls the old names, and Pi does not find them (#3343). The name
+  // comes from the server's own name, not its position, which changes when a server is added or
+  // removed. Pi replaces a tool name longer than 64 characters with a hash, and the model then cannot
+  // find tools such as tool_search by name. Eight hex characters keep the names short.
+  const serverName = (kind: "external" | "local", name: string) =>
+    `openbot_${createHash("sha256").update(`${kind}:${name}`).digest("hex").slice(0, 8)}`;
   const values = (pairs: Record<string, string>) =>
     Object.fromEntries(
       Object.entries(pairs).map(([key, value]) => {
         if (value === "") return [key, ""];
-        const variable = `OPENBOT_PI_MCP_VALUE_${secrets.length}`;
-        secrets.push(value);
+        const variable = `OPENBOT_PI_MCP_VALUE_${count++}`;
+        // A stdio server can inherit `HOME`, which is not a credential (#4863).
+        if (!isInheritedProfileValue(key, value)) secrets.push(value);
         environment[variable] = value;
         // Pi expands one environment reference. A literal beginning with ! must never become a
         // configuration shell command, and literal ${...} must not read another environment value.
         return [key, `\${${variable}}`];
       }),
     );
-  const entries = Object.values(servers).map((server, index) => ({
-    name: `${prefix}_external_${index}`,
+  // Pi declares a direct tool in each request. Computer use alone has 56 tools, about 24k tokens, so
+  // the user's servers wait for Pi's `tool_search`, which records each loaded tool in the session for
+  // resume. The OpenBot bridge stays direct: its tool search is the way to every other tool.
+  // The system prompt lists each deferred server by its hashed name and its `description`, so the model
+  // knows what to search for. Without one, Pi shows the server's instructions after it connects, and
+  // the prompt changes between requests.
+  const entries = Object.entries(servers).map(([name, server]) => ({
+    name: serverName("external", name),
     config:
       server.type === "http"
-        ? { ...server, headers: values(server.headers), exposure: "direct" }
-        : { ...server, env: values(server.env), exposure: "direct" },
+        ? { ...server, headers: values(server.headers), exposure: "deferred", description: name }
+        : { ...server, env: values(server.env), exposure: "deferred", description: name },
   }));
-  const bridge = local.servers.map((server, index) => ({
-    name: `${prefix}_local_${index}`,
+  const bridge = local.servers.map((server) => ({
+    name: serverName("local", server.name),
     config: {
       url: server.url,
       headers: values(Object.fromEntries(server.headers.map(({ name, value }) => [name, value]))),

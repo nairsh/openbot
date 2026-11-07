@@ -1,4 +1,5 @@
 import type { AgentProviderId, AgentSessionSettingsSnapshot, AgentSessionSettingValue } from "@openbot/contracts/ipc";
+import { sourceText } from "@openbot/i18n/source";
 import type { Effect } from "effect";
 import type { AppServerNotification, AppServerRequest, RequestId, ResponseDecoder, RpcError } from "./protocol";
 import type { ProviderClientOperationError } from "./provider-client-effects";
@@ -19,8 +20,19 @@ export interface AgentClient {
    * handoff.
    */
   readonly contextCompaction?: "events" | "request" | "native" | "handoff" | "unsupported";
+  /**
+   * True when a streaming `final_answer` item can still become a step: the provider names no phase,
+   * and the client classifies the text only at the next tool call or at the end of the turn.
+   */
+  readonly provisionalAnswers?: boolean;
   readonly running: boolean;
   readonly readHistory?: ReadProviderHistory;
+  /**
+   * True when the user's MCP tools in this thread wait for the provider's own `tool_search`. OpenBot's
+   * tool search knows only the built-in tools, so it then sends the model to that tool. Optional,
+   * because the other providers declare the MCP tools or load them on their own.
+   */
+  readonly deferredMcpTools?: (externalThreadId: string) => boolean;
   /** False when stopping this client would lose a live provider session with no recovery path. */
   readonly canReleaseProcess?: () => boolean;
   start(): void;
@@ -118,6 +130,17 @@ export class MissingClaudeSessionError extends Error {
   }
 }
 
+/**
+ * The Pi session file that the thread names is not on this computer: it was moved or deleted. Nothing
+ * ran, so `isMissingProviderSessionError` reads it as a missing session and the caller opens a new one.
+ */
+export class MissingPiSessionError extends Error {
+  constructor() {
+    super(sourceText("error.provider.piSessionMissing"));
+    this.name = "MissingPiSessionError";
+  }
+}
+
 /** What of the CLI's last stderr line a status message carries. The full line is in the log. */
 const EXIT_DETAIL_LIMIT = 300;
 
@@ -148,5 +171,10 @@ export class AgentProcessExitError extends Error {
     return new AgentProcessExitError(`${this.message} ${redact(this.#detail).slice(0, EXIT_DETAIL_LIMIT)}`, null, {
       cause: this.cause,
     });
+  }
+
+  /** The same error with another message. The stderr line stays, for `withDetail`. */
+  withMessage(message: string): AgentProcessExitError {
+    return new AgentProcessExitError(message, this.#detail, { cause: this.cause });
   }
 }

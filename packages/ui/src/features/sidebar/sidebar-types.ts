@@ -1,4 +1,5 @@
 import type {
+  AvatarColor,
   AvatarHue,
   ChannelSummary,
   DirectThreadSummary,
@@ -71,12 +72,21 @@ export interface SidebarProps {
   directThreads: DirectThreadSummary[];
   activeDirectMemberId: string | null;
   agentStates: Record<string, SidebarAgentState>;
+  /** The wait of each channel that waits for the user, from `sidebarChannelWaits`. A missing entry does not wait. */
+  channelWaits?: Record<string, SidebarChannelWait> | undefined;
+  /** The channel rows come from a saved frame, which holds no last message. A row with none shows no preview and no time. */
+  channelPreviewsPending?: boolean | undefined;
   /** The face each agent wears, from `computeAgentAvatarMoods`. A missing entry rests. */
   agentMoods: Record<string, AvatarMood>;
   layout: SidebarLayoutSnapshot;
   layoutMutable?: boolean | undefined;
   collapsedSectionIds: string[];
   onMutateLayout: (action: SidebarLayoutAction) => Promise<void>;
+  /**
+   * Whether this server keeps folders in folders (`sidebar-folders-v1`). Without it, a folder cannot go
+   * into another folder, and the menu has no items to put it there.
+   */
+  foldersSupported?: boolean | undefined;
   /** Whether this server can copy a section with its agents. Without it, the section menu has no duplicate item. */
   sectionDuplicateSupported?: boolean | undefined;
   duplicatingSectionIds?: ReadonlySet<string> | undefined;
@@ -109,6 +119,8 @@ export interface SidebarProps {
   onHideAgent?: ((agentId: string) => void) | undefined;
   /** Puts a hidden agent back in its section. Without it, a hidden agent's menu shows no restore item. */
   onRestoreAgent?: ((agentId: string) => void) | undefined;
+  /** Opens the agent's chat with a new thread. Without it, such as on a host without threads, the agent menu shows no new thread item. */
+  onNewAgentThread?: ((agentId: string) => void) | undefined;
   /** Opens the agent's chat in a window of its own. Without it, the agent menu shows no window item. */
   onOpenAgentWindow?: ((agentId: string) => void) | undefined;
   /** The agents whose chat is open in a window of its own. Their rows show a window mark. */
@@ -127,6 +139,7 @@ export interface SidebarProps {
         label: string;
         avatarSeed: string;
         avatarHue: AvatarHue | null;
+        avatarColor: AvatarColor | null;
         onSelect: () => void;
       }
     | undefined;
@@ -155,6 +168,9 @@ export type SidebarAgentState =
   | { kind: "routine"; phase: SidebarRoutinePhase; count: number }
   /** The provider plan is spent, so the queue waits. `resetsAt` is in epoch seconds, `null` when unknown. */
   | { kind: "limited"; resetsAt: number | null };
+
+/** What a channel waits for. Its row shows it in "Needs you" the same way an agent row does. */
+export type SidebarChannelWait = Extract<SidebarAgentState, { kind: "waiting" }>;
 
 /** A pin paired with the chat it names, so the pinned strip renders the same two kinds the list does. */
 export type ResolvedPinnedItem = { ref: SidebarPinnedItem; chat: SidebarChatItem };

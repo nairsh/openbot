@@ -1,10 +1,22 @@
 import { RequestError } from "@agentclientprotocol/sdk";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
-import { agentProviderName, COMPUTER_USE_MCP_SERVER_NAME, DEFAULT_PROVIDER_ACCOUNT_ID } from "@openbot/contracts/ipc";
+import {
+  type AgentStepActivity,
+  agentProviderName,
+  COMPUTER_USE_MCP_SERVER_NAME,
+  DEFAULT_PROVIDER_ACCOUNT_ID,
+} from "@openbot/contracts/ipc";
 import { type DynamicRecord, isString } from "@openbot/contracts/runtime-values";
 import { sourceText } from "@openbot/i18n/source";
-import { type AgentProvider, MissingClaudeSessionError, RequestTimeoutError } from "../agent-client";
+import { redactText } from "@openbot/logging";
+import {
+  type AgentProvider,
+  MissingClaudeSessionError,
+  MissingPiSessionError,
+  RequestTimeoutError,
+} from "../agent-client";
 import { AppServerError } from "../app-server-client";
+import { OPENBOT_BROWSER_NAMESPACE } from "../browser-tools";
 import {
   bridgedToolName,
   type DynamicToolCallParams,
@@ -15,6 +27,7 @@ import {
   reasoningText,
   type ThreadItem,
 } from "../protocol";
+import { stepLabel } from "./step-labels";
 import { BUILTIN_TOOL_CATALOG } from "./tool-catalog";
 
 export function isNonActionableCodexWarning(message: string): boolean {
@@ -37,6 +50,21 @@ export function isArchivedThreadError(error: unknown): boolean {
  */
 export function isCodexMissingRollout(error: unknown): boolean {
   return error instanceof AppServerError && error.code === -32600 && error.message.startsWith("thread not loaded:");
+}
+
+/**
+ * The first turn of a new thread starts and is not saved yet, so there is no history to read now.
+ * Codex 0.165.0 answers `thread/turns/list` with `is not materialized yet` then, and while that
+ * turn is saved, with one of the `is not supported yet` errors (#3609). Unlike a missing rollout,
+ * the history is readable once the turn is saved.
+ */
+export function isCodexRolloutPending(error: unknown): boolean {
+  if (!(error instanceof AppServerError)) return false;
+  if (error.code === -32600) return error.message.includes(" is not materialized yet");
+  return (
+    error.code === -32601 &&
+    (error.message === "list_turns is not supported yet" || error.message === "paginated_threads is not supported yet")
+  );
 }
 
 /**
@@ -93,6 +121,15 @@ function isMuseMcpStartupFault(provider: AgentProvider, message: string): boolea
 }
 
 /**
+ * OpenBot names a new Claude session before the CLI writes it, and a first turn that stops before
+ * that write, such as on a terms prompt, leaves a session that does not exist. The CLI then refuses
+ * each resume of it, and so does a session file lost with a changed config folder (#5365).
+ */
+function isMissingClaudeSession(provider: AgentProvider, message: string): boolean {
+  return provider === "claude" && /\bNo conversation found with session ID\b/.test(message);
+}
+
+/**
  * The failure to show when the provider refused the session's own history, or null when it did
  * not. Each turn of a refused session fails the same way, so the caller closes the session.
  */
@@ -101,6 +138,7 @@ export function refusedSessionFailure(provider: AgentProvider, message: string):
     return sourceText("error.provider.foreignReasoning", { provider: providerLabel(provider) });
   if (isRejectedOpenCodeRequest(provider, message)) return sourceText("error.provider.opencodeSessionRejected");
   if (isMuseMcpStartupFault(provider, message)) return sourceText("error.provider.museMcpStartupFault");
+  if (isMissingClaudeSession(provider, message)) return sourceText("error.provider.claudeSessionMissing");
   return null;
 }
 
@@ -109,6 +147,8 @@ export function isMissingProviderSessionError(error: unknown, provider: AgentPro
   // Provider diagnostics can mention missing resources without proving that this session is gone.
   if (error instanceof RequestError) return false;
   if (provider === "claude") return error instanceof MissingClaudeSessionError;
+  // Pi and the key-only providers that run in the Pi CLI.
+  if (error instanceof MissingPiSessionError) return true;
   if (provider === "codex") return isCodexMissingThreadError(error);
   if (
     (provider !== "grok" &&
@@ -116,6 +156,10 @@ export function isMissingProviderSessionError(error: unknown, provider: AgentPro
       provider !== "antigravity" &&
       provider !== "cursor" &&
       provider !== "cline" &&
+      provider !== "kimi" &&
+      provider !== "devin" &&
+      provider !== "copilot" &&
+      provider !== "hermes" &&
       provider !== "acp") ||
     !(error instanceof Error)
   ) {
@@ -271,7 +315,7 @@ function bridgedTool(item: ThreadItem) {
   return name ? BUILTIN_TOOL_CATALOG.find((entry) => entry.name === name) : undefined;
 }
 
-const TOOL_RESULT_PROGRESS = "Reviewing the latest tool result…";
+const TOOL_RESULT_PROGRESS = sourceText("status.agent.toolResultReviewing");
 
 /**
  * The OpenBot tool that an item calls, or null for any other tool: a Codex, Pi or Muse item names
@@ -284,6 +328,44 @@ function openBotTool(item: ThreadItem): string | null {
   if (item.type === "toolCall") return /^mcp__openbot__(.+)$/u.exec(getString(item, "name") ?? "")?.[1] ?? null;
   if (item.type === "mcpToolCall" && getString(item, "server") !== "openbot") return null;
   return item.type === "dynamicToolCall" || item.type === "mcpToolCall" ? getString(item, "tool") : null;
+}
+
+/**
+ * The OpenBot browser tool that an item calls, or null for any other tool: a `tool_call` bridge item
+ * names it in its arguments, a Codex item names its namespace, and a Claude item names it
+ * `mcp__openbot_browser__<tool>` (`claudeBridgedToolName`).
+ */
+function browserTool(item: ThreadItem): string | null {
+  const bridged = bridgedTool(item);
+  if (bridged) return bridged.namespace === OPENBOT_BROWSER_NAMESPACE ? bridged.tool : null;
+  if (item.type === "toolCall") {
+    return /^mcp__openbot_browser__(.+)$/u.exec(getString(item, "name") ?? "")?.[1] ?? null;
+  }
+  if (item.type !== "dynamicToolCall" || getString(item, "namespace") !== OPENBOT_BROWSER_NAMESPACE) return null;
+  return getString(item, "tool");
+}
+
+/** The text of a running browser step. Its completed text is the same for each tool. */
+function browserProgressText(tool: string): string {
+  switch (tool) {
+    case "open":
+    case "navigate":
+      return sourceText("status.agent.browserOpening");
+    case "snapshot":
+    case "screenshot":
+    case "status":
+    case "list_tabs":
+    case "wait_for":
+      return sourceText("status.agent.browserReading");
+    case "click":
+      return sourceText("status.agent.browserClicking");
+    case "type":
+    case "fill_fields":
+    case "press":
+      return sourceText("status.agent.browserTyping");
+    default:
+      return sourceText("status.agent.browserActing");
+  }
 }
 
 /**
@@ -327,7 +409,7 @@ export function isToolItem(item: ThreadItem): boolean {
 export function toolProgressText(item: ThreadItem, completed: boolean): string | null {
   if (!isToolItem(item)) return null;
   if (completed && getString(item, "status") === "failed") {
-    return "A tool step failed; reviewing the result and deciding what to try next…";
+    return sourceText("status.agent.toolStepFailed");
   }
 
   const descriptor = [
@@ -361,22 +443,80 @@ export function toolProgressText(item: ThreadItem, completed: boolean): string |
   if (descriptor.includes("capture_screen")) {
     return sourceText(completed ? "status.agent.screenCaptureReviewing" : "status.agent.screenCaptureProgress");
   }
+  // Before the generic words too: each browser tool name contains `browser`, which is a web search word.
+  const browser = browserTool(item);
+  if (browser !== null) {
+    return completed ? sourceText("status.agent.browserReviewing") : browserProgressText(browser);
+  }
+  // The model's own label of the step, such as "Show folder sizes in home", tells the user more than
+  // the generic words below. It can quote a path or a value, so it is redacted like the trace's command.
+  const description = completed ? null : getString(item, "description")?.trim();
+  if (description) return redactText(description);
+  // Next, a label from what the step does, such as "Reading main.ts…", for a provider that sends no label.
+  const label = completed ? null : stepLabel(item);
+  if (label) return label;
   if (/(search|browser|fetch|navigate|open_url|web)/u.test(descriptor)) {
-    return completed ? "Reviewing the sources and information I found…" : "Searching for current information…";
+    return completed ? sourceText("status.agent.sourcesReviewing") : sourceText("status.agent.sourcesSearching");
   }
   if (/(read|find|list|get|inspect|snapshot)/u.test(descriptor)) {
-    return completed ? "Reviewing the information I gathered…" : "Gathering the relevant information…";
+    return completed
+      ? sourceText("status.agent.informationReviewing")
+      : sourceText("status.agent.informationGathering");
   }
   if (/(test|check|lint|build|verify)/u.test(descriptor)) {
-    return completed ? "Reviewing the verification results…" : "Checking the work…";
+    return completed ? sourceText("status.agent.workReviewing") : sourceText("status.agent.workChecking");
   }
   if (/(write|edit|patch|create|update|delete|move|filechange)/u.test(descriptor)) {
-    return completed ? "Reviewing the changes I made…" : "Making the requested changes…";
+    return completed ? sourceText("status.agent.changesReviewing") : sourceText("status.agent.changesMaking");
   }
   if (/(agent|delegate|message|send)/u.test(descriptor)) {
-    return completed ? "Reviewing the other agent’s response…" : "Coordinating with another agent…";
+    return completed ? sourceText("status.agent.agentResponseReviewing") : sourceText("status.agent.agentCoordinating");
   }
-  return completed ? TOOL_RESULT_PROGRESS : "Working through the next tool-assisted step…";
+  // Last, so that a command with a title such as "Run the tests" keeps the text above. A command that
+  // never returns then reads as a command, not as an unknown step (#5485). Pi names its shell tool `bash`.
+  if (
+    !completed &&
+    (toolUsage(item)?.kind === "command" ||
+      (item.type === "dynamicToolCall" && !getString(item, "namespace") && getString(item, "tool") === "bash"))
+  ) {
+    return sourceText("status.agent.commandRunningUnnamed");
+  }
+  return completed ? TOOL_RESULT_PROGRESS : sourceText("status.agent.toolStepWorking");
+}
+
+const TOOL_USAGE_ACTIVITIES: Readonly<Record<ToolUsageKind, AgentStepActivity>> = {
+  command: "running",
+  file_change: "editing",
+  file_read: "reading",
+  web_search: "searching",
+  web_fetch: "browsing",
+  mcp: "working",
+  image_generation: "editing",
+  subagent: "delegating",
+  other: "working",
+};
+
+/** OpenBot tools that only read: memories, skills and chat history. */
+const READING_OPENBOT_TOOLS = new Set([
+  "search_memories",
+  "list_memories",
+  "read_local_skill",
+  "history_search",
+  "history_read",
+]);
+
+/**
+ * What a tool step does, for the `activity` of its `turn-progress` event, or null for an item that is
+ * not a tool step. An ended step is `reviewing`: the model now reads its result.
+ */
+export function toolActivity(item: ThreadItem, completed: boolean): AgentStepActivity | null {
+  if (!isToolItem(item)) return null;
+  if (completed) return "reviewing";
+  if (browserTool(item) !== null) return "browsing";
+  const openBot = openBotTool(item);
+  if (openBot === "send_message") return "delegating";
+  if (READING_OPENBOT_TOOLS.has(openBot ?? "")) return "reading";
+  return TOOL_USAGE_ACTIVITIES[toolUsage(item)?.kind ?? "other"];
 }
 
 /** The provider account after the first that an agent runs on, or null for the provider's own sign-in. */

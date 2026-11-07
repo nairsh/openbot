@@ -34,6 +34,9 @@ export default function SettingsLayout() {
       <Stack.Screen name="appearance" options={{ title: t("mobile.settings.appearance.title") }} />
       <Stack.Screen name="animations" options={{ title: t("mobile.settings.animations.title") }} />
       <Stack.Screen name="language" options={{ title: t("mobile.settings.language.title") }} />
+      <Stack.Screen name="voice" options={{ title: t("mobile.settings.voice.title") }} />
+      <Stack.Screen name="voice-choice" options={{ title: t("mobile.settings.voice.voice") }} />
+      <Stack.Screen name="elevenlabs-key" options={{ title: t("mobile.settings.voice.elevenLabs.key") }} />
       <Stack.Screen name="haptics" options={{ title: t("mobile.settings.feedback.haptics") }} />
       <Stack.Screen name="notifications" options={{ title: t("mobile.settings.notifications.title") }} />
       <Stack.Screen name="privacy" options={{ title: t("mobile.settings.privacy.title") }} />
@@ -42,6 +45,7 @@ export default function SettingsLayout() {
       <Stack.Screen name="sessions" options={{ title: t("mobile.app.route.accountSessions") }} />
       <Stack.Screen name="about" options={{ title: t("mobile.app.route.about") }} />
       <Stack.Screen name="support" options={{ title: t("mobile.app.route.support") }} />
+      <Stack.Screen name="support-log" options={{ title: t("mobile.app.route.supportLog") }} />
       <Stack.Screen name="hidden-chats" options={{ title: t("mobile.app.route.hiddenChats") }} />
       <Stack.Screen name="crop-photo" options={{ title: t("mobile.app.route.cropPhoto") }} />
     </Stack>

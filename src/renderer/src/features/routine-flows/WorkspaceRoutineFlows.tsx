@@ -11,11 +11,11 @@ import { useText } from "@openbot/ui/text";
 import { createMemo, Show } from "solid-js";
 import { useLayout } from "../../layout";
 import { useNavigation } from "../../navigation";
+import { useProviders } from "../../providers";
 import { useAgentActions } from "../agents/agent-actions";
 import { resolveCreationModel } from "../agents/agent-creation-model";
 import { useAgents } from "../agents/agents-context";
 import { useCustomAgents } from "../custom-agents/custom-agents-context";
-import { useCustomProviders } from "../custom-providers/custom-providers-context";
 import { useSetup } from "../onboarding/onboarding-context";
 import { serverCanAdminister, serverSupportsCapability } from "../servers/server-capabilities";
 import { useServers } from "../servers/servers-context";
@@ -36,19 +36,24 @@ export function WorkspaceRoutineFlows() {
   const { selectAgent } = useNavigation();
   const layout = useLayout();
   const { setupState } = useSetup();
-  const { customProviders } = useCustomProviders();
+  const { activeCustomProviders } = useProviders();
   const { customAgents } = useCustomAgents();
   const { activeServer } = useServers();
   const { createAgentInPlace } = useAgentActions();
   /** A new agent starts on the model the agent form would pick, and the user can change it. */
   const newAgentModels = createMemo((): DiagramModelChoice | undefined => {
-    const initial = resolveCreationModel(serverSetupChoice() ?? setupState(), modelOptions(), developmentCreation());
+    const initial = resolveCreationModel(
+      serverSetupChoice() ?? setupState(),
+      modelOptions(),
+      agentStatus(),
+      developmentCreation(),
+    );
     return initial
       ? {
           options: modelOptions(),
           status: agentStatus(),
           initial,
-          customProviders: customProviders(),
+          customProviders: activeCustomProviders(),
           customAgents: customAgents(),
         }
       : undefined;

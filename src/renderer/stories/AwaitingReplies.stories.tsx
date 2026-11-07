@@ -61,10 +61,11 @@ export const AllReplied: Story = {
   },
 };
 
-/** A channel owner that waits for the sub-tasks it gave out. */
+/** A channel owner that waits for the sub-tasks it gave out. A sub-task that still works has Stop. */
 export const ChannelSubtasks: Story = {
   args: {
     title: "Waiting for sub-tasks",
+    onStop: fn(),
     items: [
       {
         id: "task-research",
@@ -116,6 +117,14 @@ export const AsksQuestion: Story = {
         wait: { kind: "waiting", reason: "question", detail: "Which region should we launch in first?" },
       },
     ],
+  },
+};
+
+/** The agent still runs a turn, so the person can steer a reply into it. */
+export const SteerReply: Story = {
+  args: {
+    onSteer: fn(),
+    items: [{ ...researchReplied, deliveryId: "delivery-research" }, ...items.slice(1)],
   },
 };
 

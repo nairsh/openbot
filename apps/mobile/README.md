@@ -21,12 +21,12 @@ After switching from the isolated linker to the hoisted linker, move the old
 from the repository root. A normal install can retain old workspace symlinks and cause
 the local fingerprint to differ from the clean EAS installation.
 
-Expo 58.0.16 is patched in `patches/expo@58.0.16.patch` so a DOM component ignores a props
+Expo 58.0.17 is patched in `patches/expo@58.0.17.patch` so a DOM component ignores a props
 message that it sends before Android mounts its web view, or after Android removes it. Android
 rejects these calls, and the rejection shows as a console error. The DOM component asks for the
 props again when it is ready.
 
-expo-splash-screen 58.0.10 is patched in `patches/expo-splash-screen@58.0.10.patch` so Android 12
+expo-splash-screen 58.0.11 is patched in `patches/expo-splash-screen@58.0.11.patch` so Android 12
 and 13 get no splash exit animation listener. With the listener, the platform hides the starting
 window on the first draw, and the app crashes when that window is already gone. Gradle links the
 prebuilt AAR of an Expo module and ignores a patch to its Kotlin source, so
@@ -39,18 +39,14 @@ Expo modules by default, so a patch to Expo Swift code needs `expo.autolinking.i
 extend `NativeMethods`, which React Native 0.87 removed from its types, so `MaskedView` was not a
 valid JSX component. Remove the patch when a release fixes the types.
 
-react-native-uitextview 2.7.1 is patched in `patches/react-native-uitextview@2.7.1.patch` so the
-native selectable message text applies the same baseline offset as React Native `Text`. React Native
-centers each line in its `lineHeight`. Without the offset, the text view drew each line at the bottom
-of its line box, so iOS message bubbles had more space above the text than below it. Remove the
-patch when a release applies the offset.
-
-Expo Router 58.0.24 is patched in `patches/expo-router@58.0.24.patch` to apply zoom dismissal
-bounds when its enabler registers after the chat mounts. This keeps the avatar-to-header zoom
-interactive from the left edge without enabling dismissal from the middle of the chat.
+react-native-screens 4.30.0 is patched in `patches/react-native-screens@4.30.0.patch` so the full
+screen swipe back of a chat waits for a gesture handler pan in the top screen to fail. The swipe back
+starts anywhere in the chat, and a swipe to the right on a message bubble still replies. Without
+the patch, no rule sets which of the two recognizers gets the swipe. Remove the patch when a
+release sets this failure requirement.
 If a row or pinned avatar is tapped during the native return transition, the app retains that
 tap until the list is focused and `transitionEnd` fires. It then invokes the original Link
-handler once, preserving its AppleZoom source without a fixed delay.
+handler once, without a fixed delay.
 Focus is read from the route's live `isFocused()` state; nested navigators do not always emit
 an initial `focus` event, so a first tap must not depend on receiving one.
 
@@ -82,6 +78,24 @@ or `~/Applications`, or `ROCKETSIM_APP_PATH` set to its `.app` directory. If it 
 missing, the command stops with setup instructions. The standard command does not
 look for RocketSim, even if `ROCKETSIM_APP_PATH` or the old `OPENBOT_ROCKETSIM`
 variable is set.
+
+The iOS commands keep the Xcode build in `ios/DerivedData`, not in
+`~/Library/Developer/Xcode/DerivedData`, so removing a worktree removes its build. Do not remove
+`ios/build`: CocoaPods writes codegen output there. When that output is missing, `bun mobile:ios`
+installs the pods again. Metro keeps its
+caches in `.expo/metro-cache` and `.expo/metro-file-map` of the worktree.
+
+`bun mobile:android` also applies the config plugins without clearing `android/`, then runs
+`expo run:android`. Three local settings make a build in a new worktree faster:
+
+- A release variant builds native code only for the ABIs of the connected devices and running
+  emulators, not for all four. Pass `--all-arch` to build every ABI.
+- The local `android/gradle.properties` gets `org.gradle.caching=true`. Worktrees share Gradle task
+  outputs in `~/.gradle/caches/build-cache-1`. The app config, fingerprint and EAS builds stay the
+  same.
+- `CCACHE_BASEDIR` and `CCACHE_NOHASHDIR` let ccache share the C++ results of the app CMake project
+  between worktrees. Install ccache with `brew install ccache`; React Native uses it when it is on
+  `PATH`.
 
 The local launcher enables RocketSim Connect in the local native project. The config plugin
 loads it before React Native starts, only in Debug builds on the iOS Simulator.
@@ -118,8 +132,9 @@ The native UI does not depend on a native WebRTC module. A hidden Expo DOM compo
 `RTCPeerConnection` and its authenticated DataChannels, then forwards validated commands and live
 events to React Native. This keeps the production transport identical while remaining testable in
 Expo Go without a development build. Expo Go on Android does not include `@expo/dom-webview`, so there
-the component uses `react-native-webview`. `react-native.config.js` keeps that package out of Android
-builds. iOS builds link it for the PDF preview (`pdf-preview.ios.tsx`).
+the component uses `react-native-webview`. Native builds link that package for HTML pages
+(`html-page-view.native.tsx`), and iOS also uses it for the PDF preview (`pdf-preview.ios.tsx`). An Android
+build from before it was linked shows HTML pages with no scripts.
 
 Remote connection recovery starts the first attempt immediately, then waits 10 seconds after each failure. After
 five failures it waits two minutes before starting a new series. The agent list shows `Reconnecting`
@@ -171,6 +186,24 @@ secure input and are omitted from the local completion summary; unsent drafts st
 When no agents have loaded and the selected server is connecting or offline, the agent list shows
 `Waiting for connection`. The empty-server prompt appears only once the server is online; agents
 already loaded remain visible during reconnection.
+
+The phone keeps an encrypted copy of the agents, hidden agents, sections, latest chat pages,
+channels with the latest 50 messages of each opened channel, capabilities and last drawer values (`drawer-snapshot.ts`) of each server (`workspace-cache.ts`),
+and writes it when a server load ends and when the app goes to the background. It also keeps the
+last server list of the account service. After a start, the servers of that list connect at once,
+before the account service answers; a server whose key is not the key that the phone trusts waits
+for the account service. Its list then replaces the copy: it removes a server that the account
+left. A server shows its copy at once, and its first connection attempt is quiet for 5 seconds, as
+a return to the app is. The first workspace reads go out with the compatibility read when the copy
+has the capabilities. The UI does not mark the copy: a server that takes longer shows the usual
+reconnect status and faded avatars. Its own reads then replace the copy. Sign-out, an expired
+session and the removal of a server delete it.
+
+The first connect of each server asks the account service for its logical session while the hidden
+peer page loads (`remote-team-transport.tsx`). The account service gives the active session again, so
+the peer then asks only for its ticket. After a return to the app, the other servers wait for the
+selected server for up to 3 seconds. A failed attempt of the selected server, or its host that
+Signal reports offline, ends this wait.
 
 While a server is disconnected, its agent avatars and colored chat bubbles fade locally with the same
 280 ms transition. Voice controls and suggested prompts are disabled until the server is online. The
@@ -308,9 +341,10 @@ Cloud builds require the final `ios.bundleIdentifier` and `android.package` valu
 
 ### Local TestFlight build
 
-On a Mac with Xcode, CocoaPods, Fastlane, and this project's Node and Bun versions installed,
-sign in to Expo with `bunx eas-cli@latest login` from `apps/mobile`. An active Apple Developer
-membership is required for signing and TestFlight distribution.
+On a Mac with Xcode 27.1 or newer (see the iPhone Duo note below), CocoaPods, Fastlane, and this
+project's Node and Bun versions installed, sign in to Expo with `bunx eas-cli@latest login` from
+`apps/mobile`. An active Apple Developer membership is required for signing and TestFlight
+distribution.
 
 From the repository root, run:
 
@@ -335,9 +369,13 @@ it to a tester group. Upload is manual; the command does not run EAS Submit.
 ### GitHub Actions TestFlight release
 
 The `Release iOS to TestFlight` workflow builds the selected `main` commit on a GitHub-hosted
-`macos-26` runner with Xcode 26.6. Expo SDK 58 requires Xcode 26.4 or newer; the desktop release's
-`macos-14` runner is not suitable. EAS CLI 24.1.2 runs with `--local --non-interactive`, so compilation
-uses GitHub Actions compute. Fastlane uploads directly to Apple without EAS Submit.
+`xcode-27` runner (a GitHub preview image) with Xcode 27.1. Expo SDK 58 compiles with Xcode 26.4 or
+newer, but iOS decides the iPhone Duo layout from the SDK of the build: an iOS 26 SDK build shows in
+a small window in the middle of the open iPhone Duo, and only the iOS 27.1 SDK fills the screen and
+moves the bars into the vertical rail. Keep Xcode 27.1 or newer, and check `DTSDKName` in the IPA
+`Info.plist` after a runner change. The desktop release's `macos-14` runner is not suitable. EAS CLI
+24.1.2 runs with `--local --non-interactive`, so compilation uses GitHub Actions compute. Fastlane
+uploads directly to Apple without EAS Submit.
 
 One-time setup:
 
@@ -383,14 +421,39 @@ version in `app.json`, `package.json` and `bun.lock`. Merge that change to `main
 
 The new section is `## [x.y.z] - In review`, and `/changelog` does not show it. Apple and Google
 review a build on their own, and each can take days. When testers can install the build from one
-store, run `bun run mobile:release:published ios` or `bun run mobile:release:published android`.
-It writes today's date for that store, for example `## [x.y.z] - 2026-10-14 (Android)`. Merge that
-change to `main`, and the site shows the version with that store, and the other store as "In review".
-When the other store makes the build available, run the command again with that store. The heading
-becomes `## [x.y.z] - 2026-10-14 (Android), 2026-10-16 (iOS)`, or `## [x.y.z] - 2026-10-14` when
-both dates are the same. Use `both` when the two stores make the build available on the same day.
+store, run `bun run mobile:release` and select 3, or `bun run mobile:release:published ios` (or
+`android`). It writes today's date for that store, for example `## [x.y.z] - 2026-10-14 (Android)`,
+and raises that store's `cloudServers` and `browser` flags and newest version in
+`apps/auth-api/src/server/mobile-features-config.ts`. Merge that change to `main`. After the Worker
+deploy, the site shows the version with that store, the other store as "In review", and Discord gets
+the post of that store. When the other store makes the build available, do the same for that store.
+The heading becomes `## [x.y.z] - 2026-10-14 (Android), 2026-10-16 (iOS)`, or `## [x.y.z] - 2026-10-14`
+when both dates are the same. Use `both` when the two stores make the build available on the same day.
 For an older version, add `--version x.y.z`. A new `mobile:release:*` stops while no store has the
 current version.
+
+A store that will never ship a version, because a newer one replaced it, is skipped:
+`## [x.y.z] - 2026-11-01 (iOS), Skipped (Android)`. `/changelog` shows it as skipped, and Discord gets
+no post. When you mark a newer version as available, the menu asks to mark the older versions that
+the store still reviews as skipped (`--skip-older` on the command). Menu step 4 marks a version as
+skipped by hand, or as in review again.
+
+### Release menu
+
+`bun run mobile:release` shows the state of the newest versions on each store and their posts, and
+one menu for each step. Press a digit; Enter selects the first choice, and 0 goes back.
+
+1. Prepare a new version (`prepare-release.ts --mobile`).
+2. Build and send to TestFlight or Google Play (dispatches `release-ios.yml` or `release-android.yml` on `main`).
+3. Mark a version as available in a store, with its flags and the skip of older versions.
+4. Mark a version as skipped, or in review again.
+5. Write the Discord highlights.
+6. Show the live state: the flags and `/changelog` of production, and the posts that are due or wait.
+
+A step that changes files needs a clean working tree. It makes a branch from the `main` of GitHub,
+commits (the pre-commit hook runs), pushes, opens the pull request with the release title and body,
+and goes back to your branch. It can also turn on auto-merge. The menu never merges by itself.
+
 The signed `.ipa` is saved as a GitHub Actions artifact for seven days before upload. If upload
 fails, download that artifact and retry with Transporter to avoid rebuilding. Re-running the full
 workflow creates a new build number.
@@ -461,30 +524,50 @@ See [Fastlane Google Play upload](https://docs.fastlane.tools/actions/upload_to_
 
 ### Discord announcement
 
-Each mobile version gets one post in the OpenBot Discord, when the second store has it. Android is
-often available hours or days before iOS, so the post waits for both. The source is
-`apps/mobile/CHANGELOG.md`, not the stores. The `Announce mobile release on Discord` workflow
-(`mobile-release-announcement.yml`) runs on each push to `main` that changes the file. When the
-push gives a version its second store date, for example
-`## [x.y.z] - 2026-10-14 (Android), 2026-10-16 (iOS)`, it posts the message. The desktop release
+Each store gets its own post in the OpenBot Discord when users of that store can see the version.
+The source is `apps/mobile/CHANGELOG.md`; the gate is production. The `Announce mobile release on
+Discord` workflow (`mobile-release-announcement.yml`) runs after each CI run on `main`, at minutes
+17 and 47 of each hour, and on a manual dispatch. It posts a version for a store only when the
+account Worker lists the version in `/v1/mobile/changelog?platform=<store>` and gives it the newest
+version and the flags of `apps/auth-api/src/server/mobile-features-config.ts` in
+`/v1/mobile/features`. Thus the post never comes before the deploy of the flags, the browser and
+`/changelog`. A newer push to `main` cancels an older CI run, and that does not lose a post: the next
+deploy or the schedule sends it.
+
+A tag `mobile-announced/v<version>/<store>` records each post. The workflow creates the tag, then
+posts; a failed post removes the tag, so the next run tries again. A version with a tag gets no post
+again. Only the newest dated version of each store gets a post, from 1.4.7 on. The desktop release
 has its own post and its own workflow (`docs/RELEASING.md#discord-announcement`).
 
-Before the second store has the build, select the 3 to 5 changes in the version section that have
+| Event | Title | Line under the title |
+| --- | --- | --- |
+| The first store | `OpenBot vx.y.z is out on iOS` | `The Android version comes out later.` |
+| The second store | `OpenBot vx.y.z is out on Android` | `It is already out on iOS.` |
+| Both stores in the same run | `OpenBot vx.y.z is out on iOS and Android` | none |
+| The other store skipped the version | `OpenBot vx.y.z is out on iOS` | none |
+
+The message mentions the `Mobile Release Pings` role, then has the title, the highlights, and one
+line of links to each store that has the version and to `Full Changelog`, the version on the Mobile
+tab of `/changelog`. It notifies only that role.
+
+Before the first store has the build, select the 3 to 5 changes in the version section that have
 the largest effect on users, and write them with the version in `apps/mobile/release-announcement.json`:
 
 ```json
 { "version": "x.y.z", "highlights": ["...", "...", "..."] }
 ```
 
-Use the highlight rules of the desktop announcement. Replace the highlights of the previous version;
-the file holds only one version. Run `bun scripts/discord-mobile-release-announcement.ts check x.y.z`
-to see the message. `bun run mobile:release:published` stops when it gives the version its second
-store and the file is not ready, and the Changelog workflow stops such a pull request.
+Use the highlight rules of the desktop announcement. Both posts of a version use the same file.
+Replace the highlights of the previous version; the file holds only one version. Run
+`bun scripts/discord-mobile-release-announcement.ts check x.y.z` to see the posts.
+`bun run mobile:release` and `bun run mobile:release:published` stop while the file is not ready,
+and the Changelog workflow stops a pull request that adds a store date before the file is ready.
 
-The message mentions the `Mobile Release Pings` role, then has the title
-`OpenBot vx.y.z is out on iOS and Android`, the highlights, and one line of links:
-`iOS (TestFlight) · Android · Full Changelog`. The last link opens the version on the Mobile tab of
-`/changelog`. It notifies only that role.
+`bun scripts/discord-mobile-release-announcement.ts plan` shows the posts that are due and why the
+others wait. To post a version again, or an older one, run
+`gh workflow run mobile-release-announcement.yml --ref main -f version=x.y.z -f stores=ios -f again=true`.
+For a post that you sent by hand, run
+`bun scripts/discord-mobile-release-announcement.ts mark-posted x.y.z ios`, so the workflow does not send it again.
 
 One-time setup:
 
@@ -495,11 +578,7 @@ One-time setup:
    `DISCORD_MOBILE_RELEASE_WEBHOOK_URL`. It can be the same channel as the desktop post.
 3. In Discord, turn on Developer Mode, open Server Settings > Roles, right-click `Mobile Release Pings`
    and select Copy Role ID. Add the ID as the environment variable `DISCORD_MOBILE_RELEASE_ROLE_ID`.
-
-A failed post does not change the release: re-run the `Post on Discord` job. A re-run after a
-successful post posts the message again. To post a version again, or one that a push did not post,
-run `gh workflow run mobile-release-announcement.yml --ref main -f version=x.y.z`. Both stores must
-have the version in `apps/mobile/CHANGELOG.md`, and the file must be for that version.
+4. A tag ruleset must let GitHub Actions create and delete tags that start with `mobile-announced/`.
 
 ## OpenPanel product analytics
 

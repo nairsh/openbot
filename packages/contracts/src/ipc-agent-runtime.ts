@@ -68,6 +68,8 @@ export interface AgentRuntimePromptQuestion {
   id: string;
   header: string;
   question: string;
+  /** See `AgentPromptQuestion.detail`. */
+  detail?: string;
   isSecret: boolean;
   options: Array<{ label: string; description: string }> | null;
   /** See `AgentPromptQuestion.multiSelect`. */
@@ -80,6 +82,7 @@ function isRuntimePromptQuestion(value: unknown): value is AgentRuntimePromptQue
     isIdentifier(value.id) &&
     isBoundedString(value.header, AGENT_RUNTIME_QUESTION_HEADER_LIMIT) &&
     isBoundedString(value.question, AGENT_RUNTIME_TEXT_LIMIT) &&
+    (value.detail === undefined || isBoundedString(value.detail, AGENT_RUNTIME_TEXT_LIMIT)) &&
     isBoolean(value.isSecret) &&
     (value.multiSelect === undefined || isBoolean(value.multiSelect)) &&
     (value.options === null ||
@@ -154,7 +157,11 @@ export interface AgentContextCategoryUsage {
   tokens: number;
 }
 
-/** Local desktop context state. Frozen Team adapters do not carry this field. */
+/**
+ * How full the context window of one chat is. The Team API carries it only under context-usage-v1, with
+ * the keys and values that `team-protocol/context-usage-v1.ts` freezes: a new key or value goes only to a
+ * later capability.
+ */
 export interface AgentContextState {
   agentId: string;
   threadId: string;
@@ -220,6 +227,8 @@ function isAgentContextState(value: unknown): value is AgentContextState {
 
 export interface AgentRuntimeSnapshot {
   contextStates?: AgentContextState[];
+  /** The context of each side thread that reported one, by its `threadId`. Team API: as `contextStates`. */
+  threadContextStates?: AgentContextState[];
   agents: AgentRuntimeRosterEntry[];
   activeTurns: Array<{ agentId: string; threadId: string; turnId: string }>;
   work: AgentRuntimeWorkItem[];
@@ -245,6 +254,12 @@ export interface AgentRuntimeSnapshot {
    * from a released Team API snapshot, as `usageLimits` is.
    */
   usageLimitedModels?: AgentModelChoice[];
+  /**
+   * The agents whose subagents still run, with the turn that started them. A background subagent
+   * runs on after its turn, so its agent is still at work. Absent from a released Team API
+   * snapshot, as `usageLimits` is.
+   */
+  subagentTurns?: Array<{ agentId: string; turnId: string }>;
 }
 
 export function isAgentRuntimeSnapshot(value: unknown): value is AgentRuntimeSnapshot {
@@ -254,6 +269,10 @@ export function isAgentRuntimeSnapshot(value: unknown): value is AgentRuntimeSna
       (Array.isArray(value.contextStates) &&
         value.contextStates.length <= INPUT_LIMITS.agents &&
         value.contextStates.every(isAgentContextState))) &&
+    (value.threadContextStates === undefined ||
+      (Array.isArray(value.threadContextStates) &&
+        value.threadContextStates.length <= INPUT_LIMITS.agents * INPUT_LIMITS.agentTasks &&
+        value.threadContextStates.every(isAgentContextState))) &&
     Array.isArray(value.agents) &&
     value.agents.length <= INPUT_LIMITS.agents &&
     value.agents.every(isAgentRuntimeRosterEntry) &&
@@ -305,7 +324,13 @@ export function isAgentRuntimeSnapshot(value: unknown): value is AgentRuntimeSna
     (value.usageLimitedModels === undefined ||
       (Array.isArray(value.usageLimitedModels) &&
         value.usageLimitedModels.length <= INPUT_LIMITS.agents &&
-        value.usageLimitedModels.every(isAgentModelChoice)))
+        value.usageLimitedModels.every(isAgentModelChoice))) &&
+    (value.subagentTurns === undefined ||
+      (Array.isArray(value.subagentTurns) &&
+        value.subagentTurns.length <= INPUT_LIMITS.agents &&
+        value.subagentTurns.every(
+          (turn) => isDynamicRecord(turn) && isIdentifier(turn.agentId) && isIdentifier(turn.turnId),
+        )))
   );
 }
 
