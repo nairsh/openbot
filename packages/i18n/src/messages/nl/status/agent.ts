@@ -50,7 +50,6 @@ export const messages = {
   "status.agent.skillReading": "Leest een vaardigheid…",
   "status.agent.toolStepFailed":
     "Een toolstap is mislukt; het resultaat wordt bekeken en bepaald wat ik daarna probeer…",
-  "status.agent.toolResultReviewing": "Bekijkt het laatste toolresultaat…",
   "status.agent.sourcesSearching": "Zoekt naar actuele informatie…",
   "status.agent.sourcesReviewing": "Bekijkt de gevonden bronnen en informatie…",
   "status.agent.informationGathering": "Verzamelt de relevante informatie…",
@@ -62,7 +61,6 @@ export const messages = {
   "status.agent.agentCoordinating": "Stemt af met een andere agent…",
   "status.agent.agentResponseReviewing": "Bekijkt het antwoord van de andere agent…",
   "status.agent.commandRunningUnnamed": "Een opdracht wordt uitgevoerd…",
-  "status.agent.toolStepWorking": "Werkt de volgende toolondersteunde stap af…",
   "status.agent.thinking": "Denkt na…",
   "status.agent.toolUsing": "Gebruikt {tool}…",
   "status.agent.toolUsingUnnamed": "Gebruikt een tool…",

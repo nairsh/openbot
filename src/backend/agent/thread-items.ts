@@ -455,7 +455,7 @@ export function toolProgressText(item: ThreadItem, completed: boolean): string |
   // Next, a label from what the step does, such as "Reading main.ts…", for a provider that sends no label.
   const label = completed ? null : stepLabel(item);
   if (label) return label;
-  // Then the tool's own name, such as "Using search threads…", which says more than the words below.
+  // Then the tool's own name, such as "Using the tool search threads…", which says more than the words below.
   // OpenBot's own tools, such as `send_message`, keep the words below.
   const usage = completed || openBot ? null : toolUsage(item);
   const tool = usage?.kind === "mcp" ? usage.tool?.replace(/[_-]+/gu, " ").trim() : undefined;

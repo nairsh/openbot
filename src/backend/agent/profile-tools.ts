@@ -42,9 +42,7 @@ export const createAgentToolSchema = z
     initialMessage: z.string().trim().min(1).max(INPUT_LIMITS.messageText),
     provider: z
       .enum(AGENT_PROVIDERS)
-      .describe(
-        "Provider for the new agent. Omit provider and model to give it your own provider and model. See list_models.",
-      )
+      .describe("Provider for the new agent. Omit provider and model to give it your own. See list_models.")
       .optional(),
     model: z
       .string()
@@ -96,7 +94,7 @@ export const updateProfileToolSchema = z
       .optional(),
     provider: z
       .enum(AGENT_PROVIDERS)
-      .describe("New provider for the agent. Pass a model with it, or omit the model to use the provider's default.")
+      .describe("New provider. Pass a model with it, or omit the model to use the provider's default.")
       .optional(),
     model: z.string().trim().min(1).max(INPUT_LIMITS.modelName).describe("New model id from list_models.").optional(),
     reasoningEffort: z

@@ -45,7 +45,6 @@ export const messages = {
   "status.agent.skillReading": "Leyendo una habilidad…",
   "status.agent.toolStepFailed":
     "Un paso de herramienta falló; revisando el resultado y decidiendo qué probar después…",
-  "status.agent.toolResultReviewing": "Revisando el último resultado de la herramienta…",
   "status.agent.sourcesSearching": "Buscando información actualizada…",
   "status.agent.sourcesReviewing": "Revisando las fuentes y la información que encontré…",
   "status.agent.informationGathering": "Reuniendo la información relevante…",
@@ -57,7 +56,6 @@ export const messages = {
   "status.agent.agentCoordinating": "Coordinando con otro agente…",
   "status.agent.agentResponseReviewing": "Revisando la respuesta del otro agente…",
   "status.agent.commandRunningUnnamed": "Ejecutando un comando…",
-  "status.agent.toolStepWorking": "Procesando el siguiente paso asistido por herramientas…",
   "status.agent.thinking": "Pensando…",
   "status.agent.toolUsing": "Usando {tool}…",
   "status.agent.toolUsingUnnamed": "Usando una herramienta…",

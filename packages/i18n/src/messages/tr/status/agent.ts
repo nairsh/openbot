@@ -45,7 +45,6 @@ export const messages = {
   "status.agent.skillReading": "Bir beceri okuyor…",
   "status.agent.toolStepFailed":
     "Bir araç adımı başarısız oldu; sonucu inceliyor ve sırada neyi deneyeceğine karar veriyor…",
-  "status.agent.toolResultReviewing": "En son araç sonucu inceleniyor…",
   "status.agent.sourcesSearching": "Güncel bilgiler aranıyor…",
   "status.agent.sourcesReviewing": "Bulunan kaynaklar ve bilgiler inceleniyor…",
   "status.agent.informationGathering": "İlgili bilgiler toplanıyor…",
@@ -57,7 +56,6 @@ export const messages = {
   "status.agent.agentCoordinating": "Başka bir ajanla koordinasyon sağlanıyor…",
   "status.agent.agentResponseReviewing": "Diğer ajanın yanıtı inceleniyor…",
   "status.agent.commandRunningUnnamed": "Bir komut çalıştırılıyor…",
-  "status.agent.toolStepWorking": "Bir sonraki araç destekli adım işleniyor…",
   "status.agent.thinking": "Düşünülüyor…",
   "status.agent.toolUsing": "{tool} kullanılıyor…",
   "status.agent.toolUsingUnnamed": "Bir araç kullanılıyor…",

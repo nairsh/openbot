@@ -47,7 +47,6 @@ export const messages = {
   "status.agent.skillReading": "Fähigkeit wird gelesen…",
   "status.agent.toolStepFailed":
     "Ein Tool-Schritt ist fehlgeschlagen; das Ergebnis wird geprüft und entschieden, was als Nächstes versucht wird…",
-  "status.agent.toolResultReviewing": "Das letzte Tool-Ergebnis wird geprüft…",
   "status.agent.sourcesSearching": "Nach aktuellen Informationen wird gesucht…",
   "status.agent.sourcesReviewing": "Die gefundenen Quellen und Informationen werden geprüft…",
   "status.agent.informationGathering": "Die relevanten Informationen werden gesammelt…",
@@ -59,7 +58,6 @@ export const messages = {
   "status.agent.agentCoordinating": "Es wird mit einem anderen Agenten abgestimmt…",
   "status.agent.agentResponseReviewing": "Die Antwort des anderen Agenten wird geprüft…",
   "status.agent.commandRunningUnnamed": "Befehl wird ausgeführt…",
-  "status.agent.toolStepWorking": "Der nächste toolgestützte Schritt wird abgearbeitet…",
   "status.agent.thinking": "Denkt nach…",
   "status.agent.toolUsing": "Verwendet {tool}…",
   "status.agent.toolUsingUnnamed": "Verwendet ein Tool…",
