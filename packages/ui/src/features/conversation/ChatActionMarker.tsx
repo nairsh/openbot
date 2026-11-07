@@ -1,6 +1,7 @@
 import type { QueueDeliveryStatus } from "@openbot/contracts/ipc";
 import type { AppFormat, AppTextKey, AppTranslate } from "@openbot/i18n";
 import {
+  AudioLines,
   Button,
   CalendarClock,
   ChevronDown,
@@ -54,6 +55,8 @@ interface ChatActionMarkerProps {
   onOpenHostedSite?: ((url: string) => void) | undefined;
   /** Opens or closes the messages of a run, or the runs of a group, whose marker sets `expanded`. */
   onToggleRoutineRun?: ((marker: RoutineRunToggleMarkerModel) => void) | undefined;
+  /** Opens or closes the messages of a voice call, by its session id. */
+  onToggleVoiceCall?: ((sessionId: string) => void) | undefined;
   /** Opens or closes the text of an agent message whose marker sets `expanded`, by its `messageId`. */
   onToggleAgentMessage?: ((messageId: string) => void) | undefined;
   /** Draws the text of an open agent message under its marker, by its `messageId`. */
@@ -81,8 +84,9 @@ const STATUS_LABELS = {
 
 type SingleChatActionMarkerModel = Exclude<
   ChatActionMarkerModel,
-  { kind: "agent-message-group" } | { kind: "routine-run-group" }
+  { kind: "agent-message-group" } | { kind: "routine-run-group" } | { kind: "voice-call" }
 >;
+type VoiceCallMarkerModel = Extract<ChatActionMarkerModel, { kind: "voice-call" }>;
 type AgentMessageGroupMarkerModel = Extract<ChatActionMarkerModel, { kind: "agent-message-group" }>;
 type RoutineRunGroupMarkerModel = Extract<ChatActionMarkerModel, { kind: "routine-run-group" }>;
 export type RoutineRunToggleMarkerModel = Extract<ChatActionMarkerModel, { kind: "routine-run" | "routine-run-group" }>;
@@ -95,8 +99,14 @@ function routineRunGroup(marker: ChatActionMarkerModel): RoutineRunGroupMarkerMo
   return marker.kind === "routine-run-group" ? marker : undefined;
 }
 
+function voiceCall(marker: ChatActionMarkerModel): VoiceCallMarkerModel | undefined {
+  return marker.kind === "voice-call" ? marker : undefined;
+}
+
 function singleMarker(marker: ChatActionMarkerModel): SingleChatActionMarkerModel | undefined {
-  return marker.kind === "agent-message-group" || marker.kind === "routine-run-group" ? undefined : marker;
+  return marker.kind === "agent-message-group" || marker.kind === "routine-run-group" || marker.kind === "voice-call"
+    ? undefined
+    : marker;
 }
 
 export function ChatActionMarker(props: ChatActionMarkerProps) {
@@ -116,7 +126,16 @@ export function ChatActionMarker(props: ChatActionMarkerProps) {
         <Show
           when={routineRunGroup(props.marker)}
           fallback={
-            <Show when={singleMarker(props.marker)}>
+            <Show
+              when={singleMarker(props.marker)}
+              fallback={
+                <Show when={voiceCall(props.marker)}>
+                  {(call) => (
+                    <VoiceCallMarker call={call()} onToggle={() => props.onToggleVoiceCall?.(call().sessionId)} />
+                  )}
+                </Show>
+              }
+            >
               {(marker) => (
                 <SingleChatActionMarker
                   marker={marker()}
@@ -164,6 +183,36 @@ export function ChatActionMarker(props: ChatActionMarkerProps) {
         />
       )}
     </Show>
+  );
+}
+
+/** The messages of one live voice call, as one row that opens to show them under it. */
+function VoiceCallMarker(props: { call: VoiceCallMarkerModel; onToggle: () => void }) {
+  const { t, format } = useText();
+  return (
+    <Marker class="chat-action-marker chat-action-marker-voice-call">
+      <MarkerIcon>
+        <AudioLines aria-hidden="true" />
+      </MarkerIcon>
+      <MarkerContent class="chat-action-marker-content">
+        <span class="chat-action-marker-label">{t("chat.marker.voiceCall")}</span>
+        <time class="chat-action-marker-time" datetime={props.call.timestamp}>
+          {formatMarkerTime(props.call.timestamp, t, format)}
+        </time>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          class="chat-action-history-toggle"
+          type="button"
+          aria-expanded={props.call.expanded ? "true" : "false"}
+          aria-label={t(props.call.expanded ? "chat.marker.voiceCall.hide" : "chat.marker.voiceCall.show")}
+          data-cuelume-tap={props.call.expanded ? "close" : "open"}
+          onClick={() => props.onToggle()}
+        >
+          <ChevronDown aria-hidden="true" />
+        </Button>
+      </MarkerContent>
+    </Marker>
   );
 }
 

@@ -1573,8 +1573,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         return agent;
       },
       relay: (agent) => this.#liveVoiceRelay(agent),
-      send: (agentId, text) =>
-        this.sendMessage({ agentId, text }).pipe(
+      send: (agentId, text, sessionId) =>
+        this.#sendUserMessage({ agentId, text }, undefined, undefined, undefined, sessionId).pipe(
           Effect.flatMap((receipt) => {
             const deliveryId = receipt.deliveries[0]?.id;
             return deliveryId
@@ -5311,6 +5311,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     sender: ConversationMessageSender | undefined,
     timezone: string | undefined,
     idempotencyKey?: string,
+    /** Set only by live voice, never from the renderer: the chat folds these messages into one block. */
+    liveVoiceSessionId?: string,
   ) {
     const validateRecipient = yield* lifecycleStep("prepare message delivery", () =>
       this.#mailbox.prepareDelivery([input.agentId]),
@@ -5354,6 +5356,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         text: input.text,
         draftIds: input.attachmentDraftIds ?? [],
         ...(input.voiceRecordingDraftId ? { voiceRecordingDraftId: input.voiceRecordingDraftId } : {}),
+        ...(liveVoiceSessionId ? { liveVoiceSessionId } : {}),
         // A reply names a message of the thread that takes it: the agent's own chat, or the task's thread.
         replyToMessageId: input.replyToMessageId ?? null,
         ...(idempotencyKey ? { idempotencyKey } : {}),

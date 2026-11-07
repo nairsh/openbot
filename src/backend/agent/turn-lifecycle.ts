@@ -1932,7 +1932,7 @@ export class TurnLifecycle {
         agentId,
         this.#conversation.publicThreadId(agentId, threadId),
         turnId,
-        sourceText("status.agent.toolResultReviewing"),
+        sourceText("status.agent.thinking"),
         "reviewing",
       );
       return;

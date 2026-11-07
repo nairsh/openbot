@@ -202,6 +202,9 @@ export const messages = {
   "chat.marker.run.cancelled": "שגרה בוטלה",
   "chat.marker.runGroup.count": { one: "הרצה אחת", two: "שתי הרצות", other: "{count} הרצות" },
   "chat.marker.runGroup.timeRange": "{start}–{end}",
+  "chat.marker.voiceCall": "שיחה קולית",
+  "chat.marker.voiceCall.show": "הצגת התמליל של השיחה הקולית",
+  "chat.marker.voiceCall.hide": "הסתרת התמליל של השיחה הקולית",
   "chat.marker.runGroup.show": {
     one: "הצגת הרצה אחת של {name}",
     two: "הצגת שתי הרצות של {name}",

@@ -30,14 +30,14 @@ interface PlushMood {
 /*
  * How each mood shows on the plush. Only the eyes and the plush's own felt pieces move; the body, which
  * is the agent's identity, stays still and keeps its colour. No ring, glow or dimming is added round
- * it: a working agent looks up while three felt dots pulse beside it (or, with `workingFaces`, changes
- * faces with no dots), a waiting one shows a felt dot,
+ * it: a working agent looks attentive with no felt dots (or, with `workingFaces`, changes faces), a
+ * waiting one shows a felt dot,
  * a failed turn lowers its eyes and shakes "no" once, and an asleep agent closes its eyes as z's rise.
  */
 const PLUSH_MOODS: Readonly<Record<AvatarMood, PlushMood>> = {
   idle: { state: "idle", expression: null, busy: false },
-  working: { state: "thinking", expression: "attentif", busy: true },
-  connecting: { state: "thinking", expression: "attentif", busy: true },
+  working: { state: "idle", expression: "attentif", busy: true },
+  connecting: { state: "idle", expression: "attentif", busy: true },
   waiting: { state: "notify", expression: "curieux", busy: false },
   failed: { state: "failed", expression: null, busy: false },
   responded: { state: "idle", expression: "heureux", busy: false },
@@ -76,7 +76,7 @@ const WORKING_FACE_MAX_MS = 3200;
  * How a working plush with an `activity` shows what its step does, as Grok Bot's avatar does. Each
  * one keeps the body: it looks round with interest for a search, opens its eyes wide at a page,
  * looks hard at what it reads, is eager while a command runs, is proud of a change, winks as it hands
- * work to another agent, and thinks with the felt dots while it reads a result. Faces that read as a
+ * work to another agent, and looks attentive while it reads a result. Faces that read as a
  * mood, such as anger or fear, are not used.
  */
 const ACTIVITY_MOODS: Readonly<Record<AgentStepActivity, PlushMood>> = {
@@ -251,8 +251,8 @@ function GeneratedAvatar(props: {
   const reducedMotion = () => prefersReduced() || documentSoftwareRendering();
   const cyclesFaces = () => props.workingFaces && props.mood === "working";
   const [workingFace, setWorkingFace] = createSignal<ExpressionId>(nextWorkingFace(null));
-  // The face cycle wins: the sidebar badge already shows the work there. Reduced motion keeps the
-  // felt dots: a frozen plush cannot morph between faces.
+  // The face cycle wins: the sidebar badge already shows the work there. Reduced motion keeps one
+  // face: a frozen plush cannot morph between faces.
   const requestedActivity = () =>
     props.mood === "working" && !props.workingFaces && !reducedMotion() ? props.activity : null;
   const shownActivity = createHeldActivity(requestedActivity, ACTIVITY_HOLD_MS);

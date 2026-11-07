@@ -209,6 +209,20 @@ function stepsSummary(steps: readonly AgentStep[], worked: string | undefined, t
     .join(" · ");
 }
 
+/** The summary of a finished turn as one line, such as "Worked for 29s · 1 failed", for a menu item. */
+export function useAgentStepsLabel(): (steps: readonly AgentStep[], facts: AgentStepsFacts | undefined) => string {
+  const text = useText();
+  const duration = useDuration();
+  return (steps, facts) => {
+    const summary = stepsSummary(
+      steps,
+      facts ? duration(Math.round(facts.durationMs / 1_000) * 1_000) : undefined,
+      text,
+    );
+    return facts?.failed ? `${summary} · ${text.t("chat.steps.failed", { count: facts.failed })}` : summary;
+  };
+}
+
 /** The trace of a turn, which its steps row opens in a dialog. */
 export interface AgentStepsTrace {
   /** Read only while the dialog is open. */
@@ -242,6 +256,11 @@ export function AgentStepsDisclosure(props: {
    * in the trace, so its row stays one line. Give a trace with it.
    */
   list?: boolean | undefined;
+  /**
+   * Gives the action that opens the trace, and draws no row. The message menu then opens the trace.
+   * Give a trace with it.
+   */
+  traceOpener?: ((open: () => void) => void) | undefined;
 }) {
   const text = useText();
   const duration = useDuration();
@@ -298,25 +317,32 @@ export function AgentStepsDisclosure(props: {
     setFocus(null);
     setChoice(!open());
   };
+  props.traceOpener?.(() => {
+    if (!props.trace) return;
+    setTraceUsed(true);
+    setTraceOpenedAt(Date.now());
+  });
   return (
     <div class="agent-steps" data-open={open() ? "" : undefined}>
-      <Button
-        type="button"
-        variant="ghost"
-        class="agent-steps-header"
-        aria-expanded={expanded()}
-        aria-controls={controls()}
-        aria-haspopup={popup()}
-        onClick={activate}
-      >
-        <span class="agent-steps-summary">
-          {stepsSummary(props.steps, props.facts ? turnTime(props.facts.durationMs) : undefined, text)}
-        </span>
-        <Show when={props.facts?.failed}>
-          {(failed) => <Badge class="agent-steps-failed">{text.t("chat.steps.failed", { count: failed() })}</Badge>}
-        </Show>
-        <ChevronRight class="agent-steps-chevron" aria-hidden="true" />
-      </Button>
+      <Show when={!props.traceOpener}>
+        <Button
+          type="button"
+          variant="ghost"
+          class="agent-steps-header"
+          aria-expanded={expanded()}
+          aria-controls={controls()}
+          aria-haspopup={popup()}
+          onClick={activate}
+        >
+          <span class="agent-steps-summary">
+            {stepsSummary(props.steps, props.facts ? turnTime(props.facts.durationMs) : undefined, text)}
+          </span>
+          <Show when={props.facts?.failed}>
+            {(failed) => <Badge class="agent-steps-failed">{text.t("chat.steps.failed", { count: failed() })}</Badge>}
+          </Show>
+          <ChevronRight class="agent-steps-chevron" aria-hidden="true" />
+        </Button>
+      </Show>
       <Show when={traceUsed() && props.trace}>
         {(trace) => {
           // The waterfall reads its spans many times for each change; this builds them once.

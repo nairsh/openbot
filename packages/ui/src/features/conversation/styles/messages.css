@@ -189,6 +189,31 @@
   align-self: flex-end;
 }
 
+/* An agent's actions float at the right end of its message and take no line, so its answers stay stacked. */
+@media (hover: hover) and (pointer: fine) {
+  .message-entry-agent:not(.message-entry-actions-beside) {
+    position: relative;
+  }
+
+  .message-entry-agent:not(.message-entry-actions-beside) .message-action-row {
+    position: absolute;
+    z-index: 4;
+    inset-inline-end: 0;
+    bottom: calc(-1 * var(--openbot-space-3));
+    border-radius: var(--openbot-radius-pill);
+    background: var(--openbot-bg-canvas);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--openbot-duration-hover) ease;
+  }
+
+  .message-entry-agent:not(.message-entry-actions-beside):is(:hover, :focus-within, :has(.message-actions-open))
+    .message-action-row {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 .message-entry:hover .message-actions,
 .message-entry:focus-within .message-actions,
 .message-actions-open {

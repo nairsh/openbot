@@ -202,6 +202,9 @@ export const messages = {
   "chat.marker.run.cancelled": "İptal edilen rutin",
   "chat.marker.runGroup.count": { one: "{count} çalıştırma", other: "{count} çalıştırma" },
   "chat.marker.runGroup.timeRange": "{start}–{end}",
+  "chat.marker.voiceCall": "Sesli arama",
+  "chat.marker.voiceCall.show": "Sesli arama dökümünü göster",
+  "chat.marker.voiceCall.hide": "Sesli arama dökümünü gizle",
   "chat.marker.runGroup.show": {
     one: "{name} için {count} çalıştırmayı göster",
     other: "{name} için {count} çalıştırmayı göster",

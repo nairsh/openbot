@@ -222,6 +222,8 @@ export interface ConversationMessage {
   attachments?: AttachmentSummary[] | undefined;
   /** What the user said, on a message that a voice turn sent. The agent got only the text. */
   voiceRecording?: AttachmentSummary | undefined;
+  /** The live voice session that sent this user message. The chat folds a call into one block. */
+  liveVoiceSessionId?: string | undefined;
   imageGeneration?: ImageGenerationInfo | undefined;
   delivery?: Pick<QueueDelivery, "id" | "status" | "position"> | undefined;
   exchange?: AgentExchangeSummary | undefined;
@@ -282,6 +284,7 @@ export function isConversationMessage(value: unknown): value is ConversationMess
         value.attachments.length <= INPUT_LIMITS.attachments &&
         value.attachments.every(isAttachmentSummary))) &&
     (value.voiceRecording === undefined || isAttachmentSummary(value.voiceRecording)) &&
+    (value.liveVoiceSessionId === undefined || isIdentifier(value.liveVoiceSessionId)) &&
     (value.delivery === undefined || isConversationDelivery(value.delivery)) &&
     (value.exchange === undefined || isAgentExchangeSummary(value.exchange)) &&
     (value.reaction === undefined || value.reaction === null || isMessageReaction(value.reaction)) &&
