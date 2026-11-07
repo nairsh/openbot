@@ -852,6 +852,53 @@
   }
 }
 
+/* The plain line while the agent types: three dots in a reply bubble, as the agent dock shows them. */
+.agent-activity-typing {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  border-radius: var(--openbot-radius-pill);
+  padding-inline: var(--openbot-space-3);
+  background: var(--openbot-bubble-received);
+  animation: agent-activity-label-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.agent-activity-typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.agent-activity-typing-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--openbot-radius-pill);
+  background: var(--openbot-text-muted);
+  animation: agent-activity-typing-dot 1s var(--openbot-ease-in-out) infinite;
+}
+
+.agent-activity-typing-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.agent-activity-typing-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes agent-activity-typing-dot {
+  50% {
+    opacity: 0.3;
+    transform: translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-activity-typing,
+  .agent-activity-typing-dots i {
+    animation: none;
+  }
+}
+
 .agent-activity-elapsed {
   flex: 0 0 auto;
   color: var(--openbot-text-muted);

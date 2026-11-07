@@ -69,7 +69,7 @@ export const PlainRunningCommand: IndicatorStory = {
   },
 };
 
-/** The Natural style before the first step: only the moving avatar shows. */
+/** The Natural style before the first step: the moving avatar and three typing dots in a reply bubble. */
 export const PlainBeforeFirstStep: IndicatorStory = {
   args: {
     agent: STORY_AGENTS[0],
