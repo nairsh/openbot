@@ -384,7 +384,14 @@ function dockMessage(message: AgentMessage): AgentDockMessage {
     reactions: dockReactions(message)
       .filter(isConversationReaction)
       .slice(0, AGENT_DOCK_LIMITS.reactions)
-      .map((reaction) => ({ emoji: reaction.emoji, actor: reaction.actor })),
+      // A plain copy: the conversation store gives proxies, which IPC cannot clone.
+      .map((reaction) => ({
+        emoji: reaction.emoji,
+        actor:
+          reaction.actor.kind === "agent"
+            ? { kind: "agent" as const, agentId: reaction.actor.agentId }
+            : { kind: "user" as const },
+      })),
   };
 }
 
