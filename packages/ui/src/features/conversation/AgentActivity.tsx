@@ -114,8 +114,8 @@ export function AgentActivityIndicator(props: {
     if (provider) return t("chat.activity.waitingFor", { provider });
     return detail() ?? t(agentActivityLabelKey(props.label));
   };
-  /** The text on the line. A plain line shows no general label: the moving avatar says that the agent works. */
-  const shownLabel = () => (props.plain && !props.waitingFor && !detail() ? null : label());
+  /** The text on the line. A plain line with no named step says that the agent types. */
+  const shownLabel = () => (props.plain && !props.waitingFor && !detail() ? t("chat.activity.typing") : label());
   const statusLabel = () => {
     const name = props.agent?.name ?? t("chat.activity.agentFallback");
     const provider = props.waitingFor;

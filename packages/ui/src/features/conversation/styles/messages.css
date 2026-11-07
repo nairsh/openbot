@@ -1857,6 +1857,16 @@ button.chat-action-target:active,
   }
 }
 
+/* An agent's actions stand after its bubble, in the same line. The bubble narrows to give them room. */
+.message-entry-agent.message-entry-actions-beside .message-shell {
+  flex-wrap: nowrap;
+}
+
+.message-entry-agent.message-entry-actions-beside .message-shell > .ui-bubble {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 /*
  * The reader's own actions stand before the bubble, in the same line. The stack takes the width of
  * the bubble, not the line, so the actions fit beside it. A message with images keeps the full

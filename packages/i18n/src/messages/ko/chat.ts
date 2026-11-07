@@ -3,6 +3,7 @@ import type { messages as source } from "../en/chat";
 
 export const messages = {
   "chat.activity.workingOnIt": "작업 중…",
+  "chat.activity.typing": "입력 중…",
   "chat.activity.thinking": "생각을 정리하는 중…",
   "chat.activity.connectingDots": "단서를 연결하는 중…",
   "chat.activity.checkingDetails": "세부 내용을 확인하는 중…",
