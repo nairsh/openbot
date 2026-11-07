@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { Effect } from "effect";
 import type { CustomProviderConfig } from "./opencode-config";
 import type { PiMcpExtension } from "./pi-mcp";
+import { PI_REPORTED_COST_SOURCE } from "./pi-reported-cost";
 import { providerCall } from "./provider-client-effects";
 
 /*
@@ -19,7 +20,7 @@ import { providerCall } from "./provider-client-effects";
  *
  * An endpoint gives no model limits, so each model gets a 128K window and 16K of output. Pi prices
  * a model from its cost table, which is empty here; a cost that the endpoint reports with its usage,
- * as OpenRouter does, goes on the message, so the session's cost is the endpoint's own.
+ * as OpenRouter and Bifrost do, goes on the message (`pi-reported-cost.ts`).
  */
 const EXTENSION = `export default function (pi) {
   const slot = Symbol.for("openbot.pi.directEndpoints");
@@ -45,19 +46,7 @@ const EXTENSION = `export default function (pi) {
     });
   }
 
-  let reportedCost = 0;
-  pi.on("provider_stream_event", (event) => {
-    const cost = event.data?.usage?.cost;
-    if (typeof cost === "number" && Number.isFinite(cost) && cost > 0) reportedCost = cost;
-  });
-  pi.on("message_end", (event) => {
-    const cost = reportedCost;
-    reportedCost = 0;
-    const message = event.message;
-    if (message.role !== "assistant" || cost <= 0 || !message.usage?.cost || message.usage.cost.total > 0) return;
-    return { message: { ...message, usage: { ...message.usage, cost: { ...message.usage.cost, total: cost } } } };
-  });
-
+${PI_REPORTED_COST_SOURCE}
   const MAX_BYTES = 5 * 1024 * 1024;
   const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
   const decode = (text) =>
