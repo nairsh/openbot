@@ -10,6 +10,7 @@ import type {
   ConversationSearchPage,
   ConversationSnapshot,
   HostedSiteConversationEventStatus,
+  SentMessageStats,
 } from "@openbot/contracts/ipc";
 import { AgentHistoryQueries, type AgentHistorySelection } from "./database/agent-history-queries";
 import { type AgentModelChange, AgentRoster } from "./database/agent-roster";
@@ -17,6 +18,7 @@ import { AgentUsage } from "./database/agent-usage";
 import { type ConversationMarkerExclusions, ConversationQueries } from "./database/conversation-queries";
 import { ConversationWriter } from "./database/conversation-writer";
 import { DatabaseCore, type OrchestrationEventInput } from "./database/database-core";
+import { deletedThreadMessageIds } from "./database/deleted-thread-messages";
 import {
   type ActiveHostedSiteConversationEvent,
   HostedSiteEventLog,
@@ -184,8 +186,8 @@ export class OpenBotDatabase {
     return this.#conversations.readConversation(agentId, threadId);
   }
 
-  readTurnAssistantMessages(agentId: string, threadId: string, turnId: string): ConversationMessage[] {
-    return this.#conversations.readTurnAssistantMessages(agentId, threadId, turnId);
+  readTurnAssistantMessages(agentId: string, turnId: string): ConversationMessage[] {
+    return this.#conversations.readTurnAssistantMessages(agentId, turnId);
   }
 
   readActiveTurnId(agentId: string, threadId: string | null): string | null {
@@ -227,6 +229,14 @@ export class OpenBotDatabase {
     return this.#conversations.readConversationRecoveryMessages(agentId, threadId, activeTurnId);
   }
 
+  conversationCursorAt(threadId: string, messageId: string): string | null {
+    return this.#conversations.conversationCursorAt(threadId, messageId);
+  }
+
+  conversationCountBefore(threadId: string, messageId: string, options: ConversationMarkerExclusions = {}): number {
+    return this.#conversations.conversationCountBefore(threadId, messageId, options);
+  }
+
   readConversationPage(
     agentId: string,
     threadId: string | null,
@@ -250,12 +260,17 @@ export class OpenBotDatabase {
     agentId?: string,
     cursor?: string,
     requestedLimit = 100,
+    includeSideThreads = false,
   ): ConversationSearchPage {
-    return this.#conversations.searchConversationMessages(query, agentId, cursor, requestedLimit);
+    return this.#conversations.searchConversationMessages(query, agentId, cursor, requestedLimit, includeSideThreads);
   }
 
   searchConversationFiles(query: string, cursor?: string, requestedLimit = 50): ConversationFileSearchPage {
     return this.#conversations.searchConversationFiles(query, cursor, requestedLimit);
+  }
+
+  readSentMessageStats(): SentMessageStats {
+    return this.#conversations.readSentMessageStats();
   }
 
   persistConversation(
@@ -303,8 +318,15 @@ export class OpenBotDatabase {
     eventType: string;
     detail?: unknown;
     commandId?: string;
+    /** The shown messages that a person deletes. No later write or replay brings them back. */
+    deletedMessageIds?: readonly string[];
   }): number {
     return this.#conversationWrites.persistConversationChanges(input);
+  }
+
+  /** The ids of the messages that a person deleted from this thread. */
+  deletedConversationMessageIds(threadId: string): Set<string> {
+    return deletedThreadMessageIds(this.connection, threadId);
   }
 
   upsertProviderHistoryMessage(input: {
@@ -412,6 +434,34 @@ export class OpenBotDatabase {
       });
       db.exec("COMMIT");
       return { ...structuredClone(snapshot), revision };
+    } catch (error) {
+      if (db.isTransaction) db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  /**
+   * Writes the mailbox changes and runs `write` in one transaction, so the mailbox rows and the rows
+   * that name them commit together or not at all.
+   */
+  persistMailboxChangesWith<T>(
+    mailboxState: MailboxProjectionState,
+    mailboxChanges: MailboxProjectionChanges,
+    mailboxEventType: string,
+    write: () => T,
+  ): T {
+    const db = this.connection;
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      this.applyMailboxChanges(
+        `mailbox:${mailboxEventType}:${randomUUID()}`,
+        mailboxState,
+        mailboxChanges,
+        mailboxEventType,
+      );
+      const result = write();
+      db.exec("COMMIT");
+      return result;
     } catch (error) {
       if (db.isTransaction) db.exec("ROLLBACK");
       throw error;

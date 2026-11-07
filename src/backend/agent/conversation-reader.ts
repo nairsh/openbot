@@ -15,7 +15,8 @@ import type { ConversationRuntime } from "./conversation-runtime";
 import type { MailboxSync } from "./mailbox-sync";
 
 export interface ConversationReaderHooks {
-  emit(event: AgentEvent): void;
+  /** With `memberId`, the event is only for the connections of that member. */
+  emit(event: AgentEvent, memberId?: string): void;
   listAgents(): AgentSummary[];
 }
 
@@ -95,8 +96,14 @@ export class ConversationReader {
     });
   }, Effect.uninterruptible);
 
-  search(query: string, agentId?: string, cursor?: string, limit = 100): ConversationSearchPage {
-    return this.#store.database.searchConversationMessages(query, agentId, cursor, limit);
+  search(
+    query: string,
+    agentId?: string,
+    cursor?: string,
+    limit = 100,
+    includeSideThreads = false,
+  ): ConversationSearchPage {
+    return this.#store.database.searchConversationMessages(query, agentId, cursor, limit, includeSideThreads);
   }
 
   searchFiles(query: string, cursor?: string, limit = 50): ConversationFileSearchPage {
@@ -109,6 +116,21 @@ export class ConversationReader {
 
   adoptReads(sourceMemberId: string, targetMemberId: string): void {
     this.#reads.adoptMemberState(sourceMemberId, targetMemberId);
+  }
+
+  /** The member's read mark of a side thread, by the thread's own id. */
+  readThread(memberId: string, threadId: string, options: ConversationMarkerExclusions = {}) {
+    return this.#reads.readStateForThread(memberId, threadId, options);
+  }
+
+  /** Moves the member's read mark of a side thread. The mark never moves back. */
+  markThreadRead(
+    memberId: string,
+    threadId: string,
+    throughMessageId: string,
+    options: ConversationMarkerExclusions = {},
+  ) {
+    return this.#reads.markReadForThread(memberId, threadId, throughMessageId, options);
   }
 
   readonly markRead = Effect.fn("ConversationReader.markRead")(function* (
@@ -125,11 +147,15 @@ export class ConversationReader {
       if (state.throughMessageId !== previous) {
         // Read cursors are shared by a member's devices, not by every team member.
         // Invalidate without broadcasting a reader's cursor; each client reloads its own state.
-        this.#hooks.emit({
-          type: "conversation-invalidated",
-          agentId,
-          revision: this.#store.database.readConversationRevision(agentId, agent.threadId),
-        });
+        // Only this member's connections get it: the messages did not change for the others.
+        this.#hooks.emit(
+          {
+            type: "conversation-invalidated",
+            agentId,
+            revision: this.#store.database.readConversationRevision(agentId, agent.threadId),
+          },
+          memberId,
+        );
       }
       return state;
     });
@@ -139,15 +165,20 @@ export class ConversationReader {
     this: ConversationReader,
     agentId: string,
     memberId: string,
+    fromMessageId: string | null = null,
+    options: ConversationMarkerExclusions = {},
   ) {
     const agent = yield* this.#store.existing(agentId).pipe(toConversationReadFailed);
     return yield* readerStep(() => {
-      const state = this.#reads.markUnreadForThread(memberId, agent.threadId);
-      this.#hooks.emit({
-        type: "conversation-invalidated",
-        agentId,
-        revision: this.#store.database.readConversationRevision(agentId, agent.threadId),
-      });
+      const state = this.#reads.markUnreadForThread(memberId, agent.threadId, fromMessageId, options);
+      this.#hooks.emit(
+        {
+          type: "conversation-invalidated",
+          agentId,
+          revision: this.#store.database.readConversationRevision(agentId, agent.threadId),
+        },
+        memberId,
+      );
       return state;
     });
   }, Effect.uninterruptible);

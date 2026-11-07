@@ -22,9 +22,7 @@ const profileFields = {
   description: z
     .string()
     .max(INPUT_LIMITS.agentDescription)
-    .describe(
-      `Standing instructions, at most ${INPUT_LIMITS.agentDescription} characters. Shorten longer instructions before calling this tool.`,
-    ),
+    .describe(`A short summary of the agent's work, at most ${INPUT_LIMITS.agentDescription} characters.`),
   avatarSeed: z.string().regex(AVATAR_SEED_PATTERN, "Invalid avatar seed."),
   // A number schema, not z.literal: Gemini rejects a request whose tool schema has a non-string enum.
   avatarHue: z
@@ -58,7 +56,7 @@ export const createAgentToolSchema = z
     reasoningEffort: z
       .enum(AGENT_REASONING_EFFORTS)
       .describe(
-        "Reasoning effort that the model supports, from list_models. Omit to use your own effort when the new agent gets your model, else the model's default.",
+        "An effort of the model from list_models. Omit for your own effort when the new agent gets your model, else the model's default.",
       )
       .optional(),
   })
@@ -67,6 +65,13 @@ export const createAgentToolSchema = z
 export const listModelsToolSchema = z
   .object({
     provider: z.enum(AGENT_PROVIDERS).describe("Show only the models of this provider.").optional(),
+    query: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .describe("Words that a model id or name contains. Searches all models.")
+      .optional(),
   })
   .strict();
 
@@ -97,13 +102,13 @@ export const updateProfileToolSchema = z
     reasoningEffort: z
       .enum(AGENT_REASONING_EFFORTS)
       .describe(
-        "New reasoning effort that the model supports, from list_models. Omit to keep the current effort when the model supports it, else to use the model's default.",
+        "New effort of the model from list_models. Omit to keep the current effort when the model supports it, else the model's default.",
       )
       .optional(),
     providerAccountId: providerAccountId
       .nullable()
       .describe(
-        "Account id from list_models for the agent's provider, or null for the provider's own sign-in. A provider change without it uses the new provider's own sign-in. An account change fails while the agent has a turn or queued messages.",
+        "Account id from list_models for the agent's provider, or null for the provider's own sign-in. A provider change without it uses the new provider's own sign-in. A provider, account or custom-agent change while the agent works is saved as pendingRuntime and applies before its next turn.",
       )
       .optional(),
     backupModels: z

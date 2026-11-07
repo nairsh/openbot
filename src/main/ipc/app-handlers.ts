@@ -1,30 +1,36 @@
-import { Effect, Semaphore } from "effect";
+import { Effect } from "effect";
 // App identity, first-run setup, the analytics preference, external links and the data and
 // diagnostics exports.
 
 import { HOSTED_SERVER_CONTACT_URL } from "@openbot/contracts/hosted-servers";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import {
+  type AnalyticsPreference,
   type AppInfo,
   type AppSetupState,
   type AppVariant,
   type ChatWindowTarget,
   type ExternalDestination,
+  type ExternalLinkBrowser,
+  externalLinkAppName,
   GROK_BOT_EXPORT_URL,
 } from "@openbot/contracts/ipc";
-import { app, type BrowserWindow, shell } from "electron";
+import type { AppTranslate } from "@openbot/i18n";
+import { analyticsOnByDefault } from "@openbot/telemetry";
+import { app, type BrowserWindow, dialog, type OpenDialogOptions, type WebContents } from "electron";
 import { version as developmentVersion } from "../../../package.json";
 import type { AgentService } from "../../backend/agent-service";
 import type { BrowserHost } from "../../backend/browser-host";
 import type { MailboxStore } from "../../backend/mailbox-store";
 import type { AgentDefaultsPreferenceStore } from "../agent-defaults-preference-store";
 import type { AgentMemoryLimitSetting } from "../agent-memory-limit-preference-store";
-import { readAnalyticsPreference, writeAnalyticsPreference } from "../analytics-preference-store";
+import type { AnalyticsPreferenceService } from "../analytics-preference-service";
 import type { AppBehaviorService } from "../app-behavior-service";
 import type { AppearanceService } from "../appearance-service";
 import type { ApprovalAutomation } from "../approval-automation-store";
 import type { BusyMessageModePreferenceStore } from "../busy-message-mode-preference-store";
 import type { ComposerSuggestionPreferenceStore } from "../composer-suggestion-preference-store";
+import type { ExternalLinkOpener, ExternalLinkPreferenceStore } from "../external-link-opener";
 import type { InterfaceSizeService } from "../interface-size-service";
 import type { LanguageService } from "../language-service";
 import type { LogoColorService } from "../logo-color-service";
@@ -48,11 +54,20 @@ import {
   parseChatWindowTarget,
   parseComposerSuggestionPreference,
   parseExternalDestination,
+  parseExternalLinkPreference,
   parseRemoteNetworkRoutePreference,
   parseRemoteSessionReusePreference,
+  parseRendererTimingReport,
   parseSetup,
 } from "./app-inputs";
 import { stringPayload } from "./validation";
+
+const OPENBOT_SITE = "https://openbot.run";
+
+/** The first post that the social toast offers, encoded for a query string. */
+function draftPost(translate: AppTranslate): string {
+  return encodeURIComponent(translate("app.socialFollow.draftPost", { site: "openbot.run" }));
+}
 
 /**
  * Every destination `openExternal` may reach, as a closed table.
@@ -65,18 +80,36 @@ import { stringPayload } from "./validation";
  * it is read from `mac-permission-urls.ts` rather than written twice. `hosted-server-contact` is a
  * `mailto:` address, which `openUrl` refuses; the web client opens the same constant.
  */
-const EXTERNAL_DESTINATIONS: Record<ExternalDestination, string> = {
+const EXTERNAL_DESTINATIONS: Record<ExternalDestination, string | ((translate: AppTranslate) => string)> = {
   "agent-setup": "https://github.com/nightly-labs/openbot/blob/main/docs/TROUBLESHOOTING.md",
   "opencode-install": "https://opencode.ai/docs/",
   "opencode-auth": "https://opencode.ai/auth",
   "claude-install": "https://code.claude.com/docs",
+  "hermes-install": "https://hermes-agent.nousresearch.com/docs/getting-started/installation",
   feedback: "https://x.com/intent/post?text=Feedback%20for%20OpenBot%20%40norbertbodziony%3A%20",
   message: "https://x.com/norbertbodziony",
   changelog: "https://openbot.run/changelog",
   guides: "https://openbot.run/guides",
   // A Redirect Rule in the openbot.run Cloudflare zone sends this to the current Discord invite.
   discord: "https://discord.openbot.run",
+  github: "https://github.com/nightly-labs/openbot",
   x: "https://x.com/OpenBot_",
+  threads: "https://www.threads.com/@openbot.run",
+  instagram: "https://www.instagram.com/openbot.run/",
+  tiktok: "https://www.tiktok.com/@openbot.run",
+  facebook: "https://www.facebook.com/profile.php?id=61595425259628",
+  linkedin: "https://www.linkedin.com/company/openbot-si/",
+  reddit: "https://www.reddit.com/r/OpenBot_/",
+  // A post page that takes text opens with the first post in the app language. LinkedIn and Facebook
+  // take only a link; Instagram and TikTok take nothing, so the renderer copies the post first.
+  "x-post": (translate) => `https://x.com/intent/post?text=${draftPost(translate)}`,
+  "threads-post": (translate) => `https://www.threads.com/intent/post?text=${draftPost(translate)}`,
+  "linkedin-post": `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(OPENBOT_SITE)}`,
+  "reddit-post": (translate) =>
+    `https://www.reddit.com/r/OpenBot_/submit?type=TEXT&title=${encodeURIComponent(translate("app.socialFollow.redditTitle"))}&text=${draftPost(translate)}`,
+  "facebook-post": `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(OPENBOT_SITE)}`,
+  "instagram-post": "https://www.instagram.com/",
+  "tiktok-post": "https://www.tiktok.com/upload",
   "grok-bot-export": GROK_BOT_EXPORT_URL,
   "hosted-server-contact": HOSTED_SERVER_CONTACT_URL,
   "mac-screen-recording": MAC_PERMISSION_URLS["screen-recording"],
@@ -85,8 +118,9 @@ const EXTERNAL_DESTINATIONS: Record<ExternalDestination, string> = {
 import { runCauseEffect } from "../../backend/effect-boundary";
 import { openHttpLink } from "../message-link-relay";
 import type { ResourceMonitor } from "../resource-monitor";
+import type { StartupTiming } from "../startup-timing";
 import type { TraceFile } from "../trace-file";
-import { handler, type IpcGroupHandlers, payloadHandler } from "./define-ipc-group";
+import { eventPayloadHandler, handler, type IpcGroupHandlers, payloadHandler } from "./define-ipc-group";
 
 export interface AppIpcDependencies {
   service: AgentService;
@@ -94,7 +128,7 @@ export interface AppIpcDependencies {
   browser: BrowserHost;
   updater: UpdateService;
   setupFile: string;
-  analyticsPreferenceFile: string;
+  analyticsPreferences: AnalyticsPreferenceService;
   approvalAutomation: ApprovalAutomation;
   busyMessageMode: BusyMessageModePreferenceStore;
   composerSuggestions: ComposerSuggestionPreferenceStore;
@@ -105,6 +139,10 @@ export interface AppIpcDependencies {
   /** Applies a changed network route to the devices that are connected to this computer now. */
   applyRemoteNetworkRoute: () => Promise<void>;
   remoteSessionCache: RemoteSessionCache;
+  externalLinkPreference: ExternalLinkPreferenceStore;
+  externalLinks: ExternalLinkOpener;
+  /** Opens a web page in the program that the user chose in Settings. */
+  openLink: (url: string) => Promise<void>;
   appBehavior: AppBehaviorService;
   language: LanguageService;
   logoColor: LogoColorService;
@@ -113,12 +151,16 @@ export interface AppIpcDependencies {
   initializeAgent: () => Promise<void>;
   appVariant: AppVariant;
   analyticsCaptureUrl: string | null;
+  analyticsInstallId: string | null;
   getMainWindow: () => BrowserWindow | null;
+  /** True for the main window's own `webContents`, not a chat window's. */
+  isMainWindow: (sender: WebContents) => boolean;
   openChatWindow: (target: ChatWindowTarget) => void;
   chatWindowTargets: () => ChatWindowTarget[];
-  setAnalyticsTrackingEnabled: (enabled: boolean) => void;
   trace: TraceFile;
   resources: ResourceMonitor;
+  /** Null for a local server child, which reports no start. */
+  startup: StartupTiming | null;
 }
 
 export function appIpcHandlers({
@@ -127,7 +169,7 @@ export function appIpcHandlers({
   browser,
   updater,
   setupFile,
-  analyticsPreferenceFile,
+  analyticsPreferences,
   approvalAutomation,
   busyMessageMode,
   composerSuggestions,
@@ -137,6 +179,9 @@ export function appIpcHandlers({
   remoteNetworkRoute,
   applyRemoteNetworkRoute,
   remoteSessionCache,
+  externalLinkPreference,
+  externalLinks,
+  openLink,
   appBehavior,
   language,
   logoColor,
@@ -145,15 +190,15 @@ export function appIpcHandlers({
   initializeAgent,
   appVariant,
   analyticsCaptureUrl,
+  analyticsInstallId,
   getMainWindow,
+  isMainWindow,
   openChatWindow,
   chatWindowTargets,
-  setAnalyticsTrackingEnabled,
   trace,
   resources,
+  startup,
 }: AppIpcDependencies): Pick<IpcGroupHandlers, "app" | "maintenance"> {
-  // One write at a time, so two quick toggles leave the file and the tracker at the last choice.
-  const analyticsPreferenceWrites = Semaphore.makeUnsafe(1);
   return {
     app: {
       getAppInfo: handler((): AppInfo => {
@@ -163,25 +208,42 @@ export function appIpcHandlers({
         }
         // electron-vite starts a script, so Electron reports its own version in development.
         const version = app.isPackaged ? app.getVersion() : developmentVersion;
+        // Each state other than `enabled*` (such as `disabled_software` or `unavailable_software`)
+        // composites on the CPU. This covers the GPU switch of `linux-gpu-mode.ts` and a GPU that
+        // Chromium blocks, such as the llvmpipe driver of a server or a remote desktop.
+        const softwareRendering = !app.getGPUFeatureStatus().gpu_compositing.startsWith("enabled");
         return {
           name: app.getName(),
           version,
           platform,
           variant: appVariant,
           ...(analyticsCaptureUrl ? { analyticsCaptureUrl } : {}),
+          ...(analyticsInstallId ? { analyticsInstallId } : {}),
+          ...(softwareRendering ? { softwareRendering } : {}),
         };
       }),
       getSetupState: handler(() => runCauseEffect(readSetupState(setupFile))),
-      getAnalyticsPreference: handler(() => Effect.runPromise(readAnalyticsPreference(analyticsPreferenceFile))),
-      setAnalyticsPreference: payloadHandler(parseAnalyticsPreference, (parsed) => {
-        return runCauseEffect(
-          analyticsPreferenceWrites.withPermit(
-            writeAnalyticsPreference(analyticsPreferenceFile, parsed.enabled).pipe(
-              Effect.tap((preference) => Effect.sync(() => setAnalyticsTrackingEnabled(preference.enabled))),
-              Effect.uninterruptible,
-            ),
-          ),
-        );
+      getAnalyticsPreference: handler(() =>
+        runCauseEffect(
+          readSetupState(setupFile).pipe(Effect.flatMap((setup) => analyticsPreferences.read(setup.completed))),
+        ),
+      ),
+      // An answer the user gave on another device comes before the regional default.
+      getAnalyticsDefault: handler(
+        (): AnalyticsPreference => ({
+          enabled:
+            analyticsPreferences.accountAnswer() ??
+            analyticsOnByDefault(app.getLocaleCountryCode(), Intl.DateTimeFormat().resolvedOptions().timeZone),
+        }),
+      ),
+      setAnalyticsPreference: payloadHandler(parseAnalyticsPreference, (parsed) =>
+        runCauseEffect(analyticsPreferences.set(parsed.enabled, parsed.chosen === true)),
+      ),
+      // Any window can send its bounded counts. Only the main window's workspace load times the start,
+      // and main times it on its own clock.
+      reportRendererTiming: eventPayloadHandler(parseRendererTimingReport, (event, report) => {
+        if (report.workspaceReady && isMainWindow(event.sender)) startup?.workspaceReady();
+        resources.observeRendererTiming(report);
       }),
       getApprovalAutomation: handler(() => approvalAutomation.current()),
       getBusyMessageModePreference: handler(() => busyMessageMode.get()),
@@ -247,17 +309,44 @@ export function appIpcHandlers({
         runCauseEffect(interfaceSize.set(parsed)),
       ),
       saveSetup: payloadHandler(parseSetup, async (input): Promise<AppSetupState> => {
+        // Before the setup file: once setup is complete, a missing choice reads as an older user's "on".
+        const before = await runCauseEffect(readSetupState(setupFile));
+        await runCauseEffect(analyticsPreferences.saveDefault(before.completed));
         const state = await runCauseEffect(writeSetupState(setupFile, input));
         await runCauseEffect(service.setPreferredProvider(input.preferredProvider, input.preferredModel));
         await initializeAgent();
         return state;
       }),
       openExternal: payloadHandler(parseExternalDestination, (parsed) => {
-        return shell.openExternal(EXTERNAL_DESTINATIONS[parsed]);
+        const target = EXTERNAL_DESTINATIONS[parsed];
+        return openLink(typeof target === "string" ? target : target(language.translate));
       }),
-      openUrl: payloadHandler(stringPayload("URL", INPUT_LIMITS.browserUrl), (url) =>
-        openHttpLink(url, (address) => shell.openExternal(address)),
+      getSentMessageStats: handler(() => service.readSentMessageStats()),
+      openUrl: payloadHandler(stringPayload("URL", INPUT_LIMITS.browserUrl), (url) => openHttpLink(url, openLink)),
+      getExternalLinkPreference: handler(() => externalLinkPreference.get()),
+      setExternalLinkPreference: payloadHandler(parseExternalLinkPreference, (parsed) =>
+        runCauseEffect(externalLinkPreference.set(parsed)),
       ),
+      listExternalLinkBrowsers: handler(() => runCauseEffect(externalLinks.listBrowsers())),
+      chooseExternalLinkApp: handler(async (): Promise<ExternalLinkBrowser | null> => {
+        const mainWindow = getMainWindow();
+        // macOS shows an application bundle as one file, so the dialog can offer only applications.
+        const options: OpenDialogOptions = {
+          title: language.translate("dialog.chooseExternalLinkApp"),
+          properties: ["openFile"],
+          ...(process.platform === "darwin"
+            ? {
+                defaultPath: "/Applications",
+                filters: [{ name: language.translate("dialog.filter.applications"), extensions: ["app"] }],
+              }
+            : {}),
+        };
+        const result = mainWindow
+          ? await dialog.showOpenDialog(mainWindow, options)
+          : await dialog.showOpenDialog(options);
+        const path = result.canceled ? undefined : result.filePaths[0];
+        return path ? { name: externalLinkAppName(path), path } : null;
+      }),
       openChatWindow: payloadHandler(parseChatWindowTarget, openChatWindow),
       getChatWindows: handler(chatWindowTargets),
     },

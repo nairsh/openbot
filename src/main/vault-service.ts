@@ -1,7 +1,9 @@
-// The Vault of this computer: logins, payment cards and contact info that the user saves in Server
-// settings. Agents fill logins through the `PasswordVault` port (`openbot:` IDs) and cards and contact
-// info through `VaultItems`; neither port gives an agent a password, a card number or a security code.
-// Agents can also add and change items through `VaultItems`, but cannot set a secret.
+// The Vault of this computer: logins, payment cards, contact info and API keys that the user saves in
+// Server settings. Agents fill logins through the `PasswordVault` port (`openbot:` IDs) and cards and
+// contact info through `VaultItems`; neither port gives an agent a password, a card number or a security
+// code. Agents can also add and change items through `VaultItems`, and save a password or an API key
+// that they have, but never read one back or set a card number. API keys reach an agent only as files
+// that `AgentApiKeys` writes.
 
 import { randomUUID } from "node:crypto";
 import {
@@ -23,15 +25,17 @@ import { registerSecretValues } from "@openbot/logging";
 import { Effect } from "effect";
 import { type PasswordVault, PasswordVaultError, websiteMatchesOrigin, websiteUrl } from "../backend/password-vault";
 import type {
+  VaultAgentApiKey,
   VaultAgentChange,
   VaultAgentResult,
   VaultCardSecret,
+  VaultEnteredItem,
   VaultItems,
   VaultTypedLogin,
 } from "../backend/vault-items";
 import { parseLoginCsv } from "./vault-csv";
 import { decodeVaultSaveInput, vaultWebsite } from "./vault-inputs";
-import type { StoredCard, StoredContact, StoredLogin, VaultRecord, VaultStore } from "./vault-store";
+import type { StoredApiKey, StoredCard, StoredContact, StoredLogin, VaultRecord, VaultStore } from "./vault-store";
 
 type VaultErrorKey = Extract<keyof SourceMessages, `error.vault.${string}`>;
 
@@ -60,6 +64,10 @@ function registerSecrets(record: VaultRecord): void {
       number.replace(/(\d{4})(?=\d)/gu, "$1 "),
       number.replace(/(\d{4})(?=\d)/gu, "$1-"),
     ]),
+  );
+  registerSecretValues(
+    record.apiKeys.map(({ key }) => key),
+    { allowShort: true },
   );
 }
 
@@ -114,6 +122,8 @@ function itemName(record: VaultRecord, id: string): VaultAgentResult | null {
   const contact = record.contacts.find((item) => item.id === id);
   if (contact)
     return { id, kind: "contact", name: contact.label || contact.fullName || contact.email || contact.address };
+  const apiKey = record.apiKeys.find((item) => item.id === id);
+  if (apiKey) return { id, kind: "apiKey", name: apiKey.name };
   return null;
 }
 
@@ -138,7 +148,7 @@ function agentSaveInput(record: VaultRecord, change: VaultAgentChange): VaultSav
         website: existing.website,
         username: change.username ?? existing.username,
         notes: existing.notes,
-        password: null,
+        password: change.password ?? null,
       });
     }
     case "card": {
@@ -187,6 +197,16 @@ function summary(record: VaultRecord): VaultItemSummary[] {
       }),
     ),
     ...record.contacts.map((contact): VaultItemSummary => ({ ...contact, kind: "contact" })),
+    ...record.apiKeys.map(
+      (apiKey): VaultItemSummary => ({
+        id: apiKey.id,
+        ...origin(apiKey, undefined),
+        kind: "apiKey",
+        name: apiKey.name,
+        notes: apiKey.notes,
+        hasKey: apiKey.key.length > 0,
+      }),
+    ),
   ];
 }
 
@@ -247,16 +267,27 @@ export class VaultService {
     return this.state();
   });
 
-  /** A saved password, card number or security code, for the user who asked to see or copy it. */
+  /** A saved password, card number, security code or API key, for the user who asked to see or copy it. */
   reveal({ id, field }: VaultSecretRequest): string {
     this.#requireReady();
     const record = this.#store.read();
-    if (field === "password") {
-      const login = record.logins.find((item) => item.id === id);
-      if (login) return login.password;
-    } else {
-      const card = record.cards.find((item) => item.id === id);
-      if (card) return field === "number" ? card.number : card.securityCode;
+    switch (field) {
+      case "password": {
+        const login = record.logins.find((item) => item.id === id);
+        if (login) return login.password;
+        break;
+      }
+      case "number":
+      case "securityCode": {
+        const card = record.cards.find((item) => item.id === id);
+        if (card) return field === "number" ? card.number : card.securityCode;
+        break;
+      }
+      case "key": {
+        const apiKey = record.apiKeys.find((item) => item.id === id);
+        if (apiKey) return apiKey.key;
+        break;
+      }
     }
     return refuse("error.vault.itemMissing");
   }
@@ -369,7 +400,9 @@ export class VaultService {
   readonly #agentDelete = Effect.fn("VaultService.agentDelete")(function* (this: VaultService, id: string) {
     const outcome: { deleted: VaultAgentResult | null } = { deleted: null };
     yield* this.#change((record) => {
-      outcome.deleted = itemName(record, id);
+      // An agent does not see API keys as items, so it cannot delete one.
+      const named = itemName(record, id);
+      outcome.deleted = named?.kind === "apiKey" ? null : named;
       return outcome.deleted ? this.#without(record, id) : record;
     });
     return outcome.deleted;
@@ -443,9 +476,52 @@ export class VaultService {
     return outcome.saved ?? (yield* vaultError("error.vault.itemMissing"));
   });
 
-  /** The cards and contact info, for the browser tools. */
+  readonly #saveApiKey = Effect.fn("VaultService.saveApiKey")(function* (
+    this: VaultService,
+    apiKey: VaultAgentApiKey,
+    addedBy: string | undefined,
+  ) {
+    const outcome: { saved: (VaultAgentResult & { created: boolean }) | null } = { saved: null };
+    yield* this.#change((record) => {
+      const existing = record.apiKeys.find((item) => item.name === apiKey.name);
+      const next = this.#put(
+        record,
+        decodeVaultSaveInput({
+          kind: "apiKey",
+          id: existing?.id ?? null,
+          name: apiKey.name,
+          notes: apiKey.notes ?? existing?.notes ?? "",
+          key: apiKey.key,
+        }),
+        addedBy,
+      );
+      const named = itemName(next.record, next.id);
+      outcome.saved = named && { ...named, created: !existing };
+      return next.record;
+    });
+    return outcome.saved ?? (yield* vaultError("error.vault.itemMissing"));
+  });
+
+  readonly #addEntered = Effect.fn("VaultService.addEntered")(function* (
+    this: VaultService,
+    item: VaultEnteredItem,
+    addedBy: string | undefined,
+  ) {
+    const outcome: { saved: VaultAgentResult | null } = { saved: null };
+    yield* this.#change((record) => {
+      // The same checks as the Vault page: an HTTPS website, a card number that passes the Luhn check.
+      const next = this.#put(record, decodeVaultSaveInput(item), addedBy);
+      outcome.saved = itemName(next.record, next.id);
+      return next.record;
+    });
+    return outcome.saved ?? (yield* vaultError("error.vault.itemMissing"));
+  });
+
+  /** The cards and contact info, for the browser tools, and the API keys, for `AgentApiKeys`. */
   readonly items: VaultItems = {
     ready: () => this.#status === "ready",
+    apiKeys: () =>
+      this.#status === "ready" ? this.#store.read().apiKeys.map(({ name, key }) => ({ name, value: key })) : [],
     hasCards: () => this.#status === "ready" && this.#store.read().cards.length > 0,
     hasContacts: () => this.#status === "ready" && this.#store.read().contacts.length > 0,
     listForAgent: () => {
@@ -497,6 +573,8 @@ export class VaultService {
     save: (change, addedBy) => this.#agentSave(change, addedBy),
     delete: (id) => this.#agentDelete(id),
     saveLogin: (login, addedBy) => this.#saveTypedLogin(login, addedBy),
+    saveApiKey: (apiKey, addedBy) => this.#saveApiKey(apiKey, addedBy),
+    addEntered: (item, addedBy) => this.#addEntered(item, addedBy),
   };
 
   /** `record` with `input` added or changed, and the id of that item. */
@@ -516,6 +594,10 @@ export class VaultService {
         const contact: StoredContact = { ...fields, id: existing?.id ?? randomUUID(), ...origin(existing, addedBy) };
         return { record: { ...record, contacts: replaceOrAdd(record.contacts, contact) }, id: contact.id };
       }
+      case "apiKey": {
+        const apiKey = this.#apiKey(record, input, addedBy);
+        return { record: { ...record, apiKeys: replaceOrAdd(record.apiKeys, apiKey) }, id: apiKey.id };
+      }
     }
   }
 
@@ -527,6 +609,7 @@ export class VaultService {
         .filter((card) => card.id !== id)
         .map((card) => (card.billingContactId === id ? { ...card, billingContactId: null } : card)),
       contacts: record.contacts.filter((contact) => contact.id !== id),
+      apiKeys: record.apiKeys.filter((apiKey) => apiKey.id !== id),
     };
   }
 
@@ -571,6 +654,26 @@ export class VaultService {
       securityCode: input.securityCode ?? existing?.securityCode ?? "",
       billingContactId: input.billingContactId,
       ...(fillSites.length > 0 ? { fillSites } : {}),
+      ...origin(existing, addedBy),
+    };
+  }
+
+  /** A name names one key: an agent reads the key by its name. */
+  #apiKey(
+    record: VaultRecord,
+    input: Extract<VaultSaveInput, { kind: "apiKey" }>,
+    addedBy: string | undefined,
+  ): StoredApiKey {
+    const existing = input.id === null ? undefined : this.#find(record.apiKeys, input.id);
+    const key = input.key ?? existing?.key;
+    if (!key) return refuse("error.vault.apiKeyRequired");
+    if (record.apiKeys.some((item) => item.name === input.name && item.id !== existing?.id))
+      return refuse("error.vault.apiKeyNameTaken");
+    return {
+      id: existing?.id ?? randomUUID(),
+      name: input.name,
+      key,
+      notes: input.notes,
       ...origin(existing, addedBy),
     };
   }

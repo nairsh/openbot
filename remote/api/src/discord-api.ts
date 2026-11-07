@@ -17,7 +17,7 @@ import {
 } from "@openbot/contracts/signal-protocol/discord-api";
 import { Effect, Schema } from "effect";
 import { z } from "zod";
-import { attachmentsOf, type DiscordState, discordAuthorName, stripBotMention } from "./discord-events";
+import { type DiscordState, discordAuthorName, messageBody } from "./discord-events";
 
 const snowflakeSchema = z.string().regex(/^[0-9]{1,20}$/u);
 const contentSchema = z.string().min(1).max(DISCORD_MESSAGE_TEXT_LIMIT);
@@ -204,6 +204,35 @@ const userSchema = z.object({
   bot: z.boolean().optional(),
 });
 const memberSchema = z.object({ nick: z.string().nullish(), user: userSchema });
+const historyAttachmentsSchema = z
+  .array(
+    z.object({
+      id: snowflakeSchema,
+      filename: z.string(),
+      content_type: z.string().optional(),
+      size: z.number().int().nonnegative(),
+      url: z.string(),
+    }),
+  )
+  .optional();
+// Each part is optional: Discord leaves out the parts that an embed does not have. Embeds of an
+// unexpected shape are left out, so that they do not fail the whole page of messages.
+const historyEmbedsSchema = z
+  .array(
+    z.object({
+      title: z.string().optional(),
+      description: z.string().optional(),
+      url: z.string().optional(),
+      author: z.object({ name: z.string().optional(), url: z.string().optional() }).optional(),
+      fields: z.array(z.object({ name: z.string(), value: z.string() })).optional(),
+      footer: z.object({ text: z.string().optional() }).optional(),
+      image: z.object({ url: z.string().optional() }).optional(),
+      thumbnail: z.object({ url: z.string().optional() }).optional(),
+      video: z.object({ url: z.string().optional() }).optional(),
+    }),
+  )
+  .optional()
+  .catch(undefined);
 const historySchema = z
   .array(
     z.object({
@@ -212,15 +241,20 @@ const historySchema = z
       timestamp: z.string(),
       author: userSchema,
       member: z.object({ nick: z.string().nullish() }).optional(),
-      message_reference: z.object({ message_id: snowflakeSchema.optional() }).optional(),
-      attachments: z
+      message_reference: z
+        .object({ type: z.number().int().optional(), message_id: snowflakeSchema.optional() })
+        .optional(),
+      attachments: historyAttachmentsSchema,
+      embeds: historyEmbedsSchema,
+      // The forwarded message of a forward.
+      message_snapshots: z
         .array(
           z.object({
-            id: snowflakeSchema,
-            filename: z.string(),
-            content_type: z.string().optional(),
-            size: z.number().int().nonnegative(),
-            url: z.string(),
+            message: z.object({
+              content: z.string().optional(),
+              attachments: historyAttachmentsSchema,
+              embeds: historyEmbedsSchema,
+            }),
           }),
         )
         .optional(),
@@ -229,7 +263,9 @@ const historySchema = z
   .max(DISCORD_LIST_MESSAGES_LIMIT);
 
 const BUTTON_STYLES = { primary: 1, secondary: 2, success: 3, danger: 4 } as const;
-// No post can ping anyone: not a user, a role, `@everyone`, or the author of the replied message.
+// A new post can ping a user that it mentions, but not a role, `@everyone`, or the author of the
+// replied message. Discord sends no ping for an edit.
+const USER_MENTIONS = { parse: ["users"], replied_user: false };
 const NO_MENTIONS = { parse: [], replied_user: false };
 
 function failure(status: number, code: DiscordApiErrorCode, retryAfterMs?: number): DiscordApiFailure {
@@ -303,7 +339,7 @@ export function makeDiscordApi(transport: DiscordTransport, state: DiscordState)
           route: `/channels/${request.channelId}/messages`,
           body: {
             content: request.content,
-            allowed_mentions: NO_MENTIONS,
+            allowed_mentions: USER_MENTIONS,
             ...messageReference(request.replyTo),
             components: components(request.buttons),
           },
@@ -337,18 +373,22 @@ export function makeDiscordApi(transport: DiscordTransport, state: DiscordState)
           query: new URLSearchParams({ after: request.after, limit: String(request.limit) }),
         }).pipe(Effect.flatMap((value) => decode(historySchema, value)));
         const botUserId = state.botUserId;
+        const botRoleId = state.botRoleId(request.guildId);
         return {
           messages: messages
-            .map((message) => ({
-              id: message.id,
-              authorId: message.author.id,
-              authorName: discordAuthorName(message),
-              authorIsBot: message.author.bot === true,
-              content: stripBotMention(message.content, botUserId),
-              replyToId: message.message_reference?.message_id ?? null,
-              sentAt: message.timestamp,
-              attachments: attachmentsOf(message.attachments ?? []),
-            }))
+            .map((message) => {
+              const body = messageBody(message, botUserId, botRoleId);
+              return {
+                id: message.id,
+                authorId: message.author.id,
+                authorName: discordAuthorName(message),
+                authorIsBot: message.author.bot === true,
+                // A forward refers to the message it copies, which it does not reply to.
+                replyToId: body.forwarded ? null : (message.message_reference?.message_id ?? null),
+                sentAt: message.timestamp,
+                ...body,
+              };
+            })
             .sort((left, right) => compareSnowflakes(left.id, right.id)),
         };
       }

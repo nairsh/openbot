@@ -105,6 +105,42 @@ const PLUGIN_TEXT = {
       "prompt-tokens": "marketplace.plugin.paper.prompt.tokens",
     },
   },
+  higgsfield: {
+    tagline: "marketplace.plugin.higgsfield.tagline",
+    description: "marketplace.plugin.higgsfield.description",
+    apps: {
+      "app-higgsfield-mcp": "marketplace.plugin.higgsfield.app",
+    },
+    prompts: {
+      "prompt-credits": "marketplace.plugin.higgsfield.prompt.credits",
+      "prompt-product-shot": "marketplace.plugin.higgsfield.prompt.productShot",
+      "prompt-clip": "marketplace.plugin.higgsfield.prompt.clip",
+    },
+  },
+  elevenlabs: {
+    tagline: "marketplace.plugin.elevenlabs.tagline",
+    description: "marketplace.plugin.elevenlabs.description",
+    apps: {
+      "app-elevenlabs-mcp": "marketplace.plugin.elevenlabs.app",
+    },
+    prompts: {
+      "prompt-speech": "marketplace.plugin.elevenlabs.prompt.speech",
+      "prompt-agents": "marketplace.plugin.elevenlabs.prompt.agents",
+      "prompt-conversations": "marketplace.plugin.elevenlabs.prompt.conversations",
+    },
+  },
+  "apple-apps": {
+    tagline: "marketplace.plugin.appleApps.tagline",
+    description: "marketplace.plugin.appleApps.description",
+    apps: {
+      "app-apple-apps-mcp": "marketplace.plugin.appleApps.app",
+    },
+    prompts: {
+      "prompt-unread": "marketplace.plugin.appleApps.prompt.unread",
+      "prompt-today": "marketplace.plugin.appleApps.prompt.today",
+      "prompt-schedule": "marketplace.plugin.appleApps.prompt.schedule",
+    },
+  },
   sentry: {
     tagline: "marketplace.plugin.sentry.tagline",
     description: "marketplace.plugin.sentry.description",
@@ -115,6 +151,18 @@ const PLUGIN_TEXT = {
       "prompt-new-errors": "marketplace.plugin.sentry.prompt.newErrors",
       "prompt-top-crash": "marketplace.plugin.sentry.prompt.topCrash",
       "prompt-release-health": "marketplace.plugin.sentry.prompt.releaseHealth",
+    },
+  },
+  gitlab: {
+    tagline: "marketplace.plugin.gitlab.tagline",
+    description: "marketplace.plugin.gitlab.description",
+    apps: {
+      "app-gitlab-mcp": "marketplace.plugin.gitlab.app",
+    },
+    prompts: {
+      "prompt-review-queue": "marketplace.plugin.gitlab.prompt.reviewQueue",
+      "prompt-failed-pipeline": "marketplace.plugin.gitlab.prompt.failedPipeline",
+      "prompt-new-issue": "marketplace.plugin.gitlab.prompt.newIssue",
     },
   },
   vercel: {
@@ -141,6 +189,18 @@ const PLUGIN_TEXT = {
       "prompt-dns": "marketplace.plugin.cloudflare.prompt.dns",
     },
   },
+  supabase: {
+    tagline: "marketplace.plugin.supabase.tagline",
+    description: "marketplace.plugin.supabase.description",
+    apps: {
+      "app-supabase-mcp": "marketplace.plugin.supabase.app",
+    },
+    prompts: {
+      "prompt-projects": "marketplace.plugin.supabase.prompt.projects",
+      "prompt-tables": "marketplace.plugin.supabase.prompt.tables",
+      "prompt-errors": "marketplace.plugin.supabase.prompt.errors",
+    },
+  },
   context7: {
     tagline: "marketplace.plugin.context7.tagline",
     description: "marketplace.plugin.context7.description",
@@ -163,6 +223,18 @@ const PLUGIN_TEXT = {
       "prompt-payment": "marketplace.plugin.stripe.prompt.payment",
       "prompt-customer": "marketplace.plugin.stripe.prompt.customer",
       "prompt-link": "marketplace.plugin.stripe.prompt.link",
+    },
+  },
+  revenuecat: {
+    tagline: "marketplace.plugin.revenuecat.tagline",
+    description: "marketplace.plugin.revenuecat.description",
+    apps: {
+      "app-revenuecat-mcp": "marketplace.plugin.revenuecat.app",
+    },
+    prompts: {
+      "prompt-offerings": "marketplace.plugin.revenuecat.prompt.offerings",
+      "prompt-revenue": "marketplace.plugin.revenuecat.prompt.revenue",
+      "prompt-customer": "marketplace.plugin.revenuecat.prompt.customer",
     },
   },
   posthog: {
@@ -213,6 +285,18 @@ const PLUGIN_TEXT = {
       "prompt-compare": "marketplace.plugin.braveSearch.prompt.compare",
     },
   },
+  obsidian: {
+    tagline: "marketplace.plugin.obsidian.tagline",
+    description: "marketplace.plugin.obsidian.description",
+    apps: {
+      "app-obsidian-mcp": "marketplace.plugin.obsidian.app",
+    },
+    prompts: {
+      "prompt-recall": "marketplace.plugin.obsidian.prompt.recall",
+      "prompt-save": "marketplace.plugin.obsidian.prompt.save",
+      "prompt-log": "marketplace.plugin.obsidian.prompt.log",
+    },
+  },
   resend: {
     tagline: "marketplace.plugin.resend.tagline",
     description: "marketplace.plugin.resend.description",
@@ -225,6 +309,18 @@ const PLUGIN_TEXT = {
       "prompt-template": "marketplace.plugin.resend.prompt.template",
     },
   },
+  omnisend: {
+    tagline: "marketplace.plugin.omnisend.tagline",
+    description: "marketplace.plugin.omnisend.description",
+    apps: {
+      "app-omnisend-mcp": "marketplace.plugin.omnisend.app",
+    },
+    prompts: {
+      "prompt-last-campaign": "marketplace.plugin.omnisend.prompt.lastCampaign",
+      "prompt-segment": "marketplace.plugin.omnisend.prompt.segment",
+      "prompt-draft-campaign": "marketplace.plugin.omnisend.prompt.draftCampaign",
+    },
+  },
   composio: {
     tagline: "marketplace.plugin.composio.tagline",
     description: "marketplace.plugin.composio.description",
@@ -235,6 +331,162 @@ const PLUGIN_TEXT = {
       "prompt-inbox": "marketplace.plugin.composio.prompt.inbox",
       "prompt-handoff": "marketplace.plugin.composio.prompt.handoff",
       "prompt-apps": "marketplace.plugin.composio.prompt.apps",
+    },
+  },
+  neon: {
+    tagline: "marketplace.plugin.neon.tagline",
+    description: "marketplace.plugin.neon.description",
+    apps: {
+      "app-neon-mcp": "marketplace.plugin.neon.app",
+    },
+    prompts: {
+      "prompt-projects": "marketplace.plugin.neon.prompt.projects",
+      "prompt-slow-queries": "marketplace.plugin.neon.prompt.slowQueries",
+      "prompt-migration": "marketplace.plugin.neon.prompt.migration",
+    },
+  },
+  prisma: {
+    tagline: "marketplace.plugin.prisma.tagline",
+    description: "marketplace.plugin.prisma.description",
+    apps: {
+      "app-prisma-mcp": "marketplace.plugin.prisma.app",
+    },
+    prompts: {
+      "prompt-databases": "marketplace.plugin.prisma.prompt.databases",
+      "prompt-backups": "marketplace.plugin.prisma.prompt.backups",
+      "prompt-logs": "marketplace.plugin.prisma.prompt.logs",
+    },
+  },
+  netlify: {
+    tagline: "marketplace.plugin.netlify.tagline",
+    description: "marketplace.plugin.netlify.description",
+    apps: {
+      "app-netlify-mcp": "marketplace.plugin.netlify.app",
+    },
+    prompts: {
+      "prompt-latest-deploy": "marketplace.plugin.netlify.prompt.latestDeploy",
+      "prompt-errors": "marketplace.plugin.netlify.prompt.errors",
+      "prompt-deploy": "marketplace.plugin.netlify.prompt.deploy",
+    },
+  },
+  railway: {
+    tagline: "marketplace.plugin.railway.tagline",
+    description: "marketplace.plugin.railway.description",
+    apps: {
+      "app-railway-mcp": "marketplace.plugin.railway.app",
+    },
+    prompts: {
+      "prompt-projects": "marketplace.plugin.railway.prompt.projects",
+      "prompt-crash": "marketplace.plugin.railway.prompt.crash",
+      "prompt-redeploy": "marketplace.plugin.railway.prompt.redeploy",
+    },
+  },
+  render: {
+    tagline: "marketplace.plugin.render.tagline",
+    description: "marketplace.plugin.render.description",
+    apps: {
+      "app-render-mcp": "marketplace.plugin.render.app",
+    },
+    prompts: {
+      "prompt-services": "marketplace.plugin.render.prompt.services",
+      "prompt-logs": "marketplace.plugin.render.prompt.logs",
+      "prompt-deploy": "marketplace.plugin.render.prompt.deploy",
+    },
+  },
+  atlassian: {
+    tagline: "marketplace.plugin.atlassian.tagline",
+    description: "marketplace.plugin.atlassian.description",
+    apps: {
+      "app-atlassian-mcp": "marketplace.plugin.atlassian.app",
+    },
+    prompts: {
+      "prompt-assigned": "marketplace.plugin.atlassian.prompt.assigned",
+      "prompt-release-page": "marketplace.plugin.atlassian.prompt.releasePage",
+      "prompt-new-item": "marketplace.plugin.atlassian.prompt.newItem",
+    },
+  },
+  todoist: {
+    tagline: "marketplace.plugin.todoist.tagline",
+    description: "marketplace.plugin.todoist.description",
+    apps: {
+      "app-todoist-mcp": "marketplace.plugin.todoist.app",
+    },
+    prompts: {
+      "prompt-today": "marketplace.plugin.todoist.prompt.today",
+      "prompt-capture": "marketplace.plugin.todoist.prompt.capture",
+      "prompt-overdue": "marketplace.plugin.todoist.prompt.overdue",
+    },
+  },
+  ticktick: {
+    tagline: "marketplace.plugin.ticktick.tagline",
+    description: "marketplace.plugin.ticktick.description",
+    apps: {
+      "app-ticktick-mcp": "marketplace.plugin.ticktick.app",
+    },
+    prompts: {
+      "prompt-today": "marketplace.plugin.ticktick.prompt.today",
+      "prompt-capture": "marketplace.plugin.ticktick.prompt.capture",
+      "prompt-week": "marketplace.plugin.ticktick.prompt.week",
+    },
+  },
+  trello: {
+    tagline: "marketplace.plugin.trello.tagline",
+    description: "marketplace.plugin.trello.description",
+    apps: {
+      "app-trello-mcp": "marketplace.plugin.trello.app",
+    },
+    prompts: {
+      "prompt-my-cards": "marketplace.plugin.trello.prompt.myCards",
+      "prompt-board": "marketplace.plugin.trello.prompt.board",
+      "prompt-new-cards": "marketplace.plugin.trello.prompt.newCards",
+    },
+  },
+  clickup: {
+    tagline: "marketplace.plugin.clickup.tagline",
+    description: "marketplace.plugin.clickup.description",
+    apps: {
+      "app-clickup-mcp": "marketplace.plugin.clickup.app",
+    },
+    prompts: {
+      "prompt-find-tasks": "marketplace.plugin.clickup.prompt.findTasks",
+      "prompt-create-task": "marketplace.plugin.clickup.prompt.createTask",
+      "prompt-summarize-doc": "marketplace.plugin.clickup.prompt.summarizeDoc",
+    },
+  },
+  coinbase: {
+    tagline: "marketplace.plugin.coinbase.tagline",
+    description: "marketplace.plugin.coinbase.description",
+    apps: {
+      "app-coinbase-mcp": "marketplace.plugin.coinbase.app",
+    },
+    prompts: {
+      "prompt-balances": "marketplace.plugin.coinbase.prompt.balances",
+      "prompt-price": "marketplace.plugin.coinbase.prompt.price",
+      "prompt-preview-order": "marketplace.plugin.coinbase.prompt.previewOrder",
+    },
+  },
+  robinhood: {
+    tagline: "marketplace.plugin.robinhood.tagline",
+    description: "marketplace.plugin.robinhood.description",
+    apps: {
+      "app-robinhood-mcp": "marketplace.plugin.robinhood.app",
+    },
+    prompts: {
+      "prompt-positions": "marketplace.plugin.robinhood.prompt.positions",
+      "prompt-watchlist": "marketplace.plugin.robinhood.prompt.watchlist",
+      "prompt-agentic-cash": "marketplace.plugin.robinhood.prompt.agenticCash",
+    },
+  },
+  huggingface: {
+    tagline: "marketplace.plugin.huggingface.tagline",
+    description: "marketplace.plugin.huggingface.description",
+    apps: {
+      "app-huggingface-mcp": "marketplace.plugin.huggingface.app",
+    },
+    prompts: {
+      "prompt-models": "marketplace.plugin.huggingface.prompt.models",
+      "prompt-papers": "marketplace.plugin.huggingface.prompt.papers",
+      "prompt-dataset": "marketplace.plugin.huggingface.prompt.dataset",
     },
   },
 } as const satisfies Record<string, PluginTextKeys>;
@@ -251,6 +503,10 @@ const AUTH_TEXT: Readonly<Record<string, AppTextKey>> = {
   "Create a key": "marketplace.auth.createKey",
   "The URL of an MCP server in your Composio account": "marketplace.plugin.composio.hint.url",
   "Find it in your Composio account, in Settings > Sessions & API Key.": "marketplace.plugin.composio.hint.apiKey",
+  "In the RevenueCat dashboard, open API keys in your project and create a secret API key. A read-only key is enough to view data.":
+    "marketplace.plugin.revenuecat.hint.apiKey",
+  'In Obsidian, open Settings > Local REST API. Copy the API key and turn on "Enable non-encrypted (HTTP) server".':
+    "marketplace.plugin.obsidian.hint.apiKey",
 };
 
 const english = translateFor("en");

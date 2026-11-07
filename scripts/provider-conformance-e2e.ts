@@ -2,8 +2,8 @@
 // (`provider-fakes/agents/conformance.ts`): start and list models, one turn, a model switch, a cancel
 // and a turn after it, a resume in a new process, a missing session, and a sign-in that is necessary.
 // A driver that skips a case fails here. The fake differs per driver only where the real CLIs differ.
-// Codex, Claude, Pi, Inception, Direct and Muse speak other protocols and have no shared fake yet; the report
-// names them in `notCovered`.
+// Codex, Claude, Pi, Inception, DeepSeek, OpenRouter, Direct and Muse speak other protocols and have no
+// shared fake yet; the report names them in `notCovered`.
 // `bun run test:provider-conformance`. Writes .openbot-build/provider-conformance-e2e/report.json.
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -25,12 +25,14 @@ import { CustomAgentStore } from "../src/main/custom-agent-store";
 import { installFakeAgent, readJsonl, runTurn, startThread, stopClients, xorCipher } from "./provider-fakes/host";
 
 const OUT = resolve(import.meta.dirname, "../.openbot-build/provider-conformance-e2e");
-const NOT_COVERED = ["codex", "claude", "pi", "inception", "direct", "muse"] as const;
+const NOT_COVERED = ["codex", "claude", "pi", "inception", "deepseek", "openrouter", "direct", "muse"] as const;
 
 interface DriverCase {
   provider: AgentProviderId;
   /** The form of the missing-session error that this provider's CLI gives. */
-  missing: "protocol" | "opencode" | "antigravity" | "cursor";
+  missing: "protocol" | "opencode" | "antigravity" | "cursor" | "kimi" | "devin" | "hermes";
+  /** The agent's own form of a model set, when it differs from the configuration option. */
+  modelSet?: "kimi";
   /** Why the sign-in case does not apply, when it does not. */
   noSignIn?: string;
 }
@@ -40,7 +42,13 @@ const DRIVERS: readonly DriverCase[] = [
   { provider: "antigravity", missing: "antigravity" },
   { provider: "cursor", missing: "cursor" },
   { provider: "cline", missing: "protocol" },
+  { provider: "kimi", missing: "kimi", modelSet: "kimi" },
+  { provider: "devin", missing: "devin" },
+  // GitHub Copilot CLI 1.0.105 refuses a signed-out session with `-32000`, as the fake does. Its
+  // missing-session error is not confirmed: that needs a signed-in account.
+  { provider: "copilot", missing: "protocol" },
   { provider: "grok", missing: "protocol" },
+  { provider: "hermes", missing: "hermes" },
   {
     provider: "acp",
     missing: "protocol",
@@ -125,7 +133,11 @@ async function conform(driver: DriverCase): Promise<DriverResult> {
   const name = `${driver.provider}-agent`;
   const log = join(root, `${driver.provider}.jsonl`);
   const workspace = join(root, "workspace");
-  const setup = await driverSetup(driver, name, { FAKE_LOG: log, FAKE_MISSING: driver.missing });
+  const setup = await driverSetup(driver, name, {
+    FAKE_LOG: log,
+    FAKE_MISSING: driver.missing,
+    ...(driver.modelSet ? { FAKE_MODEL_SET: driver.modelSet } : {}),
+  });
   const label = driver.provider;
 
   // Start: the client lists the agent's models.
@@ -199,7 +211,9 @@ async function conform(driver: DriverCase): Promise<DriverResult> {
   if (!driver.noSignIn) {
     const signedIn = await runCauseEffect(client.request("account/read", {}, decodeAccountReadResult));
     assert.notEqual(signedIn.account, null, `${label}: a signed-in agent has an account.`);
-    const signedOut = (await driverSetup(driver, `${name}-signed-out`, { FAKE_SIGNED_OUT: "1" })).open();
+    const signedOut = (
+      await driverSetup(driver, `${name}-signed-out`, { FAKE_SIGNED_OUT: "1", FAKE_MISSING: driver.missing })
+    ).open();
     await runCauseEffect(signedOut.request("initialize", {}, (value) => value));
     const account = await runCauseEffect(signedOut.request("account/read", {}, decodeAccountReadResult));
     signInRequired = account.account === null;

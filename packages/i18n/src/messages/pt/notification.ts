@@ -12,6 +12,8 @@ export const messages = {
   // A workflow output step that tells the user its result.
   "notification.workflowOutput": "Um fluxo de trabalho tem um novo resultado.",
   "notification.failed": "Parou com um erro.",
+  "notification.subagentFailed": "Um subagente parou com um erro.",
+  "notification.subagentFailedFor": "Um subagente parou com um erro: {task}",
   "notification.channelTitle": "{agent} em {channel}",
   "notification.channelMessage": "Enviou uma mensagem.",
   "notification.usageLimit.title": "A conta {provider} atingiu o limite",
@@ -23,6 +25,11 @@ export const messages = {
     one: "{count} agente aguarda. O limite é renovado {reset}.",
     other: "{count} agentes aguardam. O limite é renovado {reset}.",
   },
+  "notification.machineAlert.disk": "{server}: disco {percent} cheio",
+  "notification.machineAlert.memory": "{server}: memória {percent} em uso",
+  "notification.machineAlert.cpu": "{server}: CPU {percent} ocupada",
+  "notification.machineAlert.body":
+    "Passou do nível de alerta de {level}. Veja Configurações do servidor > Armazenamento.",
   "notification.test": "As notificações estão funcionando.",
   "notification.welcome": "O OpenBot avisará aqui quando um agente precisar de você.",
   "notification.toast.region": "Notificações",

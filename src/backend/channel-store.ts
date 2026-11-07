@@ -18,7 +18,8 @@ import {
 import { markdownPreviewText } from "@openbot/contracts/markdown-preview-text";
 import { isDynamicRecord, isString } from "@openbot/contracts/runtime-values";
 import { sourceText } from "@openbot/i18n/source";
-import { deleteAggregateHistory, deleteThreadAttachments } from "./database/database-core";
+import { changesModelContent } from "./channel-history";
+import { deleteAggregateHistory, deleteReceiptsOf, deleteThreadAttachments } from "./database/database-core";
 import {
   databaseRow,
   databaseRows,
@@ -28,6 +29,36 @@ import {
 } from "./database/database-rows";
 import type { OpenBotDatabase } from "./openbot-database";
 import { revokeRoutineWebhooks } from "./webhook-route-store";
+
+/**
+ * A message that a person deleted keeps its row, with its id, sequence and author but no content,
+ * so that read, summary and context cursors stay correct. Every read skips it.
+ */
+const SHOWN_MESSAGE_SQL = "json_extract(message_json, '$.deleted') IS NOT 1";
+
+/** The row that replaces a deleted channel message. `deleted` is internal and never sent. */
+function deletedChannelMessage(entry: ChannelMessage): ChannelMessage & { deleted: true } {
+  return {
+    id: entry.id,
+    channelId: entry.channelId,
+    sequence: entry.sequence,
+    author: entry.author,
+    taskId: entry.taskId,
+    superseded: entry.superseded,
+    deleted: true,
+    message: {
+      id: entry.message.id,
+      author: entry.message.author,
+      text: "",
+      createdAt: entry.message.createdAt,
+      status: "completed",
+    },
+  };
+}
+
+function isDeletedChannelMessage(entry: ChannelMessage): boolean {
+  return isDynamicRecord(entry) && entry.deleted === true;
+}
 
 export interface ChannelAssignment {
   id: string;
@@ -104,12 +135,13 @@ export class ChannelStore {
   /**
    * Only the ids, in one query. Placing channels in the sidebar layout needs the set of ids that
    * exist - archived ones included, so an archived channel keeps its section - and the scheduler
-   * works by id as well. `list` would read every message of every channel to answer either.
+   * works by id as well. `list` would read every message of every channel to answer either. The order
+   * is the order of `list`: the layout places the channels it has no order for in it, as the sidebar does.
    */
   ids(): string[] {
-    return databaseRows(this.database.connection.prepare("SELECT channel_id FROM projection_channels").all()).map(
-      (row) => requiredStringColumn(row, "channel_id"),
-    );
+    return databaseRows(
+      this.database.connection.prepare("SELECT channel_id FROM projection_channels ORDER BY rowid").all(),
+    ).map((row) => requiredStringColumn(row, "channel_id"));
   }
 
   /**
@@ -144,6 +176,7 @@ export class ChannelStore {
           `SELECT c.channel_json AS channel_json,
             (SELECT m.message_json FROM projection_channel_messages AS m
               WHERE m.channel_id = c.channel_id
+                AND ${SHOWN_MESSAGE_SQL.replaceAll("message_json", "m.message_json")}
                 AND COALESCE(json_extract(m.message_json, '$.message.itemType'), '') != 'plan'
                 AND COALESCE(json_extract(m.message_json, '$.message.itemType'), '') != 'subagents'
               ORDER BY m.sequence DESC, m.message_id DESC LIMIT 1) AS latest_json,
@@ -152,6 +185,7 @@ export class ChannelStore {
                 AND m.sequence > COALESCE(
                   (SELECT r.through_sequence FROM projection_channel_reads AS r
                     WHERE r.channel_id = c.channel_id AND r.member_id = ?), 0)
+                AND ${SHOWN_MESSAGE_SQL.replaceAll("message_json", "m.message_json")}
                 AND json_extract(m.message_json, '$.author.id') IS NOT ?
                 AND json_extract(m.message_json, '$.author.id') IS NOT ?
                 AND COALESCE(json_extract(m.message_json, '$.message.itemType'), '') != 'plan'
@@ -233,7 +267,7 @@ export class ChannelStore {
     const rows = databaseRows(
       this.database.connection
         .prepare(
-          "SELECT message_json FROM projection_channel_messages WHERE channel_id = ? AND sequence < ? ORDER BY sequence DESC, message_id DESC LIMIT ?",
+          `SELECT message_json FROM projection_channel_messages WHERE channel_id = ? AND sequence < ? AND ${SHOWN_MESSAGE_SQL} ORDER BY sequence DESC, message_id DESC LIMIT ?`,
         )
         .all(channelId, before, limit ?? -1),
     );
@@ -244,16 +278,31 @@ export class ChannelStore {
     });
   }
 
-  /** One message by id, read through the primary key rather than the whole history. */
+  /** One message by id, read through the primary key rather than the whole history. A deleted message is null. */
   message(channelId: string, messageId: string): ChannelMessage | null {
     const row = databaseRow(
       this.database.connection
-        .prepare("SELECT message_json FROM projection_channel_messages WHERE channel_id = ? AND message_id = ?")
+        .prepare(
+          `SELECT message_json FROM projection_channel_messages WHERE channel_id = ? AND message_id = ? AND ${SHOWN_MESSAGE_SQL}`,
+        )
         .get(channelId, messageId),
     );
     if (!row) return null;
     const value = JSON.parse(requiredStringColumn(row, "message_json"));
     if (!isChannelMessage(value)) throw new Error("Invalid stored channel message.");
+    return value;
+  }
+
+  /** One task by id, read through the primary key rather than every task of the channel. */
+  task(channelId: string, taskId: string): ChannelTask | null {
+    const row = databaseRow(
+      this.database.connection
+        .prepare("SELECT task_json FROM projection_channel_tasks WHERE channel_id = ? AND task_id = ?")
+        .get(channelId, taskId),
+    );
+    if (!row) return null;
+    const value = JSON.parse(requiredStringColumn(row, "task_json"));
+    if (!isChannelTask(value)) throw new Error("Invalid stored channel task.");
     return value;
   }
 
@@ -356,9 +405,9 @@ export class ChannelStore {
     return row ? decodeAssignment(JSON.parse(requiredStringColumn(row, "assignment_json"))) : null;
   }
 
-  page(channelId: string, before?: number): ChannelPage {
-    const messages = this.messages(channelId, before, 101);
-    const hasOlder = messages.length > 100;
+  page(channelId: string, before?: number, limit = 100): ChannelPage {
+    const messages = this.messages(channelId, before, limit + 1);
+    const hasOlder = messages.length > limit;
     if (hasOlder) messages.shift();
     const olderCursor = hasOlder ? (messages[0]?.sequence ?? null) : null;
     return {
@@ -381,8 +430,8 @@ export class ChannelStore {
         .prepare(
           `SELECT COUNT(*) AS older_count,
              (SELECT json_extract(message_json, '$.message.createdAt') FROM projection_channel_messages
-              WHERE channel_id = ? ORDER BY sequence LIMIT 1) AS oldest_at
-           FROM projection_channel_messages WHERE channel_id = ? AND sequence < ?`,
+              WHERE channel_id = ? AND ${SHOWN_MESSAGE_SQL} ORDER BY sequence LIMIT 1) AS oldest_at
+           FROM projection_channel_messages WHERE channel_id = ? AND sequence < ? AND ${SHOWN_MESSAGE_SQL}`,
         )
         .get(channelId, channelId, before),
     );
@@ -390,19 +439,97 @@ export class ChannelStore {
     return { olderCount: row ? requiredNumberColumn(row, "older_count") : 0, ...(oldestAt ? { oldestAt } : {}) };
   }
 
-  commit(operationId: string, change: ChannelChange): Channel {
+  commit(operationId: string, change: ChannelChange, written?: (db: DatabaseSync, sequence: number) => void): Channel {
     const commandId = `channels:${operationId}`;
     const previous = this.database.commandResult(commandId);
     if (previous !== undefined) return decodeChannel(previous);
     if (!change.tasks.every(isChannelTask)) throw new Error("Invalid channel task.");
     const channel = { ...change.channel, revision: change.channel.revision + 1 };
-    const payload = { ...change, channel };
+    // A late write of a deleted message must not keep its text in the event history either.
+    const deleted = this.database.connection.prepare(
+      "SELECT 1 FROM projection_channel_messages WHERE channel_id = ? AND message_id = ? AND json_extract(message_json, '$.deleted') = 1",
+    );
+    const messages = change.messages.filter(
+      (message) => isDeletedChannelMessage(message) || deleted.get(channel.id, message.id) === undefined,
+    );
+    const payload = { ...change, channel, messages };
     return this.database.dispatch(
       commandId,
       [{ aggregateType: "channel", aggregateId: channel.id, eventType: "channel.changed", payload }],
+      (db, sequences) => {
+        this.project(db, payload);
+        const sequence = sequences[0];
+        if (written && sequence !== undefined) written(db, sequence);
+        return channel;
+      },
+    );
+  }
+
+  /**
+   * Writes one message that a member's turn changed. A streaming turn writes it on each delta, and
+   * each event holds the whole message, so the log grew with the square of its length (#5392). The
+   * first event of the message stays: a rebuild gives the message its place from it. The events
+   * between that one and the newest go, with their receipts.
+   */
+  captureMessage(channel: Channel, message: ChannelMessage): Channel {
+    // The id is JSON so that one message id is never the start of another: ids can hold ":".
+    const operationPrefix = `capture:${channel.id}:${JSON.stringify(message.id)}:`;
+    const commandPrefix = `channels:${operationPrefix}`;
+    return this.commit(
+      `${operationPrefix}${randomUUID()}`,
+      { channel, messages: [message], tasks: [], assignments: [] },
+      (db, sequence) => {
+        // The range reads the command index, not the payloads: they hold the long text.
+        const match = "command_id > ? AND command_id < ?";
+        const range = [commandPrefix, `${commandPrefix}\uffff`] as const;
+        const superseded = databaseRows(
+          db
+            .prepare(
+              `DELETE FROM orchestration_events WHERE ${match} AND sequence < ?
+                 AND sequence > (SELECT MIN(sequence) FROM orchestration_events WHERE ${match})
+               RETURNING command_id`,
+            )
+            .all(...range, sequence, ...range),
+        ).map((row) => requiredStringColumn(row, "command_id"));
+        deleteReceiptsOf(db, superseded);
+      },
+    );
+  }
+
+  /**
+   * Replaces one message with its deleted row. The earlier `channel.changed` events of the channel get
+   * the same row, so the text leaves those events too, and a rebuild gives the same projection. A
+   * summary that an agent wrote before the delete keeps what it says.
+   */
+  deleteMessage(channel: Channel, entry: ChannelMessage): Channel {
+    const deleted = deletedChannelMessage(entry);
+    const updated = { ...channel, revision: channel.revision + 1 };
+    const payload: ChannelChange = { channel: updated, messages: [deleted], tasks: [], assignments: [] };
+    return this.database.dispatch(
+      `channels:message-deleted:${channel.id}:${entry.id}:${randomUUID()}`,
+      [{ aggregateType: "channel", aggregateId: channel.id, eventType: "channel.changed", payload }],
       (db) => {
         this.project(db, payload);
-        return channel;
+        const events = databaseRows(
+          db
+            .prepare(
+              "SELECT sequence, payload_json FROM orchestration_events WHERE aggregate_type = 'channel' AND aggregate_id = ? AND event_type = 'channel.changed' AND instr(payload_json, ?) > 0",
+            )
+            .all(channel.id, JSON.stringify(entry.id)),
+        );
+        const update = db.prepare("UPDATE orchestration_events SET payload_json = ? WHERE sequence = ?");
+        for (const event of events) {
+          const value = JSON.parse(requiredStringColumn(event, "payload_json"));
+          if (!isDynamicRecord(value) || !Array.isArray(value.messages)) continue;
+          let changed = false;
+          const messages = value.messages.map((item: unknown) => {
+            if (!isChannelMessage(item) || item.id !== entry.id || isDeletedChannelMessage(item)) return item;
+            changed = true;
+            return { ...deleted, sequence: item.sequence };
+          });
+          if (changed) update.run(JSON.stringify({ ...value, messages }), requiredNumberColumn(event, "sequence"));
+        }
+        return updated;
       },
     );
   }
@@ -415,10 +542,13 @@ export class ChannelStore {
       const existing = databaseRow(
         db
           .prepare(
-            "SELECT sequence, json_extract(message_json, '$.message.status') AS status FROM projection_channel_messages WHERE channel_id = ? AND message_id = ?",
+            "SELECT sequence, message_json, json_extract(message_json, '$.message.status') AS status, json_extract(message_json, '$.deleted') AS deleted FROM projection_channel_messages WHERE channel_id = ? AND message_id = ?",
           )
           .get(change.channel.id, message.id),
       );
+      // A person deleted this message. A late capture, a repeated result or a replay of an older
+      // event must not bring its content back.
+      if (existing?.deleted === 1 && !isDeletedChannelMessage(message)) continue;
       const last = databaseRow(
         db
           .prepare(
@@ -434,7 +564,11 @@ export class ChannelStore {
       db.prepare(
         "INSERT INTO projection_channel_messages VALUES (?, ?, ?, ?) ON CONFLICT(channel_id, message_id) DO UPDATE SET message_json = excluded.message_json",
       ).run(change.channel.id, message.id, assigned, JSON.stringify({ ...message, sequence: assigned }));
-      if (existing) {
+      const before = existing ? JSON.parse(requiredStringColumn(existing, "message_json")) : null;
+      // Only a change to what a model reads makes a summary or a cursor that covers the message
+      // wrong. A continued task marks its earlier turn superseded, and in a long channel that reset
+      // the summary to the first message on almost every turn of the lead (#3761).
+      if (existing && (!isChannelMessage(before) || changesModelContent(before, message))) {
         // A streaming message changes on each part of its text; a packet already leaves it unread.
         if (existing.status !== "streaming")
           this.#completedMessageChanges.set(change.channel.id, this.completedMessageChanges(change.channel.id) + 1);

@@ -7,6 +7,19 @@ const WorkspacePreferences = Schema.Struct({
   pinned: Schema.mutableKey(Schema.mutable(Schema.Array(Schema.String))),
   pinnedChannels: Schema.mutableKey(Schema.optional(Schema.mutable(Schema.Array(Schema.String)))),
   hiddenChannels: Schema.mutableKey(Schema.optional(Schema.mutable(Schema.Array(Schema.String)))),
+  /** The workflows that the mobile drawer shows under Workflows. An older app keeps reading the file. */
+  pinnedWorkflows: Schema.mutableKey(Schema.optional(Schema.mutable(Schema.Array(Schema.String)))),
+  /**
+   * The agent and channel pins in the order of the last list that the host gave (`sidebar-pins-v1`).
+   * Absent until the first read from a host that keeps the pins. An older app keeps reading the file.
+   */
+  pinOrder: Schema.mutableKey(
+    Schema.optional(
+      Schema.mutable(Schema.Array(Schema.Struct({ kind: Schema.Literals(["agent", "channel"]), id: Schema.String }))),
+    ),
+  ),
+  /** True while a pin change of this phone has not reached the host. */
+  pinsPending: Schema.mutableKey(Schema.optional(Schema.Boolean)),
 });
 export type RemoteWorkspacePreferences = typeof WorkspacePreferences.Type;
 const StoredPreferences = Schema.Struct({ version: Schema.Literal(1), ...WorkspacePreferences.fields });
@@ -44,6 +57,9 @@ export function createWorkspacePreferences(
       pinned: value.pinned,
       ...(value.pinnedChannels ? { pinnedChannels: value.pinnedChannels } : {}),
       ...(value.hiddenChannels ? { hiddenChannels: value.hiddenChannels } : {}),
+      ...(value.pinnedWorkflows ? { pinnedWorkflows: value.pinnedWorkflows } : {}),
+      ...(value.pinOrder ? { pinOrder: value.pinOrder } : {}),
+      ...(value.pinsPending ? { pinsPending: true } : {}),
     };
     cache.set(hostId, preferences);
     return preferences;

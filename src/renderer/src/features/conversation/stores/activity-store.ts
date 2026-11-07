@@ -1,4 +1,11 @@
-import type { AgentModelId, AgentReasoningEffort } from "@openbot/contracts/ipc";
+import {
+  type AgentModelId,
+  type AgentProviderRef,
+  type AgentReasoningEffort,
+  type AgentStepActivity,
+  agentStepActivity,
+} from "@openbot/contracts/ipc";
+import { markdownPreviewText } from "@openbot/contracts/markdown-preview-text";
 import type { AgentProfile } from "@openbot/ui/data";
 import { type AgentActivityLabel, nextAgentActivityLabel } from "@openbot/ui/features/conversation/AgentActivity";
 import { reasoningHeadline } from "@openbot/ui/features/conversation/AgentSteps";
@@ -27,11 +34,13 @@ export interface RenderedAgentActivity {
   label: AgentActivityLabel;
 }
 
-/** The model and effort that a turn started with. A change during the turn applies from the next one. */
+/** The provider, account, model and effort that a turn started with. A change during the turn applies from the next one. */
 export interface TurnRuntime {
   turnId: string;
+  provider: AgentProviderRef;
   model: AgentModelId;
   reasoningEffort: AgentReasoningEffort;
+  providerAccountId?: string | undefined;
 }
 
 export interface ActivityStoreDeps {
@@ -90,29 +99,41 @@ export function createActivityStore(deps: ActivityStoreDeps) {
     if (!activeTurnId) return null;
     const streamingMessage = streamingAgentMessage();
     if (streamingMessage && streamingMessage.itemType !== "commentary") return null;
+    // The Natural line names only the step that runs. The narration shows as progress updates, and
+    // the thinking stays in the steps.
+    if (!deps.props.channel && deps.props.responseStyle === "natural") return null;
     for (let index = deps.props.messages.length - 1; index >= 0; index -= 1) {
       const message = deps.props.messages[index];
       if (message?.turnId !== activeTurnId || message.itemType !== "commentary") continue;
       const items = message.items ?? [message.body];
       for (let itemIndex = items.length - 1; itemIndex >= 0; itemIndex -= 1) {
-        const detail = reasoningHeadline(items[itemIndex] ?? "");
+        const detail = markdownPreviewText(reasoningHeadline(items[itemIndex] ?? ""));
         if (detail) return detail;
       }
     }
     return null;
   });
   const activeActivityDetail = createMemo(() => {
+    // A card on screen stops the turn until the user acts, so the last tool step is not what happens now (#3707).
+    if (deps.props.prompt) return currentText().t("chat.activity.waitingForAnswer");
+    if (deps.props.approval) return currentText().t("chat.activity.waitingForApproval");
+    if (deps.props.browserTakeover) return currentText().t("chat.activity.waitingForBrowser");
     const hold = heldByOwnChannelWork();
     if (hold) return currentText().t("chat.activity.workingIn", { channel: hold.channelName });
     const progress = deps.props.activityDetail?.trim();
-    // The agent's own commentary is shown as it is; the host's progress text is in the host's source
-    // English and is read here in the user's language.
+    // The agent's own commentary is shown as plain text, without its Markdown marks (#3425); the host's
+    // progress text is in the host's source English and is read here in the user's language.
     return latestActiveCommentary() ?? (progress ? currentText().sourceText(progress) : null);
+  });
+  /** What the running step does, for the agent's avatar. A card or a channel that holds the turn has no step. */
+  const activeStepActivity = createMemo((): AgentStepActivity | null => {
+    if (deps.props.prompt || deps.props.approval || deps.props.browserTakeover || heldByOwnChannelWork()) return null;
+    return agentStepActivity(deps.props.activityKind);
   });
   const agentActivity = createMemo<"Working" | null>(() => (activeActivityId() ? "Working" : null));
   /**
-   * The saved model and effort when this chat first saw the running turn. The host does not send the
-   * model of a turn, and a turn reads the saved settings when it starts.
+   * The saved provider, account, model and effort when this chat first saw the running turn. The host does not
+   * send the runtime of a turn, and a turn reads the saved settings when it starts.
    */
   const runningTurnRuntime = createMemo<TurnRuntime | null>(() => {
     const agent = deps.props.agent;
@@ -125,7 +146,13 @@ export function createActivityStore(deps: ActivityStoreDeps) {
     }
     const known = deps.turnRuntimes.get(key);
     if (known?.turnId === turnId) return known;
-    const runtime = untrack(() => ({ turnId, model: agent.model, reasoningEffort: agent.reasoningEffort }));
+    const runtime = untrack(() => ({
+      turnId,
+      provider: agent.provider,
+      model: agent.model,
+      reasoningEffort: agent.reasoningEffort,
+      providerAccountId: agent.providerAccountId,
+    }));
     deps.turnRuntimes.set(key, runtime);
     return runtime;
   });
@@ -135,7 +162,12 @@ export function createActivityStore(deps: ActivityStoreDeps) {
     if (!agentId || !activityId) return null;
     const previous = deps.agentActivityLabels.get(agentId);
     if (previous?.activityId === activityId) return previous.label;
-    const label = nextAgentActivityLabel(previous?.label);
+    // The Natural line shows no general label, so its label only names the work for a screen reader:
+    // a plain, steady text, not a random playful one.
+    const label: AgentActivityLabel =
+      !deps.props.channel && deps.props.responseStyle === "natural"
+        ? "Thinking it through…"
+        : nextAgentActivityLabel(previous?.label);
     deps.agentActivityLabels.set(agentId, { activityId, label });
     return label;
   });
@@ -234,8 +266,8 @@ export function createActivityStore(deps: ActivityStoreDeps) {
   );
   /**
    * What the running turn of this agent's chat waits for, when it waits for the provider rather than
-   * the user. The renderer does not know whether a tool step is open, so a long silent tool step
-   * also counts as silence: what the user reads is only that nothing came, not why.
+   * the user. A host that does not send `running` gives no sign of an open tool step, so there a long
+   * silent tool step also counts as silence.
    */
   const waitsForProvider = createMemo(
     () =>
@@ -280,9 +312,12 @@ export function createActivityStore(deps: ActivityStoreDeps) {
   const updateOnline = () => setOnline(navigator.onLine);
   window.addEventListener("online", updateOnline);
   window.addEventListener("offline", updateOnline);
-  /** Whole minutes with nothing from the provider, from the first minute; else null. */
+  /**
+   * Whole minutes with nothing from the provider, from the first minute; else null. A tool step that
+   * still runs, such as a long scan, is work: the activity line keeps its label and its time.
+   */
   const providerSilentMinutes = createMemo(() => {
-    if (!waitsForProvider()) return null;
+    if (!waitsForProvider() || deps.props.activityRunning) return null;
     const minutes = Math.floor((clock() - lastTurnUpdateAt()) / PROVIDER_SILENT_AFTER_MS);
     return minutes >= 1 ? minutes : null;
   });
@@ -308,6 +343,7 @@ export function createActivityStore(deps: ActivityStoreDeps) {
     streamingAgentMessage,
     activeActivityId,
     activeActivityDetail,
+    activeStepActivity,
     agentActivity,
     activityLabel,
     runningTurnRuntime,

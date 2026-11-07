@@ -34,7 +34,7 @@ export const messages = defineMessages("provider", {
   "provider.status.checking": "Checking",
   "provider.status.off": "Off",
   "provider.gemini.hostSignIn":
-    "To connect Gemini, open OpenBot on the host and select Connect in Settings > Providers. Google sign-in needs a browser on that host. Remote sign-in is not supported.",
+    "To connect Gemini, open OpenBot on the host and select Connect in Server settings > Providers. Google sign-in needs a browser on that host. Remote sign-in is not supported.",
 
   // Which account tier the OpenCode row runs on. It shows only while it adds to the runtime
   // badge: a saved key leaves the runtime "Connected" to speak for the row.
@@ -55,6 +55,7 @@ export const messages = defineMessages("provider", {
   "provider.action.signIn": "Sign in",
   "provider.action.apiKey": "API key",
   "provider.action.signInWithCode": "Log in with code",
+  "provider.action.signInMainlandChina": "Sign in with {site} (China)",
   "provider.action.pasteAddress": "Paste the address",
   "provider.aria.download": "Download {name}",
   "provider.aria.cancel": "Cancel {name}",
@@ -104,6 +105,8 @@ export const messages = defineMessages("provider", {
   "provider.codeLogin.relayStarting": "Starting the {name} sign-in on {host}…",
   "provider.codeLogin.pageOpening": "Opening the {name} sign-in page on {host}…",
   "provider.codeLogin.linkStep": "Log in to {name}. OpenBot continues by itself.",
+  "provider.codeLogin.chatgptDeviceSetting":
+    "In ChatGPT on a computer, open the security settings and turn on device code sign-in for Codex. For a work account, your workspace admin turns it on.",
 
   // A provider that only the OpenBot app can sign in, from a browser tab.
   "provider.useApp.title": "Connect {name} in the OpenBot app",
@@ -126,12 +129,22 @@ export const messages = defineMessages("provider", {
   "provider.picker.download": "{name} download",
   "provider.picker.search": "Search models",
   "provider.picker.noMatches": "No models match your search.",
+  "provider.picker.olderModels": "Older models",
+  "provider.picker.olderModelsList": "Older {name} models",
   "provider.picker.noModels": "No models are available from {name}.",
   "provider.picker.customEmpty":
     "Add an OpenAI-compatible endpoint — a model server on this computer, or any service with a base URL and a key.",
+  "provider.picker.customPending":
+    "The models of your endpoints are not loaded yet. The provider reads them after its current task stops.",
   "provider.picker.defaultModelLabel": "{name}, default",
+  "provider.picker.usageLimit": "Usage limit reached",
+  "provider.picker.usageLimitWindow": "{window} limit",
+  "provider.picker.usageLimitResets": "{limit} · Resets {time}",
+  "provider.picker.usageLimitLabel": "{name}, usage limit reached",
+  "provider.picker.usageLimitResetsLabel": "{name}, usage limit reached, resets {time}",
   "provider.picker.effort": "Effort",
   "provider.picker.effortLabel": "Agent reasoning effort",
+  "provider.picker.effortFixed": "{effort}, set by {provider}",
   "provider.picker.fast": "Fast",
   "provider.picker.fastLabel": "Fast mode",
   "provider.picker.selectEffort": "Select effort",
@@ -139,12 +152,16 @@ export const messages = defineMessages("provider", {
   "provider.picker.cliReady": "{cli} ready",
   "provider.status.signInRequired": "Sign in required",
   "provider.model.free": "Free",
+  "provider.model.new": "New",
   "provider.model.default": "default",
+  "provider.effort.none": "None",
+  "provider.effort.minimal": "Minimal",
   "provider.effort.low": "Low",
   "provider.effort.medium": "Medium",
   "provider.effort.high": "High",
   "provider.effort.xhigh": "Extra high",
   "provider.effort.max": "Max",
+  "provider.effort.ultra": "Ultra",
 
   "provider.museKey.title": "Meta API key for Muse",
   "provider.museKey.description": "Save a Meta API key on the host, or use the Muse CLI to sign in.",
@@ -157,10 +174,24 @@ export const messages = defineMessages("provider", {
   "provider.claudeKey.description":
     "Save an Anthropic API key on the host. Anthropic bills each request to the key. To use it for an agent, select the API key account in the agent's model menu. When Claude is not signed in, all agents use the key.",
   "provider.claudeKey.label": "Anthropic API key",
+  "provider.codexKey.title": "Log in with an OpenAI API key",
+  "provider.codexKey.description":
+    "Codex saves the key on this computer. OpenAI bills each request to the key, not to your ChatGPT plan. To use the plan again, disconnect the account and connect ChatGPT.",
+  "provider.codexKey.descriptionHost":
+    "Codex saves the key on the host. OpenAI bills each request to the key, not to your ChatGPT plan. To use the plan again, disconnect the account and connect ChatGPT.",
+  "provider.codexKey.label": "OpenAI API key",
   "provider.inceptionKey.title": "Inception API key",
   "provider.inceptionKey.description":
     "Save an Inception API key on this computer to use the Mercury models. OpenBot runs them in the Pi CLI that it downloads.",
   "provider.inceptionKey.label": "Inception API key",
+  "provider.deepseekKey.title": "DeepSeek API key",
+  "provider.deepseekKey.description":
+    "Save a DeepSeek API key on this computer to use the DeepSeek models. OpenBot runs them in the Pi CLI that it downloads.",
+  "provider.deepseekKey.label": "DeepSeek API key",
+  "provider.openrouterKey.title": "OpenRouter API key",
+  "provider.openrouterKey.description":
+    "Save an OpenRouter API key on this computer to use the models that OpenRouter serves. OpenBot runs them in the Pi CLI that it downloads.",
+  "provider.openrouterKey.label": "OpenRouter API key",
 
   // The optional OpenCode Go key dialog.
   "provider.openCodeKey.title": "Sign in to OpenCode Go",
@@ -189,6 +220,7 @@ export const messages = defineMessages("provider", {
   "provider.account.cancelSignIn": "Cancel sign-in",
   "provider.account.finishSignIn": "Finish the sign-in in the browser.",
   "provider.account.remove": "Remove account",
+  "provider.account.disconnect": "Disconnect",
   "provider.account.actionFailed": "Could not change the {name} account.",
   "provider.account.resetUsage": "Reset usage",
   "provider.account.resetUsageTitle": "Reset the usage of {name}?",
@@ -231,6 +263,11 @@ export const messages = defineMessages("provider", {
   "provider.settings.removeMoves": "{agents} will use {name}.",
   "provider.settings.removeUnused": "No agent uses this account.",
   "provider.settings.removeCredentials": "OpenBot deletes the sign-in of this account from this computer.",
+  "provider.settings.disconnectTitle": "Disconnect {name}?",
+  "provider.settings.disconnectOthers": "The other {provider} accounts wait until you connect {provider} again.",
+  "provider.settings.disconnectLocal":
+    "OpenBot signs {provider} out on this computer. The {provider} CLI in your terminal also signs out.",
+  "provider.settings.disconnectHost": "OpenBot signs {provider} out on the server.",
   "provider.settings.usageLow": "{percent} left · {window}",
   "provider.settings.usageOf": "Usage of {name}",
   "provider.settings.signIn": "Sign-in",
@@ -242,11 +279,16 @@ export const messages = defineMessages("provider", {
   "provider.settings.geminiKeyInUse": "Gemini uses this key, not your Google AI plan. The plan's usage is not shown.",
   "provider.settings.claudeKeyInUse":
     "Select the API key account in an agent's model menu. When Claude is not signed in, all agents use the key.",
+  "provider.settings.codexKeyInUse":
+    "ChatGPT uses this key, not your ChatGPT plan. OpenAI bills each request to the key. The plan's usage is not shown.",
+  "provider.settings.codexKeyAlternative": "Or log in with an OpenAI API key. OpenAI bills each request to the key.",
   "provider.settings.addKey": "Add key",
   "provider.settings.changeKey": "Change key",
   "provider.settings.runtime": "Runtime",
   "provider.settings.version": "Version",
   "provider.settings.versionAvailable": "{installed} · {available} is available",
+  "provider.settings.versionInstalledByUser": "{version} · installed by you",
+  "provider.settings.versionDownloaded": "{version} · downloaded by OpenBot",
   "provider.settings.update": "Update",
   "provider.settings.downloadLabel": "Download of {name}",
   "provider.settings.diagnostics": "Diagnostics",
@@ -257,6 +299,18 @@ export const messages = defineMessages("provider", {
   "provider.settings.promptCacheHour": "1 hour",
   "provider.settings.promptCacheDefault": "Claude Code default",
   "provider.settings.promptCacheLoadFailed": "Could not load the prompt cache time of this server.",
+  "provider.settings.models": "Models",
+  "provider.settings.modelsDescription": {
+    one: "{shown} of {count} model shows in the model picker.",
+    other: "{shown} of {count} models show in the model picker.",
+  },
+  "provider.settings.modelsSearch": "Search models",
+  "provider.settings.modelsHideAll": "Hide all",
+  "provider.settings.modelsReset": "Reset to default",
+  "provider.settings.modelsShowAll": "Show all",
+  "provider.settings.modelShow": "Show {name} ({id}) in the model picker",
+  "provider.settings.modelsNoMatch": "No models match your search.",
+  "provider.settings.modelsLoadFailed": "Could not load the models of this server.",
   "provider.settings.use": "Use",
   "provider.settings.defaultForNew": "Default for new agents",
   "provider.settings.startsWith": "New agents start with {name}.",
@@ -264,6 +318,12 @@ export const messages = defineMessages("provider", {
   "provider.settings.turnOnFirst": "Turn {name} on first.",
   "provider.settings.makeDefault": "Make default",
   "provider.settings.useTitle": "Use {name}",
+  "provider.settings.deleteTitle": "Delete {name}",
+  "provider.settings.deleteOn":
+    "Turns {name} off and deletes the CLI that OpenBot downloaded. Accounts, sign-ins and agents stay.",
+  "provider.settings.deleteOff":
+    "Deletes the CLI that OpenBot downloaded for {name} ({size}). Accounts, sign-ins and agents stay.",
+  "provider.settings.removeDownloadFailed": "Could not remove the download.",
   "provider.settings.endpoints": "Endpoints",
   "provider.settings.noEndpoints": "No endpoints.",
   "provider.settings.endpointModels": { one: "{url} · 1 model", other: "{url} · {count} models" },

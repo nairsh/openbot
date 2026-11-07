@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
+import { toNamespacedPath } from "node:path";
 import {
   type Connection,
   type SendUserTurnOptions,
@@ -24,9 +25,10 @@ import {
   type McpEndpointSource,
   type McpServerSource,
   type McpToolRuntimeSource,
+  mcpAgentParam,
   usableMcpServers,
 } from "./mcp-provider-shapes";
-import { mcpSecretValues, redactMcpValues } from "./mcp-redaction";
+import { isInheritedProfileValue, mcpSecretValues, redactMcpValues } from "./mcp-redaction";
 import {
   MuseApproval,
   MuseItem,
@@ -516,11 +518,14 @@ export class MuseAgentClient extends EventEmitter<ClientEvents> implements Agent
         ),
         this.#options.mcpToolRuntimes?.(),
         this.#options.mcpEndpoint,
+        mcpAgentParam(params),
       ).pipe(toProviderClientOperationError);
       for (const secret of mcpSecretValues(resolved.map((server) => server.config))) this.#secrets.add(secret);
       const handoff = acpMcpServers(resolved);
       for (const server of [...handoff.servers, ...bridge.servers]) {
-        for (const entry of "headers" in server ? server.headers : server.env) this.#secrets.add(entry.value);
+        for (const entry of "headers" in server ? server.headers : server.env) {
+          if (!isInheritedProfileValue(entry.name, entry.value)) this.#secrets.add(entry.value);
+        }
       }
       this.#options.reportMcpDrops?.(this.provider, handoff.dropped);
       const mcpServers = Object.fromEntries(
@@ -624,6 +629,7 @@ export class MuseAgentClient extends EventEmitter<ClientEvents> implements Agent
       input.unshift({ type: "text", text: thread.instructions });
       thread.instructionsSent = thread.instructions;
     }
+    const workspaceRoots = compact ? [] : yield* museWorkspaceRoots([thread.cwd, ...thread.roots]);
     const id = host.connection.mintCommandId();
     thread.turn = { id, compact, items: new Map(), deltaPending: new Map() };
     this.#emit("turn/started", { threadId: thread.id, turn: { id, status: "inProgress" } });
@@ -636,7 +642,7 @@ export class MuseAgentClient extends EventEmitter<ClientEvents> implements Agent
           ? {}
           : {
               input,
-              workspaceRoots: [...new Set([thread.cwd, ...thread.roots])],
+              workspaceRoots,
               ifBusy: "queue",
               ...(effort ? { reasoningEffort: effort } : {}),
             }),
@@ -1073,6 +1079,14 @@ const musePrompt = Effect.fn("MuseAgentClient.prompt")(function* (params: unknow
   }
   if (!input.length) return yield* providerFailure(new Error(sourceText("error.provider.museEmptyInput")));
   return input;
+});
+/**
+ * Muse accepts only canonical roots: the real path, in the verbatim `\\?\` form on Windows (#3356).
+ * A root that does not resolve is sent as written, and Muse rejects it as before.
+ */
+const museWorkspaceRoots = Effect.fn("MuseAgentClient.workspaceRoots")(function* (paths: string[]) {
+  const roots = yield* Effect.forEach(paths, (path) => Effect.promise(() => realpath(path).catch(() => path)));
+  return [...new Set(roots.map((root) => toNamespacedPath(root)))];
 });
 function isNamespace(value: unknown): value is DynamicToolNamespace {
   return (

@@ -4,10 +4,19 @@ import { isPluginSlug } from "./plugin-links";
 export const MARKETPLACE_SUGGESTION_ITEM_TYPE_PREFIX = "marketplace-suggestion:";
 
 /**
- * Every connector, in the order that Settings › Connectors and Marketplace › Apps show them. A
+ * Every connector, in the order that Marketplace › Apps shows them. A
  * connector id is also its Marketplace app id, so an agent can suggest it in a conversation.
  */
-export const CONNECTOR_IDS = ["slack", "discord", "telegram", "github", "onepassword", "bitwarden"] as const;
+export const CONNECTOR_IDS = [
+  "slack",
+  "discord",
+  "telegram",
+  "whatsapp",
+  "github",
+  "onepassword",
+  "bitwarden",
+  "protonpass",
+] as const;
 
 export type ConnectorId = (typeof CONNECTOR_IDS)[number];
 

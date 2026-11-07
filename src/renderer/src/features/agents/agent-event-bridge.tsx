@@ -13,6 +13,7 @@ import { usePlatform } from "../../platform";
 import { useProviders } from "../../providers";
 import { queueAfterTurnCompleted } from "../../queue-reconciliation";
 import { useTurns } from "../../turns";
+import { useUiErrors } from "../../ui-errors";
 import { useAuth } from "../account/account-context";
 import { useAgentTasks } from "../agent-tasks/agent-tasks-context";
 import { useBrowserTabs } from "../browser/browser-context";
@@ -21,13 +22,23 @@ import { useConversation } from "../conversation/conversation-context";
 import { useConversationController } from "../conversation/conversation-controller-context";
 import { agentConversationKey, composerDraftKey, promptRequestKey } from "../conversation/conversation-keys";
 import { latestIncomingConversationMessage } from "../conversation/conversation-read-state";
+import { noteSocialFollowReplyCompleted } from "../conversation/social-follow-prompt";
 import { appendTurnStepLine } from "../conversation/turn-step-lines";
+import { serverCanManageMcp } from "../servers/server-capabilities";
+import { useServerSettings } from "../servers/server-settings";
 import { useServers } from "../servers/servers-context";
 import { useSidebar } from "../sidebar/sidebar-context";
 import { readDictatedReplies } from "../speech/speech-replies";
 import { claimErrorToast, providerErrorTitle, readableAgentError } from "./agent-error-text";
 import { createAgentEventSounds } from "./agent-event-sounds";
-import { reconcileAttentionApprovals, reconcileAttentionPrompts } from "./agent-runtime-snapshot";
+import {
+  attentionAgentId,
+  attentionEventKey,
+  attentionKey,
+  reconcileAttentionApprovals,
+  reconcileAttentionPrompts,
+  withoutAttention,
+} from "./agent-runtime-snapshot";
 import { useAgents } from "./agents-context";
 import { agentsPort } from "./agents-port";
 
@@ -49,11 +60,13 @@ export function AgentEventBridge() {
   const channels = useChannels();
   const platform = usePlatform();
   const { activeServer, activeServerId } = useServers();
+  const { openServerSettings } = useServerSettings();
   const { applyAccountUsage } = useAuth();
   const { applyAgentStatus, refreshAgentProviders } = useProviders();
   const { agentList, setModelOptions, explicitlyOpenedAgentChatId, applyStoredAgents, applyUserHiddenAgents } =
     useAgents();
   const { setConversationErrors, setConversationErrorRuns } = useConversationController();
+  const { setUiErrors } = useUiErrors();
   const agentTasks = useAgentTasks();
   const {
     applyRuntimeMessages,
@@ -62,6 +75,7 @@ export function AgentEventBridge() {
     agentChatsToRetryRead,
     scheduleConversation,
     isAgentChatReadable,
+    isAgentChatOpen,
     autoMarkAgentMessageRead,
     applyConversationDelta,
     applyConversationPage,
@@ -75,9 +89,11 @@ export function AgentEventBridge() {
     setComposerSuggestions,
     setFailedTurns,
     setUsageLimits,
+    setSubagentTurns,
     setUsageLimitedModels,
     setWaitedUsageLimits,
     setContextStates,
+    setThreadContextStates,
     setQueues,
     setPendingPrompts,
     setPresentedPromptResolutions,
@@ -92,7 +108,7 @@ export function AgentEventBridge() {
     refreshRoutineIds,
   } = useTurns();
   const { setBrowserControlState, applyBrowserChange } = useBrowserTabs();
-  const { setSidebarLayout } = useSidebar();
+  const { setSidebarLayout, receiveServerPins } = useSidebar();
   // As on web, mute and the notification level of the server decide the sounds too. Before the
   // server list arrives, the sounds play as they did.
   const soundLevel = () => {
@@ -128,6 +144,9 @@ export function AgentEventBridge() {
         return;
       case "sidebar-layout-changed":
         setSidebarLayout(event.layout);
+        return;
+      case "sidebar-pins-changed":
+        receiveServerPins(activeServerId(), { items: event.items, updatedAt: event.updatedAt });
         return;
       case "hidden-agents-changed":
         applyUserHiddenAgents(event.agents);
@@ -172,7 +191,12 @@ export function AgentEventBridge() {
       case "turn-progress":
         setTurnProgress((current) => ({
           ...current,
-          [event.agentId]: { turnId: event.turnId, detail: cleanAgentMessageText(event.detail) },
+          [event.agentId]: {
+            turnId: event.turnId,
+            detail: cleanAgentMessageText(event.detail),
+            ...(event.running ? { running: true } : {}),
+            ...(event.activity ? { activity: event.activity } : {}),
+          },
         }));
         setTurnStepLines((current) => appendTurnStepLine(current, event.turnId, cleanAgentMessageText(event.detail)));
         return;
@@ -230,14 +254,24 @@ export function AgentEventBridge() {
             : withoutAgent(current, event.agentId),
         );
         setActiveTurns((current) => ({ ...current, [event.agentId]: null }));
+        // A steer refusal is about the turn that ended. Kept, it shows below the turn's last reply (#3206).
+        setUiErrors((current) => {
+          const key = agentConversationKey(activeServerId(), event.agentId);
+          const steerStatus = currentText().t("app.errorStatus.steer");
+          const errors = current[key];
+          if (!errors?.some((error) => error.status === steerStatus)) return current;
+          return { ...current, [key]: errors.filter((error) => error.status !== steerStatus) };
+        });
         setQueues((current) => {
           const snapshot = current[event.agentId];
           if (!snapshot) return current;
           const next = queueAfterTurnCompleted(snapshot, event.turnId);
           return next === snapshot ? current : { ...current, [event.agentId]: next };
         });
+        // Only the wait of this turn's thread: another thread of the agent can still wait for the user.
         setPendingPrompts((current) => {
-          const pending = current[event.agentId];
+          const key = attentionKey(event.agentId, event.threadId);
+          const pending = current[key];
           const submittedRequestKey = submittedPromptRequests()[event.agentId];
           if (
             pending?.type === "prompt" &&
@@ -245,7 +279,7 @@ export function AgentEventBridge() {
           ) {
             return current;
           }
-          return { ...current, [event.agentId]: undefined };
+          return pending ? withoutAttention(current, (candidate) => attentionEventKey(candidate) === key) : current;
         });
         // Only the approvals of this turn's thread: a task of the agent can still wait for one.
         setApprovals((current) =>
@@ -254,21 +288,39 @@ export function AgentEventBridge() {
         if (event.status === "completed") {
           markReplyCompleted(event.agentId);
           if (soundLevel() === "all" && !platform.chatWindow) playCompletionSoundForAgentEvent(event, agentList());
+          // A finished reply is a good moment to ask for a post. A chat window has no toasts.
+          if (!platform.chatWindow && !event.quiet && !event.continues) noteSocialFollowReplyCompleted();
         }
         return;
+      case "routine-thread-turn-completed":
+        // The chat's turn state stays: the run's own `turn-completed` did not leave its thread.
+        if (soundLevel() === "all" && !platform.chatWindow) playCompletionSoundForAgentEvent(event.turn, agentList());
+        return;
       case "prompt":
-        setPendingPrompts((current) => ({ ...current, [event.agentId]: event }));
-        setPresentedPromptResolutions((current) => ({ ...current, [event.agentId]: undefined }));
-        setSubmittedPromptRequests((current) => ({ ...current, [event.agentId]: undefined }));
+        setPendingPrompts((current) => ({ ...current, [attentionEventKey(event)]: event }));
+        // The agent id keys the answer marks of the agent's own chat. A side thread's question keeps
+        // them and clears only the mark of its own thread.
+        if (agentList().some((agent) => agent.id === event.agentId && agent.threadId === event.threadId)) {
+          setPresentedPromptResolutions((current) => ({ ...current, [event.agentId]: undefined }));
+          setSubmittedPromptRequests((current) => ({ ...current, [event.agentId]: undefined }));
+        } else {
+          const mark = attentionEventKey(event);
+          setSubmittedPromptRequests((current) =>
+            current[mark] === undefined ? current : { ...current, [mark]: undefined },
+          );
+        }
         return;
       case "agent-input-resolved":
         if (event.kind === "prompt") {
-          setPendingPrompts((current) => {
-            const prompt = current[event.agentId];
-            return prompt?.type === "prompt" && String(prompt.requestId) === String(event.requestId)
-              ? { ...current, [event.agentId]: undefined }
-              : current;
-          });
+          setPendingPrompts((current) =>
+            withoutAttention(
+              current,
+              (prompt) =>
+                prompt.type === "prompt" &&
+                prompt.agentId === event.agentId &&
+                String(prompt.requestId) === String(event.requestId),
+            ),
+          );
         } else {
           forgetApproval(event.agentId, event.requestId);
         }
@@ -283,23 +335,38 @@ export function AgentEventBridge() {
           event.approval,
         ]);
         return;
+      case "subagent-failed": {
+        // The chat shows the failure in the subagent card. The toast tells the user who looks at
+        // another chat; the desktop notification tells the user who is not in the app. A failure does
+        // not need the user, so it shows only at the "all" level, as the completion sound does.
+        const agent = agentList().find((candidate) => candidate.id === event.agentId);
+        if (!agent?.notifications || soundLevel() !== "all" || platform.chatWindow) return;
+        if (!platform.appFocused() || isAgentChatOpen(event.agentId)) return;
+        const { t } = currentText();
+        toast.error(agent.name, {
+          description: event.title
+            ? t("notification.subagentFailedFor", { task: event.title })
+            : t("notification.subagentFailed"),
+        });
+        return;
+      }
       case "runtime-snapshot":
         void channels.refresh();
         applyAgentRuntimeSnapshot(event.snapshot);
         return;
       case "browser-takeover-requested":
-        setPendingPrompts((current) => ({
-          ...current,
-          [event.request.agentId]: event,
-        }));
+        setPendingPrompts((current) => ({ ...current, [attentionEventKey(event)]: event }));
         return;
       case "browser-takeover-resolved":
-        setPendingPrompts((current) => {
-          const pending = current[event.agentId];
-          return pending?.type === "browser-takeover-requested" && pending.request.requestId === event.requestId
-            ? { ...current, [event.agentId]: undefined }
-            : current;
-        });
+        setPendingPrompts((current) =>
+          withoutAttention(
+            current,
+            (pending) =>
+              pending.type === "browser-takeover-requested" &&
+              attentionAgentId(pending) === event.agentId &&
+              pending.request.requestId === event.requestId,
+          ),
+        );
         return;
       case "error": {
         // A provider reports an expired account as a 401 quoted inside the whole HTTP exchange, so
@@ -338,22 +405,22 @@ export function AgentEventBridge() {
         // one stays global. The message is already redacted in the main process.
         const toastKey = readableAgentError(event.message);
         if (claimErrorToast(toastKey)) {
-          // Codex ignored a setting and runs without it. The provider works, so this is a warning
-          // about the user's file, not a provider error.
-          if (event.code === "codex_config_ignored") {
-            toast.warning(currentText().t("agent.error.codexConfigIgnored"), {
-              ...{ description: toastKey },
-              report: { operation: "provider", source: "provider", cause_code: classifyFailure(event.message) },
-            });
-            return;
-          }
-          // An MCP server left out at hand-off is not the provider failing, and calling it a
-          // provider error sends the user to the wrong settings page.
+          // An MCP server that a provider was not given or could not use is not the provider failing,
+          // and calling it a provider error sends the user to the wrong settings page. The button
+          // shows only to a user who can see the server's MCP settings.
           const { t } = currentText();
-          const title =
-            event.code === "mcp_server_not_started" ? t("agent.error.mcpNotStarted") : providerErrorTitle(event.code);
-          toast.error(title, {
+          const mcp = event.code === "mcp_server_not_started";
+          const serverId = activeServerId();
+          toast.error(mcp ? t("agent.error.mcpNotStarted") : providerErrorTitle(event.code), {
             ...{ description: toastKey },
+            ...(mcp && serverCanManageMcp(activeServer())
+              ? {
+                  action: {
+                    label: t("agent.error.openMcpSettings"),
+                    onClick: () => openServerSettings(serverId, null, "mcp"),
+                  },
+                }
+              : {}),
             report: { operation: "provider", source: "provider", cause_code: classifyFailure(event.message) },
           });
         }
@@ -371,6 +438,9 @@ export function AgentEventBridge() {
     );
     setFailedTurns(Object.fromEntries(snapshot.failedTurns.map((turn) => [turn.agentId, turn.turnId])));
     setContextStates(Object.fromEntries((snapshot.contextStates ?? []).map((state) => [state.agentId, state])));
+    setThreadContextStates(
+      Object.fromEntries((snapshot.threadContextStates ?? []).map((state) => [state.threadId, state])),
+    );
     const usageLimits = Object.fromEntries(
       (snapshot.usageLimits ?? []).map((limit) => [limit.agentId, limit.resetsAt]),
     );
@@ -380,6 +450,7 @@ export function AgentEventBridge() {
       Object.fromEntries(Object.entries(current).filter(([agentId]) => agentId in usageLimits)),
     );
     setUsageLimitedModels(snapshot.usageLimitedModels ?? []);
+    setSubagentTurns(Object.fromEntries((snapshot.subagentTurns ?? []).map((turn) => [turn.agentId, turn.turnId])));
     setQueues((current) => reconcileQueuesWithRuntimeWork(current, snapshot.work, runtimeTurns));
     setPendingPrompts((current) => reconcileAttentionPrompts(current, snapshot, submittedPromptRequests()));
     setApprovals((current) => reconcileAttentionApprovals(current, snapshot));

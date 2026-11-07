@@ -1,10 +1,12 @@
 import type { BrowserControlSession, BrowserPreview, BrowserTab } from "@openbot/contracts/ipc";
 import { TEAM_BROWSER_NAVIGATION_CAPABILITY } from "@openbot/contracts/team-protocol/current";
+import { classifyFailure } from "@openbot/telemetry";
 import { toast } from "@openbot/ui";
 import type { AgentProfile } from "@openbot/ui/data";
 import { browserAddressUrl } from "@openbot/ui/features/browser/browser-suggestions";
 import { currentText } from "@openbot/ui/text";
 import { createEffect, createMemo, createSignal, untrack } from "solid-js";
+import { actionToast } from "../../../action-toast";
 import { desktopAnalytics } from "../../../analytics";
 import { serverSupportsCapability } from "../../servers/server-capabilities";
 import { conversationPort } from "../conversation-port";
@@ -55,6 +57,8 @@ function canonicalBrowserUrl(url: string): string {
 interface BrowserPanels {
   activeRightPanel: () => RightPanelMode;
   setActiveRightPanel: (mode: RightPanelMode, agentId?: string) => void;
+  /** Closes the Browser tab of the side panel, also from the full view or picture in picture. */
+  closeBrowserPane: () => void;
 }
 
 export interface BrowserStoreDeps {
@@ -77,8 +81,11 @@ export interface BrowserStoreDeps {
 }
 
 export function createBrowserStore(deps: BrowserStoreDeps) {
-  const browserInteractionAvailable = () =>
-    deps.props.browserEnabled !== false && !deps.props.browserVisibilitySuspended;
+  // A memo of the store: `browserEnabled` can be a compiled memo, and an effect callback that calls
+  // `activateBrowserTab` must not create one.
+  const browserInteractionAvailable = createMemo(
+    () => deps.props.browserEnabled !== false && !deps.props.browserVisibilitySuspended,
+  );
   const browserSidebarOpen = () => browserInteractionAvailable() && deps.panels.activeRightPanel() === "browser";
   const browserExpandedOpen = () =>
     browserInteractionAvailable() && deps.panels.activeRightPanel() === "browser-expanded";
@@ -187,6 +194,10 @@ export function createBrowserStore(deps: BrowserStoreDeps) {
     },
   );
   const latestMessageMarker = createMemo(() => {
+    // An open side thread has its own messages, so a result card there goes with them, not with the chat.
+    const threads = deps.props.threads;
+    if (threads?.open !== undefined)
+      return `thread:${threads.open?.id ?? "new"}:${threads.conversation?.revision ?? 0}`;
     const message = deps.props.messages.at(-1);
     return message
       ? `${message.id}:${message.body.length}:${message.streaming === true ? "streaming" : "settled"}`
@@ -216,18 +227,41 @@ export function createBrowserStore(deps: BrowserStoreDeps) {
       messageMarker: latestMessageMarker(),
       signInBlocked: blockedTakeoverSignIn(),
     } satisfies BrowserTakeoverResolutionState;
-    const completed = await deps.props.onRespondToBrowserTakeover(decision);
+    // The takeover of an open side thread: a failure shows where the person answered, not in the agent's chat.
+    const sideThread = request.threadId === deps.props.threads?.open?.threadId;
+    const completed = await deps.props.onRespondToBrowserTakeover(
+      decision,
+      sideThread
+        ? {
+            onError: (error) => {
+              const { t, errorMessage } = currentText();
+              actionToast.error(errorMessage(error, t("app.errorStatus.browserTakeover")), {
+                report: { operation: "turn", source: "action", cause_code: classifyFailure(error) },
+              });
+            },
+          }
+        : undefined,
+    );
     if (completed && latestMessageMarker() === resolution.messageMarker) setBrowserTakeoverResolution(resolution);
     return completed;
   };
-  let previousBrowserTabCount = 0;
+  // The browser pane closes with its last tab. A switch to an agent with no tabs closes nothing.
+  let previousBrowserTabs: { owner: string; count: number } = { owner: "", count: 0 };
   createEffect(
-    () => ({ count: browserTabs().length, open: screenOpen(), enabled: deps.props.browserEnabled !== false }),
-    ({ count, open, enabled }) => {
-      if (!enabled) return;
-      const browserWasClosed = open && previousBrowserTabCount > 0 && count === 0;
-      previousBrowserTabCount = count;
-      if (browserWasClosed) deps.panels.setActiveRightPanel("browser");
+    () => ({
+      owner: `${deps.props.server?.id ?? "local"}:${deps.props.agent?.id ?? ""}`,
+      count: browserTabs().length,
+      enabled: deps.props.browserEnabled !== false,
+    }),
+    ({ owner, count, enabled }) => {
+      const previous = previousBrowserTabs;
+      previousBrowserTabs = { owner, count };
+      if (!enabled || previous.owner !== owner || previous.count === 0 || count > 0) return;
+      // Untracked: the close reads the side panel and writes the panel mode, which must not run this effect again.
+      // The mode, not `screenOpen`: a tab can close while a dialog suspends the browser view.
+      const mode = untrack(deps.panels.activeRightPanel);
+      if (mode === "browser" || mode === "browser-expanded" || mode === "browser-pip")
+        untrack(deps.panels.closeBrowserPane);
     },
   );
 
@@ -427,7 +461,9 @@ export function createBrowserStore(deps: BrowserStoreDeps) {
       try {
         await conversationRuntime(deps.props).browser.navigate({ tabId: currentTab.id, url });
       } catch (error) {
-        deps.setComposerError(currentText().t("browser.error.openAddress"), target, error);
+        // A proxy that stopped the page load has its own message, with its name.
+        const text = currentText();
+        deps.setComposerError(text.errorMessage(error, text.t("browser.error.openAddress")), target, error);
       }
       return;
     }
@@ -448,13 +484,15 @@ export function createBrowserStore(deps: BrowserStoreDeps) {
         deps.setBrowserAddress(tab.url);
         analytics.track("browser_action", { action: "open", result: "succeeded" });
         return tab;
-      } catch {
+      } catch (error) {
         deps.setBrowserAddress(url);
         analytics.track("browser_action", {
           action: "open",
           result: "failed",
           failure_code: "browser_open_failed",
         });
+        const text = currentText();
+        deps.setComposerError(text.errorMessage(error, text.t("browser.error.openAddress")), target, error);
         return undefined;
       }
     })();

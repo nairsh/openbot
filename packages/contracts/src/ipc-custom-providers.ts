@@ -1,13 +1,15 @@
-// A custom provider is an OpenAI-compatible endpoint the user names themselves. OpenBot serves it by
-// merging a `provider` entry into the OpenCode CLI's config, so the wire identity stays `opencode`
-// and no new `AgentProviderId` exists. What makes this file a contract rather than renderer state is
+// A custom provider is an OpenAI-compatible endpoint the user names themselves. OpenBot serves it
+// through the harness the user chooses: OpenCode, which reads a `provider` entry merged into its
+// config, or Pi, which reads an extension that registers the endpoint. The wire identity stays the
+// harness, `opencode` or `pi`, and no new `AgentProviderId` exists. What makes this file a contract rather than renderer state is
 // the API key: it travels renderer-to-main on `save` and must never come back, so both directions
 // need one agreed shape and the guard below is what enforces the asymmetry.
 
-import { AGENT_PROVIDERS } from "./agent-providers";
+import { AGENT_PROVIDERS, type AgentProviderId } from "./agent-providers";
 import { INPUT_LIMITS } from "./input-limits";
+import type { AgentReasoningEffort } from "./ipc-agent-identity";
 import { isBoundedString } from "./ipc-bounded-values";
-import { isDynamicRecord, isOneOf, isString } from "./runtime-values";
+import { isDynamicRecord, isNumber, isOneOf, isString } from "./runtime-values";
 
 /**
  * A custom provider is served by the OpenCode CLI, so its bounds are OpenCode's config shape rather
@@ -20,6 +22,18 @@ export const CUSTOM_PROVIDER_LIMITS = {
   baseUrl: 2_048,
   models: 64,
   headers: 32,
+  /**
+   * The context window of one model, in tokens. OpenCode's own prompt and tools take about 12K
+   * tokens, so a smaller window compacts on every turn.
+   */
+  contextWindowMin: 1_024,
+  contextWindowMax: 100_000_000,
+  /**
+   * The largest completion of one model, in tokens. No model returns a million, so the ceiling only
+   * stops a typo from reaching the endpoint as `max_completion_tokens`.
+   */
+  maxOutputMin: 256,
+  maxOutputMax: 1_000_000,
 } as const;
 
 /** A `provider` key in OpenCode's config, so lowercase and free of separators. */
@@ -28,14 +42,127 @@ export const CUSTOM_PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 /** RFC 9110 field-name token characters. */
 export const CUSTOM_PROVIDER_HEADER_NAME_PATTERN = /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/;
 
+/** The providers that can run a custom endpoint. The first one is the default and the released one. */
+export const CUSTOM_PROVIDER_HARNESSES = ["opencode", "pi"] as const satisfies readonly AgentProviderId[];
+export type CustomProviderHarness = (typeof CUSTOM_PROVIDER_HARNESSES)[number];
+export const DEFAULT_CUSTOM_PROVIDER_HARNESS: CustomProviderHarness = "opencode";
+
+export function isCustomProviderHarness(value: unknown): value is CustomProviderHarness {
+  return isOneOf(CUSTOM_PROVIDER_HARNESSES, value);
+}
+
 export interface CustomProviderModel {
   id: string;
   name: string;
+  /**
+   * The context window in tokens. Absent: OpenCode assumes its own default, 200K tokens in OpenCode
+   * 2.1.4. This computer only: a Team API list and save keep their released model fields.
+   */
+  contextWindow?: number;
+  /**
+   * The largest completion the model returns, in tokens (#4234). Absent: OpenBot writes a guess of
+   * at most 16,384, or half a small window. The form asks for a `contextWindow` with it, because the
+   * OpenCode entry writes no limit without a window. This computer only, like `contextWindow`.
+   */
+  maxOutput?: number;
+  /**
+   * The reasoning efforts that the endpoint accepts for this model, in `CUSTOM_PROVIDER_REASONING_EFFORTS`
+   * order, never empty (#4154). Absent: OpenCode offers its own Low, Medium and High, and Pi offers no
+   * effort. This computer only, like `contextWindow`.
+   */
+  reasoningEfforts?: CustomProviderReasoningEffort[];
+  /**
+   * The input kinds that the model accepts in addition to text, in `CUSTOM_PROVIDER_INPUT_KINDS`
+   * order (#4154). Empty: text only. Absent: the harness's own default, `CUSTOM_PROVIDER_DEFAULT_INPUTS`.
+   * Pi takes images only, so it ignores `pdf`. This computer only, like `contextWindow`.
+   */
+  inputs?: CustomProviderInputKind[];
+}
+
+/** The input kinds that a custom model can declare: the `modalities.input` values of OpenCode beside text. */
+export const CUSTOM_PROVIDER_INPUT_KINDS = ["image", "pdf"] as const;
+export type CustomProviderInputKind = (typeof CUSTOM_PROVIDER_INPUT_KINDS)[number];
+
+/** The input kinds that each harness can send to a model. Pi's model `input` is `("text" | "image")[]`. */
+export const CUSTOM_PROVIDER_HARNESS_INPUT_KINDS: Readonly<
+  Record<CustomProviderHarness, readonly CustomProviderInputKind[]>
+> = { opencode: CUSTOM_PROVIDER_INPUT_KINDS, pi: ["image"] };
+
+/**
+ * What a model with no saved `inputs` accepts beside text. OpenCode 2.2.5 gives a configured model
+ * text and image input (`Capabilities.default` in `packages/schema/src/model.ts`); OpenBot gives a Pi
+ * model text only.
+ */
+export const CUSTOM_PROVIDER_DEFAULT_INPUTS: Readonly<
+  Record<CustomProviderHarness, readonly CustomProviderInputKind[]>
+> = { opencode: ["image"], pi: [] };
+
+/** A list of input kinds, maybe empty, each one time, in `CUSTOM_PROVIDER_INPUT_KINDS` order. */
+export function isCustomProviderInputs(value: unknown): value is CustomProviderInputKind[] {
+  return (Array.isArray(value) && value.length === 0) || isOrderedSubset(CUSTOM_PROVIDER_INPUT_KINDS, value);
+}
+
+/**
+ * The efforts that a custom model can declare: the `reasoning_effort` values of OpenAI-compatible
+ * endpoints, and Pi's thinking levels, with `none` for Pi's `off`.
+ */
+export const CUSTOM_PROVIDER_REASONING_EFFORTS = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const satisfies readonly AgentReasoningEffort[];
+export type CustomProviderReasoningEffort = (typeof CUSTOM_PROVIDER_REASONING_EFFORTS)[number];
+
+/** A non-empty list of efforts, each one time, in `CUSTOM_PROVIDER_REASONING_EFFORTS` order. */
+export function isCustomProviderReasoningEfforts(value: unknown): value is CustomProviderReasoningEffort[] {
+  return isOrderedSubset(CUSTOM_PROVIDER_REASONING_EFFORTS, value);
+}
+
+/** A non-empty list of known values, each one time, in the order of `known`. */
+function isOrderedSubset(known: readonly unknown[], value: unknown): boolean {
+  if (!Array.isArray(value) || value.length === 0) return false;
+  let previous = -1;
+  for (const item of value) {
+    const index = known.indexOf(item);
+    if (index <= previous) return false;
+    previous = index;
+  }
+  return true;
+}
+
+/** A context window that OpenCode can use for a model. */
+export function isCustomProviderContextWindow(value: unknown): value is number {
+  return (
+    isNumber(value) &&
+    Number.isSafeInteger(value) &&
+    value >= CUSTOM_PROVIDER_LIMITS.contextWindowMin &&
+    value <= CUSTOM_PROVIDER_LIMITS.contextWindowMax
+  );
+}
+
+/** A completion cap that OpenCode can use for a model. */
+export function isCustomProviderMaxOutput(value: unknown): value is number {
+  return (
+    isNumber(value) &&
+    Number.isSafeInteger(value) &&
+    value >= CUSTOM_PROVIDER_LIMITS.maxOutputMin &&
+    value <= CUSTOM_PROVIDER_LIMITS.maxOutputMax
+  );
 }
 
 export interface CustomProviderHeader {
   name: string;
   value: string;
+}
+
+/** A header of an edit. `value: null` keeps the value that main holds for this name. */
+export interface CustomProviderHeaderInput {
+  name: string;
+  value: string | null;
 }
 
 /**
@@ -52,13 +179,17 @@ export interface SaveCustomProviderInput {
   apiKey: string | null;
   models: CustomProviderModel[];
   headers: CustomProviderHeader[];
+  /** The provider that runs the endpoint. Absent: OpenCode. This computer only, like `headerNames`. */
+  harness?: CustomProviderHarness;
 }
 
 /**
  * Renderer to main, on this computer only: the Team API has no edit route. The id names a saved
  * endpoint and does not change. A field that is absent keeps its stored value, so the form can send
- * a blank key and no headers without discarding the credentials that the user does not type again.
- * There is no way to clear a stored key here: remove the endpoint and add it again for that.
+ * a blank key without discarding the key that the user does not type again. `headers` replaces the
+ * saved list: a header with a `null` value keeps its saved value, and a saved header that is not in
+ * the list is removed. There is no way to clear a stored key here: remove the endpoint and add it
+ * again for that.
  */
 export interface UpdateCustomProviderInput {
   id: string;
@@ -66,7 +197,9 @@ export interface UpdateCustomProviderInput {
   baseUrl: string;
   models: CustomProviderModel[];
   apiKey?: string;
-  headers?: CustomProviderHeader[];
+  headers?: CustomProviderHeaderInput[];
+  /** Absent: the saved harness stays. */
+  harness?: CustomProviderHarness;
 }
 
 export interface DeleteCustomProviderInput {
@@ -80,11 +213,18 @@ export interface CustomProviderSummary {
   baseUrl: string;
   hasApiKey: boolean;
   /**
+   * The names of the saved headers, so Edit can show them. The values never come back. Absent in a
+   * Team API list, which keeps its released fields.
+   */
+  headerNames?: string[];
+  /**
    * The models the user listed for this endpoint, which is how the renderer names one before the
    * CLI has listed it: onboarding must record a custom model for a custom choice, and the endpoint
    * may have been saved in an earlier run. A model id and its label are not credentials.
    */
   models: CustomProviderModel[];
+  /** The provider that runs the endpoint. Absent in a Team API list, which keeps its released fields. */
+  harness?: CustomProviderHarness;
 }
 
 /**
@@ -136,9 +276,19 @@ export function isCustomProviderSummary(value: unknown): value is CustomProvider
     isBoundedString(value.name, INPUT_LIMITS.agentName) &&
     isBoundedString(value.baseUrl, CUSTOM_PROVIDER_LIMITS.baseUrl) &&
     typeof value.hasApiKey === "boolean" &&
+    (value.headerNames === undefined || isHeaderNames(value.headerNames)) &&
+    (value.harness === undefined || isCustomProviderHarness(value.harness)) &&
     Array.isArray(value.models) &&
     value.models.length <= CUSTOM_PROVIDER_LIMITS.models &&
     value.models.every(isCustomProviderModel)
+  );
+}
+
+function isHeaderNames(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= CUSTOM_PROVIDER_LIMITS.headers &&
+    value.every((name) => isCustomProviderHeaderName(name) && name.length <= INPUT_LIMITS.identifier)
   );
 }
 
@@ -146,7 +296,11 @@ function isCustomProviderModel(value: unknown): value is CustomProviderModel {
   return (
     isDynamicRecord(value) &&
     isBoundedString(value.id, INPUT_LIMITS.identifier) &&
-    isBoundedString(value.name, INPUT_LIMITS.modelName)
+    isBoundedString(value.name, INPUT_LIMITS.modelName) &&
+    (value.contextWindow === undefined || isCustomProviderContextWindow(value.contextWindow)) &&
+    (value.maxOutput === undefined || isCustomProviderMaxOutput(value.maxOutput)) &&
+    (value.reasoningEfforts === undefined || isCustomProviderReasoningEfforts(value.reasoningEfforts)) &&
+    (value.inputs === undefined || isCustomProviderInputs(value.inputs))
   );
 }
 
@@ -175,6 +329,17 @@ export function composedCustomModelId(providerId: string, modelId: string): stri
 export function isCustomProviderModelId(modelId: string, providerIds: ReadonlySet<string>): boolean {
   const separator = modelId.indexOf("/");
   return separator > 0 && providerIds.has(modelId.slice(0, separator));
+}
+
+/** The custom provider that a model id names before its first `/`, as `composedCustomModelId` makes it. */
+export function customProviderOfModel<T extends { readonly id: string }>(
+  modelId: string | null | undefined,
+  providers: readonly T[],
+): T | undefined {
+  const separator = modelId?.indexOf("/") ?? -1;
+  if (!modelId || separator <= 0) return undefined;
+  const providerId = modelId.slice(0, separator);
+  return providers.find((provider) => provider.id === providerId);
 }
 
 /** A header name is compared case-insensitively, the way HTTP does. */

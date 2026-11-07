@@ -1,4 +1,4 @@
-import { AGENT_CONTEXT_CATEGORIES, type AgentContextCategory } from "@openbot/contracts/ipc";
+import { AGENT_CONTEXT_CATEGORIES, type AgentContextCategory, type AgentContextState } from "@openbot/contracts/ipc";
 import type { AppTextKey } from "@openbot/i18n";
 import {
   Button,
@@ -35,6 +35,22 @@ export interface ContextUsageView {
   lastCompaction?: { beforeTokens: number; afterTokens: number } | undefined;
   /** What fills `usedTokens`. Absent when the provider gives only a total. */
   categories?: readonly { category: AgentContextCategory; tokens: number }[] | undefined;
+}
+
+/** The meter's view of a thread's context state, or undefined when its provider reported no usage. */
+export function contextUsageView(state: AgentContextState | undefined): ContextUsageView | undefined {
+  const usage = state?.usage;
+  if (!usage) return undefined;
+  const compaction = state.compaction;
+  return {
+    ...usage,
+    compacting: compaction?.status === "running",
+    ...(compaction?.status === "completed" &&
+    compaction.beforeTokens !== undefined &&
+    compaction.afterTokens !== undefined
+      ? { lastCompaction: { beforeTokens: compaction.beforeTokens, afterTokens: compaction.afterTokens } }
+      : {}),
+  };
 }
 
 const CATEGORY_LABEL = {
@@ -262,6 +278,44 @@ export function ContextUsageMeter(props: {
           />
         )}
       </Show>
+    </>
+  );
+}
+
+/**
+ * The New chat action of a composer whose thread has no context ring yet: providers report the fill
+ * only with a turn, so after a restart no ring shows until the agent's next turn (#4582).
+ */
+export function ComposerNewChatButton(props: {
+  agent: Pick<AgentProfile, "name" | "avatarSeed" | "avatarHue" | "avatarUrl">;
+  start: () => Promise<void>;
+  /** A running compaction: the meter's New chat row is disabled for the same reason. */
+  disabled?: boolean | undefined;
+}) {
+  const { t } = useText();
+  const [confirming, setConfirming] = createSignal(false);
+  const [trigger, setTrigger] = createSignal<HTMLElement>();
+  return (
+    <>
+      <Button
+        ref={setTrigger}
+        variant="ghost"
+        type="button"
+        class="composer-button"
+        aria-label={t("composer.newChat.action")}
+        aria-haspopup="dialog"
+        disabled={props.disabled}
+        onClick={() => setConfirming(true)}
+      >
+        <MessageCirclePlus aria-hidden="true" />
+      </Button>
+      <AgentNewChatDialog
+        agent={props.agent}
+        open={confirming()}
+        onClose={() => setConfirming(false)}
+        start={props.start}
+        restoreFocusTarget={trigger()}
+      />
     </>
   );
 }

@@ -48,16 +48,6 @@ export const Disabled: Story = {
   args: { disabled: true, disabledReason: "Choose a provider first." },
 };
 
-/** During a turn: the agent's own models and effort stay open, the other providers wait. */
-export const DuringTurn: Story = {
-  args: {
-    reasoningEffort: "medium",
-    onReasoningEffortChange: fn(),
-    providerChangesDisabled: true,
-    disabledReason: "Wait for the current work to finish before changing the provider or account.",
-  },
-};
-
 /** Providers that cannot run stay off the rail. The agent's own provider stays, with its message. */
 export const UnavailableProvidersOpen: Story = {
   args: {
@@ -248,3 +238,34 @@ export const OpenCodeTabExcludesCustom: Story = {
     value: "opencode/example-free",
   },
 };
+
+/** Three days from when the story loads, so the window has not ended yet. */
+const spentWeekResetsAt = Math.floor(Date.now() / 1_000) + 3 * 24 * 60 * 60;
+
+const usageLimitArgs: Parameters<typeof ProviderModelPicker>[0] = {
+  ...args,
+  provider: "claude",
+  value: "claude-opus-5-5",
+  reasoningEffort: "high",
+  onReasoningEffortChange: fn(),
+  accountUsage: {
+    limits: [
+      {
+        id: "claude",
+        primary: { usedPercent: 64, windowDurationMins: 300, resetsAt: spentWeekResetsAt - 2 * 24 * 60 * 60 },
+        secondary: { usedPercent: 100, windowDurationMins: 10_080, resetsAt: spentWeekResetsAt },
+      },
+      {
+        id: "codex",
+        primary: { usedPercent: 12, windowDurationMins: 300, resetsAt: spentWeekResetsAt },
+        secondary: null,
+      },
+    ],
+  },
+};
+
+/**
+ * The Claude weekly window is spent: a chip beside the provider name gives the window and its reset.
+ * The rows and the tab show no mark; their names tell a screen reader. Codex has quota left.
+ */
+export const UsageLimitReached: Story = { render: () => <ProviderModelPicker {...usageLimitArgs} /> };

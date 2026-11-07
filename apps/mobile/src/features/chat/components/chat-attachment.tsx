@@ -1,10 +1,11 @@
 import { playableMediaKind } from "@openbot/contracts/attachment-files";
-import { CHAT_VISUAL_PAGE_LIMIT, isChatVisualMimeType } from "@openbot/contracts/chat-visual";
+import { CHAT_VISUAL_PAGE_LIMIT, chatVisualFrameHeight, isChatVisualMimeType } from "@openbot/contracts/chat-visual";
 import type { AttachmentSummary } from "@openbot/contracts/ipc";
 import { MOBILE_ATTACHMENT_BYTES } from "@openbot/team-client/remote-peer";
 import { requireOptionalNativeModule } from "expo";
 import { File } from "expo-file-system";
 import { Image } from "expo-image";
+import { router } from "expo-router";
 import { Button, Skeleton, Typography } from "heroui-native";
 import { useThemeColor } from "heroui-native/hooks";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
@@ -15,13 +16,18 @@ import { Pressable, useWindowDimensions, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { haptics } from "@/shared/lib/haptics";
 import { useText } from "@/shared/lib/text";
+import { MIRROR_IN_RTL } from "@/shared/lib/text-direction";
 import { attachmentFrame, FILL, FRAME_RADIUS, MAX_FRAME_WIDTH } from "../model/attachment-frame";
+import { storeCodePreview } from "../model/code-preview-store";
 import { type ImageDimensions, sameShape } from "../model/image-dimensions";
-import { attachmentTypeLabel, rememberImageDimensions, useAttachmentFile } from "./attachment-preview";
+import { attachmentTypeLabel, rememberImageDimensions, showsAsImage, useAttachmentFile } from "./attachment-preview";
 import { ChatCodePreview } from "./chat-code-preview";
 import { isViewableImage, useChatImageSource } from "./chat-image-viewer";
-import { UPLOAD_BLUR_RADIUS, UPLOAD_SETTLE_MS, UploadProgressCircle, useUploadRevealStyle } from "./upload-progress";
+import { HtmlPage } from "./html-page";
+import { UPLOAD_BLUR_RADIUS, UploadProgressCircle, useUploadReveal } from "./upload-progress";
 import { useAttachmentPreview } from "./use-attachment-preview";
+import { useHistoryShown } from "./use-history-shown";
+import { useListSettled } from "./use-list-settled";
 import { useMediaFile } from "./use-media-file";
 
 // The width reserved while the shape is still unknown: a portrait phone photo.
@@ -45,8 +51,8 @@ interface ChatAttachmentProps {
   upload?: number;
   /** The agent's color for the controls of a player, unless the user turned off agent colors. */
   tint?: AttachmentTint;
-  /** The page of a visual reply, which shows in the chat as desktop shows it. */
-  visual?: boolean;
+  /** The page of a visual reply, which shows in the chat as desktop shows it, at the agent's height. */
+  visual?: { height?: number } | undefined;
 }
 
 export interface AttachmentTint {
@@ -76,13 +82,18 @@ export function ChatAttachmentView(props: ChatAttachmentProps) {
 }
 
 /**
- * A visual reply: its page as a card, as a ```html block in a reply shows. The page downloads with
- * the chat. Until it is read, the card space waits; a page that cannot be read is a file card.
+ * A visual reply. The live page shows in the chat with no card, as on desktop; in a build without
+ * the web view module it is a card, as a ```html block in a reply shows. The page downloads with
+ * the chat. Until it is read, its space waits; a page that cannot be read is a file card.
  */
 function ChatVisualAttachment(props: ChatAttachmentProps) {
   const { attachment, serverId } = props;
   const { t } = useText();
   const { width } = useWindowDimensions();
+  const settled = useListSettled();
+  // A web view starts only once the chat shows its history, so it does not slow the chat that opens.
+  const historyShown = useHistoryShown();
+  const pageHeight = chatVisualFrameHeight(undefined, props.visual?.height);
   const file = useMediaFile(serverId, attachment, true);
   const [page, setPage] = useState<{ uri: string; source: string } | null>(null);
   const [failed, setFailed] = useState(false);
@@ -109,9 +120,28 @@ function ChatVisualAttachment(props: ChatAttachmentProps) {
         isLoading
         accessible
         accessibilityLabel={t("mobile.chat.attachment.downloading")}
-        // The size of the card: the bubble width, its header row and a picture half as high as wide.
-        style={{ width: width - 80, height: (width - 80) / 2 + 42, borderRadius: 18 }}
+        // The size of the page, or of the card: the bubble width, its header row and a picture half as high as wide.
+        style={{ width: width - 80, height: HtmlPage ? pageHeight : (width - 80) / 2 + 42, borderRadius: 18 }}
       />
+    );
+  if (HtmlPage)
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t("mobile.chat.attachment.preview", { name: attachment.name })}
+        style={{ width: width - 80, maxWidth: "100%", height: pageHeight }}
+        onPress={() => {
+          void haptics.impact("soft");
+          const local = { uri: page.uri, name: attachment.name, mimeType: attachment.mimeType };
+          const previewId = storeCodePreview({ kind: "html", source: page.source, language: "html", file: local });
+          router.push({ pathname: "/code-preview/[previewId]", params: { previewId } });
+        }}
+      >
+        {/* The page takes no touches, so the chat scrolls over it and a tap opens it. */}
+        <View pointerEvents="none" style={FILL}>
+          {settled && historyShown ? <HtmlPage source={page.source} title={attachment.name} mode="chat" /> : null}
+        </View>
+      </Pressable>
     );
   return (
     <ChatCodePreview
@@ -129,23 +159,11 @@ function ChatFileAttachment({ attachment, serverId, alignment = "left", upload }
   const [decoded, setDecoded] = useState<ImageDimensions | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
-  // The send can finish before the upload view has settled. Hold it as complete for that long,
-  // so the photo finishes coming into focus instead of jumping to sharp in one frame.
-  const [lingering, setLingering] = useState(false);
-  useEffect(() => {
-    if (upload !== undefined) {
-      setLingering(true);
-      return;
-    }
-    const timer = setTimeout(() => setLingering(false), UPLOAD_SETTLE_MS);
-    return () => clearTimeout(timer);
-  }, [upload]);
-  const shownUpload = upload ?? (lingering ? 1 : undefined);
-  const revealStyle = useUploadRevealStyle(shownUpload ?? 1);
+  const { shownUpload, revealStyle } = useUploadReveal(upload);
   const { width } = useWindowDimensions();
   const tooLarge = attachment.size > MOBILE_ATTACHMENT_BYTES;
   // An image above the transfer limit cannot be shown here, so it is a file the user opens on desktop.
-  const image = attachment.kind === "image" && !tooLarge;
+  const image = showsAsImage(attachment) && !tooLarge;
   const { pending, localUri, uri, dimensions, query, sharing, share } = useAttachmentFile(serverId, attachment, image);
   // The conversation's viewer measures this copy and hides it on the UI thread while it holds the picture.
   const source = useChatImageSource(image && isViewableImage(attachment) ? attachment.id : null, FRAME_RADIUS);
@@ -311,7 +329,7 @@ function ChatFileAttachment({ attachment, serverId, alignment = "left", upload }
         {shownUpload !== undefined ? (
           <UploadProgressCircle progress={shownUpload} />
         ) : previewable ? (
-          <ChevronRight size={18} color={muted} />
+          <ChevronRight size={18} color={muted} style={MIRROR_IN_RTL} />
         ) : (
           <ExternalLink size={18} color={muted} />
         )}

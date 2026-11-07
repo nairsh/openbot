@@ -1,4 +1,5 @@
-import { isOneOf } from "./runtime-values";
+import { isBoundedString } from "./ipc-bounded-values";
+import { isBoolean, isDynamicRecord, isOneOf } from "./runtime-values";
 
 export const VOICE_AUDIO_LIMITS = {
   sampleRate: 16_000,
@@ -19,7 +20,13 @@ export interface VoiceTranscriptionResult {
 }
 
 /** The local speech recognition models. Saved in `voice-preference.json`; never rename one. */
-export const LOCAL_VOICE_MODEL_IDS = ["parakeet-tdt-0.6b-v3", "bark-3.0-plus", "whisper-turbo"] as const;
+export const LOCAL_VOICE_MODEL_IDS = [
+  "parakeet-tdt-0.6b-v3",
+  "parakeet-unified-en-0.6b",
+  "bark-3.0-plus",
+  "whisper-turbo",
+  "cohere-transcribe-03-2026",
+] as const;
 export type LocalVoiceModelId = (typeof LOCAL_VOICE_MODEL_IDS)[number];
 
 /**
@@ -37,10 +44,15 @@ interface VoiceModelCapabilities {
   /** The product name. It is not translated. */
   name: string;
   /**
-   * True when the model takes a fixed language. Parakeet always finds the language itself, and Bark
-   * recognizes English only.
+   * True when the model takes a fixed language. Parakeet TDT always finds the language itself, and
+   * Parakeet Unified and Bark recognize English only.
    */
   supportsLanguage: boolean;
+  /**
+   * The only languages the model takes, when it cannot find the language itself. Without this
+   * list, a model that `supportsLanguage` takes every Whisper language and automatic.
+   */
+  languages?: readonly WhisperLanguage[];
   /**
    * True when the composer shows text while you speak. Whisper reads 30 s for each pass, so it
    * transcribes only after Stop.
@@ -54,6 +66,11 @@ export interface LocalVoiceModelInfo extends VoiceModelCapabilities {
   id: LocalVoiceModelId;
   /** The download size of all files. */
   bytes: number;
+  /**
+   * Not offered any more. A saved choice still works, and the settings show the model only while it
+   * is in use or downloaded, so that the user can remove its files.
+   */
+  retired?: true;
 }
 
 /** A model that runs at a provider. It is ready when its API key is saved. */
@@ -63,6 +80,24 @@ export interface CloudVoiceModelInfo extends VoiceModelCapabilities {
 }
 
 export type VoiceModelInfo = LocalVoiceModelInfo | CloudVoiceModelInfo;
+
+/** The languages of Cohere Transcribe. It does not find the language itself. */
+const COHERE_TRANSCRIBE_LANGUAGES = [
+  "ar",
+  "de",
+  "el",
+  "en",
+  "es",
+  "fr",
+  "it",
+  "ja",
+  "ko",
+  "nl",
+  "pl",
+  "pt",
+  "vi",
+  "zh",
+] as const satisfies readonly WhisperLanguage[];
 
 export const VOICE_MODELS: readonly VoiceModelInfo[] = [
   {
@@ -75,11 +110,21 @@ export const VOICE_MODELS: readonly VoiceModelInfo[] = [
   },
   {
     kind: "local",
+    id: "parakeet-unified-en-0.6b",
+    name: "Parakeet Unified EN 0.6B",
+    bytes: 663_043_117,
+    supportsLanguage: false,
+    livePreview: true,
+  },
+  {
+    kind: "local",
     id: "bark-3.0-plus",
     name: "Underdog Bark 3.0 Plus",
     bytes: 684_624_267,
     supportsLanguage: false,
     livePreview: true,
+    // Parakeet Unified EN is as fast, with punctuation and fewer errors.
+    retired: true,
   },
   {
     kind: "local",
@@ -87,6 +132,16 @@ export const VOICE_MODELS: readonly VoiceModelInfo[] = [
     name: "Whisper large-v3 turbo",
     bytes: 1_036_613_791,
     supportsLanguage: true,
+    livePreview: false,
+  },
+  {
+    kind: "local",
+    id: "cohere-transcribe-03-2026",
+    name: "Cohere Transcribe",
+    bytes: 2_888_052_036,
+    supportsLanguage: true,
+    languages: COHERE_TRANSCRIBE_LANGUAGES,
+    // A decode takes about three times as long as Parakeet, too long to repeat while you speak.
     livePreview: false,
   },
   {
@@ -256,6 +311,16 @@ export function isVoiceLanguage(value: unknown): value is VoiceLanguage {
 }
 
 /**
+ * The language that a model with its own `languages` uses: the saved language when the model
+ * takes it, else English. A model without the list uses the saved language.
+ */
+export function modelLanguage(model: VoiceModelInfo, language: VoiceLanguage): VoiceLanguage {
+  const languages = model.languages;
+  if (!languages) return language;
+  return languages.find((candidate) => candidate === language) ?? "en";
+}
+
+/**
  * Supertonic 3, the local model that reads replies aloud. Saved in `speech-preference.json` and
  * named in model statuses; never rename it.
  */
@@ -310,13 +375,111 @@ export const SPEECH_LANGUAGES = [
 ] as const;
 export type SpeechLanguage = (typeof SPEECH_LANGUAGES)[number];
 
+/** The speeds of a reply that is read aloud, slowest first. 1 is normal speed. */
+export const SPEECH_SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const;
+export type SpeechSpeed = (typeof SPEECH_SPEEDS)[number];
+
+/** The order in which a speed button goes through the speeds: from normal speed up, then the slower ones. */
+const SPEECH_SPEED_CYCLE: readonly SpeechSpeed[] = [
+  ...SPEECH_SPEEDS.filter((speed) => speed >= 1),
+  ...SPEECH_SPEEDS.filter((speed) => speed < 1),
+];
+
+/** The speed after `speed` on a speed button: 1×, 1.25×, 1.5×, 2×, 0.75×, then 1× again. */
+export function nextSpeechSpeed(speed: number): SpeechSpeed {
+  const index = SPEECH_SPEED_CYCLE.findIndex((step) => step === speed);
+  return SPEECH_SPEED_CYCLE[(index + 1) % SPEECH_SPEED_CYCLE.length] ?? 1;
+}
+
 export interface SpeechSettings {
   /** Read the reply to a dictated message aloud. */
   readReplies: boolean;
   voice: SpeechVoice;
+  /** The speed of each reply that is read aloud. The pitch stays the same. */
+  speed: SpeechSpeed;
+  /**
+   * A voice conversation with any agent on this computer uses Codex live voice: the Codex App Server
+   * connects the microphone to OpenAI's realtime model with the user's own Codex sign-in, and gives
+   * each spoken request to the agent's own provider.
+   */
+  codexLive: boolean;
+  /** The voice of Codex live voice. Null lets OpenAI choose. */
+  codexLiveVoice: CodexLiveVoice | null;
 }
 
-export const DEFAULT_SPEECH_SETTINGS: SpeechSettings = { readReplies: false, voice: "F1" };
+export const DEFAULT_SPEECH_SETTINGS: SpeechSettings = {
+  readReplies: false,
+  voice: "F1",
+  speed: 1,
+  codexLive: false,
+  codexLiveVoice: null,
+};
+
+/**
+ * The realtime v3 voices that Codex App Server's `realtime/listVoices` gives for a ChatGPT sign-in.
+ * Its list has no default v3 voice. The names are the voices' own names, in every language.
+ */
+export const CODEX_LIVE_VOICES = [
+  "juniper",
+  "maple",
+  "spruce",
+  "ember",
+  "vale",
+  "breeze",
+  "arbor",
+  "sol",
+  "cove",
+  "aube",
+  "bubbie",
+  "haetsal",
+  "hanul",
+  "himari",
+  "leher",
+  "miko",
+  "neer",
+  "porto",
+  "rindo",
+  "rio",
+  "rivage",
+  "selva",
+  "sonna",
+  "tinta",
+  "viola",
+] as const;
+export type CodexLiveVoice = (typeof CODEX_LIVE_VOICES)[number];
+
+/**
+ * The start of a Codex live voice session. `sdp` is the WebRTC offer of the renderer's peer
+ * connection: one audio track and the `oai-events` data channel.
+ */
+export interface VoiceLiveStart {
+  agentId: string;
+  sdp: string;
+}
+
+/** A live voice session that runs. `sdp` is the answer to the offer of `VoiceLiveStart`. */
+export interface VoiceLiveSession {
+  sessionId: string;
+  sdp: string;
+}
+
+export interface VoiceLiveStop {
+  sessionId: string;
+}
+
+/**
+ * What a live voice session sends while it runs. A transcript part with `final: false` is new text
+ * of the part that is spoken now; `final: true` gives the whole part. `ended` is the last event of a
+ * session; `error` is null when the user or the app ended it.
+ */
+export type VoiceLiveEvent =
+  | { type: "transcript"; sessionId: string; role: "user" | "assistant"; text: string; final: boolean }
+  | { type: "ended"; sessionId: string; error: string | null };
+
+export const VOICE_LIVE_LIMITS = {
+  /** A WebRTC offer of one audio track and one data channel is a few kilobytes. */
+  maximumSdpLength: 65_536,
+} as const;
 
 export interface SpeechModelStatus extends Omit<VoiceModelStatus, "modelId"> {
   modelId: SpeechModelId;
@@ -343,6 +506,133 @@ export function isSpeechVoice(value: unknown): value is SpeechVoice {
   return isOneOf(SPEECH_VOICES, value);
 }
 
+export function isCodexLiveVoice(value: unknown): value is CodexLiveVoice {
+  return isOneOf(CODEX_LIVE_VOICES, value);
+}
+
+export function isSpeechSpeed(value: unknown): value is SpeechSpeed {
+  return isOneOf(SPEECH_SPEEDS, value);
+}
+
 export function isSpeechLanguage(value: unknown): value is SpeechLanguage {
   return isOneOf(SPEECH_LANGUAGES, value);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The user's own voice server: an OpenAI-compatible `/v1/audio` API on their network or online.
+
+export const VOICE_SERVER_LIMITS = {
+  address: 2_048,
+  apiKey: 4_096,
+  /** A model or voice name, such as `Systran/faster-whisper-large-v3`. */
+  name: 256,
+  /** The models or voices of one kind that a server lists. */
+  entries: 500,
+  message: 2_000,
+} as const;
+
+/**
+ * What the server does for OpenBot. Dictation uses `POST /audio/transcriptions` and spoken replies
+ * use `POST /audio/speech`. A route that is on has its model, and speech also has its voice.
+ */
+export interface VoiceServerRoutes {
+  dictation: boolean;
+  speech: boolean;
+  transcriptionModel: string | null;
+  speechModel: string | null;
+  voice: string | null;
+}
+
+/** Main to renderer. The key never comes back; `hasApiKey` is all the renderer may know about it. */
+export interface VoiceServerSettings {
+  /** The base address of the API, such as `http://studio.local:8000/v1`. */
+  address: string;
+  hasApiKey: boolean;
+  routes: VoiceServerRoutes;
+}
+
+/**
+ * A server to test or to save. A null key keeps the saved key, but only when the address keeps the
+ * saved origin, so an edited address never receives the old key.
+ */
+export interface VoiceServerConnection {
+  address: string;
+  apiKey: string | null;
+}
+
+export interface VoiceServerInput extends VoiceServerConnection {
+  routes: VoiceServerRoutes;
+}
+
+/** Null removes the server, and dictation and spoken replies go back to this computer. */
+export interface VoiceServerSave {
+  server: VoiceServerInput | null;
+}
+
+/** What the server lists, by route. A list is empty when the server has nothing for that route. */
+export interface VoiceServerModels {
+  transcription: string[];
+  speech: string[];
+  voices: string[];
+}
+
+/** The form field that the user must change after a failed test. */
+export type VoiceServerProbeField = "address" | "apiKey";
+
+export type VoiceServerProbe =
+  | { ok: true; models: VoiceServerModels }
+  | { ok: false; field: VoiceServerProbeField; message: string };
+
+function isNameList(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= VOICE_SERVER_LIMITS.entries &&
+    value.every((entry) => isBoundedString(entry, VOICE_SERVER_LIMITS.name) && entry.length > 0)
+  );
+}
+
+function isOptionalName(value: unknown): value is string | null {
+  return value === null || (isBoundedString(value, VOICE_SERVER_LIMITS.name) && value.length > 0);
+}
+
+/** A route that is on names its model, and spoken replies also name a voice. */
+export function isVoiceServerRoutes(value: unknown): value is VoiceServerRoutes {
+  return (
+    isDynamicRecord(value) &&
+    isBoolean(value.dictation) &&
+    isBoolean(value.speech) &&
+    isOptionalName(value.transcriptionModel) &&
+    isOptionalName(value.speechModel) &&
+    isOptionalName(value.voice) &&
+    (!value.dictation || value.transcriptionModel !== null) &&
+    (!value.speech || (value.speechModel !== null && value.voice !== null))
+  );
+}
+
+/** Fails closed like `isCustomProviderSummary`: a record that carries an `apiKey` is refused. */
+export function isVoiceServerSettings(value: unknown): value is VoiceServerSettings {
+  return (
+    isDynamicRecord(value) &&
+    !("apiKey" in value) &&
+    isBoundedString(value.address, VOICE_SERVER_LIMITS.address) &&
+    isBoolean(value.hasApiKey) &&
+    isVoiceServerRoutes(value.routes)
+  );
+}
+
+export function isVoiceServerProbe(value: unknown): value is VoiceServerProbe {
+  if (!isDynamicRecord(value)) return false;
+  if (value.ok === false)
+    return (
+      isOneOf<VoiceServerProbeField>(["address", "apiKey"], value.field) &&
+      isBoundedString(value.message, VOICE_SERVER_LIMITS.message)
+    );
+  const models = value.models;
+  return (
+    value.ok === true &&
+    isDynamicRecord(models) &&
+    isNameList(models.transcription) &&
+    isNameList(models.speech) &&
+    isNameList(models.voices)
+  );
 }

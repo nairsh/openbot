@@ -42,19 +42,34 @@ export function discordInboundMessage(message: DiscordInboundMessage): InboundMe
       ? {
           authorName: quote.authorName,
           // Names its files, so that the agent knows which of the message's files are the replied-to ones.
-          text: [
-            discordPlainText(quote.content),
-            quote.attachments.length
-              ? `(Attached files: ${quote.attachments.map((file) => file.filename).join(", ")})`
-              : "",
-          ]
-            .filter(Boolean)
-            .join("\n"),
-          mentionedUserIds: discordMentionIds(quote.content),
+          text: discordContextText(discordPlainText(quote.content), quote.attachments, quote.embeds, quote.forwarded),
+          mentionedUserIds: discordMentionIds([quote.content, ...quote.embeds].join("\n")),
           sentAt: quote.sentAt,
         }
       : null,
   };
+}
+
+/**
+ * The context text of a Discord message: its text, its embeds and the names of its files. A forward
+ * says that it is one, and says so too when Discord gave none, such as without the Message Content
+ * intent.
+ */
+export function discordContextText(
+  text: string,
+  attachments: DiscordInboundAttachment[],
+  embeds: string[],
+  forwarded: boolean,
+): string {
+  const files = attachments.length ? `(Attached files: ${attachments.map((file) => file.filename).join(", ")})` : "";
+  const embedTexts = embeds.map((embed) => `(Embed)\n${discordPlainText(embed)}`);
+  const forward = !forwarded
+    ? ""
+    : text || files || embeds.length
+      ? "(Forwarded message)"
+      : "(Forwarded message: Discord did not give its text or files)";
+  // The files come before the embeds, so that a cut of long text keeps their names.
+  return [forward, text, files, ...embedTexts].filter(Boolean).join("\n");
 }
 
 export function inboundFile(attachment: DiscordInboundAttachment): InboundFile {

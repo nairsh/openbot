@@ -24,6 +24,7 @@ import { ChatMarkdown } from "@/features/chat/components/chat-markdown";
 import { CodeDocument } from "@/features/chat/components/code-document";
 import DiagramCanvas from "@/features/chat/components/diagram-canvas.dom";
 import { SpreadsheetFilePreview } from "@/features/chat/components/file-document-preview";
+import { HtmlPage } from "@/features/chat/components/html-page";
 import HtmlPreview from "@/features/chat/components/html-preview.dom";
 import { PdfPreview } from "@/features/chat/components/pdf-preview";
 import { PREVIEW_TEXT_LIMIT } from "@/features/chat/model/attachment-file-preview";
@@ -35,6 +36,7 @@ import { expoGoDomOptions } from "@/shared/lib/expo-go-dom";
 import { haptics } from "@/shared/lib/haptics";
 import { useReducedMotion } from "@/shared/lib/motion";
 import { useText } from "@/shared/lib/text";
+import { MIRROR_IN_RTL } from "@/shared/lib/text-direction";
 import { useLiquidGlass } from "@/shared/lib/use-liquid-glass";
 
 type PreviewView = "preview" | "code";
@@ -93,6 +95,7 @@ function PreviewContent({ entry }: { entry: CodePreviewEntry }) {
   const headerBottom = insets.top + HEADER_OFFSET + HEADER_HEIGHT + HEADER_OFFSET;
   const title =
     entry.file?.name ??
+    entry.title ??
     (entry.kind === "html"
       ? t("mobile.chat.preview.htmlTitle")
       : entry.kind === "mermaid"
@@ -185,6 +188,14 @@ function PreviewContent({ entry }: { entry: CodePreviewEntry }) {
           <PdfPreview uri={file.uri} title={title} insets={{ top: headerBottom, bottom: insets.bottom }} />
         ) : entry.kind === "spreadsheet" && file ? (
           <SpreadsheetFilePreview uri={file.uri} title={title} insets={{ top: headerBottom, bottom: insets.bottom }} />
+        ) : entry.kind === "html" && file && HtmlPage ? (
+          // An HTML file runs its scripts, as on desktop; a ```html block from a reply does not.
+          <HtmlPage
+            source={entry.source}
+            title={title}
+            mode="screen"
+            insets={{ top: headerBottom, bottom: insets.bottom }}
+          />
         ) : entry.kind === "html" ? (
           <HtmlPreview
             source={entry.source}
@@ -230,9 +241,9 @@ function PreviewContent({ entry }: { entry: CodePreviewEntry }) {
       )}
 
       <View
-        className="absolute inset-x-0 z-20 flex-row items-center gap-2 px-4"
+        className="absolute inset-x-0 z-20 flex-row items-center gap-2"
         pointerEvents="box-none"
-        style={{ top: insets.top + HEADER_OFFSET }}
+        style={{ top: insets.top + HEADER_OFFSET, paddingLeft: insets.left + 16, paddingRight: insets.right + 16 }}
       >
         <ChatGlassIconButton
           accessibilityLabel={t("common.back")}
@@ -243,7 +254,7 @@ function PreviewContent({ entry }: { entry: CodePreviewEntry }) {
             router.back();
           }}
         >
-          <ArrowLeft color={String(foreground)} size={24} strokeWidth={2} />
+          <ArrowLeft color={String(foreground)} size={24} strokeWidth={2} style={MIRROR_IN_RTL} />
         </ChatGlassIconButton>
         <GlassCapsule liquidGlass={liquidGlass} fallbackBackground={fieldBackground} style={{ flexShrink: 1 }}>
           <Animated.View
@@ -332,10 +343,16 @@ function MarkdownPreview({
   note: string | null;
   insets: { top: number; bottom: number };
 }) {
+  const sides = useSafeAreaInsets();
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="never"
-      contentContainerStyle={{ paddingTop: insets.top, paddingBottom: insets.bottom + 24, paddingHorizontal: 20 }}
+      contentContainerStyle={{
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom + 24,
+        paddingLeft: sides.left + 20,
+        paddingRight: sides.right + 20,
+      }}
       scrollIndicatorInsets={{ top: insets.top, bottom: insets.bottom }}
     >
       <ChatMarkdown body={source} color={undefined} finished selectable />

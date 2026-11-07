@@ -14,6 +14,7 @@ import type { AgentMessage } from "@openbot/ui/data";
 import { currentText } from "@openbot/ui/text";
 import { desktopAnalytics } from "../../../analytics";
 import { writeClipboardText } from "../../../clipboard";
+import { copiedFileRead, copyMessageWithAttachments } from "../composer-clipboard";
 import type { StoredQueueEdit } from "../composer-draft";
 import { conversationRuntime } from "../conversation-runtime";
 import type { ComposerDraft, ConversationProps, ConversationTarget } from "../conversation-types";
@@ -99,7 +100,8 @@ export function createMessageActions(deps: MessageActionsDeps) {
     }
   }
 
-  async function copyMessage(message: AgentMessage) {
+  /** The text of a message as the reader sees it: names in place of agent, skill and attachment markers. */
+  function messageText(message: AgentMessage): string {
     const attachmentNames = new Map((message.attachments ?? []).map((attachment) => [attachment.id, attachment.name]));
     const agentNames = new Map(deps.props.agents.map((agent) => [agent.id, agent.name]));
     const skillNames = new Map(
@@ -108,17 +110,28 @@ export function createMessageActions(deps: MessageActionsDeps) {
         .filter((skill) => skill.state !== "needs-repair")
         .map((skill) => [skill.skillId, skill.name]),
     );
-    const text = expandAttachmentReferences(
+    return expandAttachmentReferences(
       expandChatTagReferences(message.body, (reference) =>
         reference.kind === "agent" ? agentNames.get(reference.id) : skillNames.get(reference.id),
       ),
       (reference) => attachmentNames.get(reference.attachmentId),
     );
-    if (!text) return;
+  }
+
+  async function copyMessage(message: AgentMessage) {
+    const text = messageText(message);
+    if (!text && !message.attachments?.length) return;
     const agentId = conversationOwnerId(deps.props);
     const target = agentId ? { agentId, serverId: deps.props.server?.id ?? "local" } : undefined;
     try {
-      await writeClipboardText(text);
+      if (message.attachments?.length)
+        await copyMessageWithAttachments(
+          message.body,
+          text,
+          message.attachments,
+          deps.props.runtime?.previewAttachment,
+        );
+      else await writeClipboardText(text);
       deps.setCopiedMessageId(message.id);
       window.setTimeout(() => {
         if (deps.copiedMessageId() === message.id) deps.setCopiedMessageId(null);
@@ -145,7 +158,8 @@ export function createMessageActions(deps: MessageActionsDeps) {
       attachments: deps.currentDraft().attachments.filter((attachment) => attachment.id !== id),
       text: removeAttachmentReferences(deps.currentDraft().text, id),
     });
-    void conversationRuntime(deps.props).agent.discardDraftAttachment(id, serverId);
+    const runtime = conversationRuntime(deps.props);
+    void copiedFileRead(id).then(() => runtime.agent.discardDraftAttachment(id, serverId));
   }
 
   function draftAttachmentIds(): Set<string> {
@@ -158,6 +172,7 @@ export function createMessageActions(deps: MessageActionsDeps) {
     setPageContext,
     reactToMessage,
     copyMessage,
+    messageText,
     removeAttachment,
     draftAttachmentIds,
   };

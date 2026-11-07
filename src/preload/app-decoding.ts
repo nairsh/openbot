@@ -29,6 +29,7 @@ import {
   type AppLogoColorPreference,
   type ApprovalAutomationPreference,
   type AppSetupState,
+  type AppThemePalette,
   type BitwardenConnectorStatus,
   type BusyMessageModePreference,
   type CentralAuthIssue,
@@ -47,8 +48,13 @@ import {
   type DetectedAcpAgent,
   type DetectedModelServer,
   type DiscoverModelsResult,
+  decodeExternalLinkTarget,
   decodeScheduledUpdateRestart,
   type ExportResult,
+  type ExternalLinkBrowser,
+  type ExternalLinkBrowsers,
+  type ExternalLinkFallback,
+  type ExternalLinkPreference,
   type GitHubConnectorRepositories,
   type GitHubConnectorStatus,
   type HostedSiteList,
@@ -63,7 +69,12 @@ import {
   isAppLanguage,
   isAppLogoColor,
   isApprovalAutomationPreference,
+  isAppThemePalette,
+  isAppThemePaletteId,
+  isAutomationRunsPerHour,
+  isAvatarColor,
   isBusyMessageMode,
+  isCodexLiveVoice,
   isComposerSuggestionPreference,
   isCustomAgentCheckResult,
   isCustomAgentResult,
@@ -74,13 +85,18 @@ import {
   isDetectedAcpAgent,
   isDetectedModelServer,
   isDiscoverModelsResult,
+  isPlanStartAfterMs,
   isProviderDetectionSettings,
   isRemoteDesktopSetupStatus,
   isRemoteDesktopTestStatus,
   isRemoteNetworkRoute,
+  isSpeechSpeed,
   isSpeechVoice,
   isVoiceLanguage,
   isVoiceModelId,
+  isVoiceServerProbe,
+  isVoiceServerSettings,
+  type LinkAccountStatus,
   type MobileConnectedDevice,
   type MobileConnectLink,
   type MobileConnectTicket,
@@ -90,11 +106,13 @@ import {
   type ProviderDetectionSettings,
   parseGitHubConnectorRepositories,
   parseGitHubConnectorStatus,
+  parseLinkAccountStatus,
   parseOnePasswordConnectorStatus,
   type RemoteDesktopSetupStatus,
   type RemoteDesktopTestStatus,
   type RemoteNetworkRouteState,
   type RemoteSessionReusePreference,
+  type SentMessageStats,
   SPEECH_MODEL_ID,
   type SpeechAudio,
   type SpeechModelStatus,
@@ -102,7 +120,11 @@ import {
   UPDATE_PHASES,
   type UpdatePreference,
   type UpdateStatus,
+  type VoiceLiveEvent,
+  type VoiceLiveSession,
   type VoiceModelStatus,
+  type VoiceServerProbe,
+  type VoiceServerSettings,
   type VoiceSettings,
   type VoiceStream,
   type VoiceStreamTranscript,
@@ -121,23 +143,48 @@ import {
   requiredString,
 } from "@openbot/contracts/ipc-decoding";
 import { type LicenseState, parseLicenseState } from "@openbot/contracts/license";
+import {
+  isMarketplaceAgentId,
+  isMarketplaceSkillSlug,
+  type MarketplaceListingLink,
+} from "@openbot/contracts/marketplace-links";
 import { isPluginSlug } from "@openbot/contracts/plugin-links";
-import { isBoolean, isNumber, isOneOf, isString } from "@openbot/contracts/runtime-values";
+import {
+  type DynamicRecord,
+  isBoolean,
+  isDynamicRecord,
+  isNumber,
+  isOneOf,
+  isString,
+} from "@openbot/contracts/runtime-values";
 
 export function decodeAppInfo(value: unknown): AppInfo {
   const info = decodeRecord(value, "app info");
-  const { platform, variant, analyticsCaptureUrl } = info;
+  const { platform, variant, analyticsCaptureUrl, analyticsInstallId, softwareRendering } = info;
   if (!isOneOf(["darwin", "win32", "linux"] as const, platform)) throw new Error("Invalid platform.");
   if (!isOneOf(["production", "dev", "preview"] as const, variant)) throw new Error("Invalid variant.");
   if (analyticsCaptureUrl !== undefined && !isString(analyticsCaptureUrl))
     throw new Error("Invalid analytics capture URL.");
+  if (analyticsInstallId !== undefined && !isString(analyticsInstallId))
+    throw new Error("Invalid analytics install ID.");
+  if (softwareRendering !== undefined && !isBoolean(softwareRendering))
+    throw new Error("Invalid software rendering flag.");
   return {
     name: requiredString(info, "name"),
     version: requiredString(info, "version"),
     platform,
     variant,
     ...(analyticsCaptureUrl === undefined ? {} : { analyticsCaptureUrl }),
+    ...(analyticsInstallId === undefined ? {} : { analyticsInstallId }),
+    ...(softwareRendering === undefined ? {} : { softwareRendering }),
   };
+}
+
+export function decodeSentMessageStats(value: unknown): SentMessageStats {
+  const stats = decodeRecord(value, "sent message stats");
+  const sentCount = requiredNumber(stats, "sentCount");
+  if (!Number.isSafeInteger(sentCount) || sentCount < 0) throw new Error("Invalid sentCount.");
+  return { firstSentAt: nullableString(stats, "firstSentAt"), sentCount };
 }
 
 export function decodeAppSetupState(value: unknown): AppSetupState {
@@ -174,6 +221,10 @@ export function decodeAgentDefaults(value: unknown): AgentDefaults {
   const defaults = decodeRecord(value, "agent defaults");
   const decoded = { ...DEFAULT_AGENT_DEFAULTS };
   for (const key of AGENT_DEFAULT_KEYS) decoded[key] = requiredBoolean(defaults, key);
+  if (!isPlanStartAfterMs(defaults.planStartAfterMs)) throw new Error("Invalid plan start time.");
+  decoded.planStartAfterMs = defaults.planStartAfterMs;
+  if (!isAutomationRunsPerHour(defaults.automationRunsPerHour)) throw new Error("Invalid local script limit.");
+  decoded.automationRunsPerHour = defaults.automationRunsPerHour;
   return decoded;
 }
 
@@ -195,11 +246,24 @@ export function decodeAppLogoColorPreference(value: unknown): AppLogoColorPrefer
   return { color: preference.color };
 }
 
+/** Only a hex color passes: each one becomes a CSS property value in the page. */
+function decodeThemePalette(palette: DynamicRecord): AppThemePalette {
+  if (!isAppThemePalette(palette)) throw new Error("Invalid theme palette.");
+  return { id: palette.id, name: palette.name, scheme: palette.scheme, colors: { ...palette.colors } };
+}
+
 export function decodeAppAppearancePreference(value: unknown): AppAppearancePreference {
   const preference = decodeRecord(value, "appearance preference");
   if (!isAppAppearance(preference.appearance)) throw new Error("Invalid appearance.");
   if (typeof preference.transparentWindow !== "boolean") throw new Error("Invalid transparent window.");
-  return { appearance: preference.appearance, transparentWindow: preference.transparentWindow };
+  if (preference.palette !== null && !isAppThemePaletteId(preference.palette))
+    throw new Error("Invalid theme palette.");
+  return {
+    appearance: preference.appearance,
+    transparentWindow: preference.transparentWindow,
+    palette: preference.palette,
+    palettes: decodeList(preference.palettes, "theme palettes", decodeThemePalette),
+  };
 }
 
 export function decodeAppInterfaceSizePreference(value: unknown): AppInterfaceSizePreference {
@@ -221,9 +285,12 @@ export function decodeCentralAuthState(value: unknown): CentralAuthState {
   const state = decodeRecord(value, "account state");
   switch (state.status) {
     case "loading":
-    case "signed_out":
     case "signing_in":
       return { status: state.status };
+    case "signed_out":
+      if (state.reason === undefined) return { status: "signed_out" };
+      if (state.reason !== "keyring_changed") throw new Error("Invalid signed-out reason.");
+      return { status: "signed_out", reason: state.reason };
     case "code_sent": {
       const { developmentCode, issue } = state;
       if (developmentCode !== undefined && !isString(developmentCode)) throw new Error("Invalid developmentCode.");
@@ -234,6 +301,14 @@ export function decodeCentralAuthState(value: unknown): CentralAuthState {
         expiresAt: requiredNumber(state, "expiresAt"),
         resendAvailableAt: requiredNumber(state, "resendAvailableAt"),
         ...(developmentCode === undefined ? {} : { developmentCode }),
+        ...(issue === undefined ? {} : { issue: decodeCentralAuthIssue(issue) }),
+      };
+    }
+    case "company_sign_in": {
+      const { issue } = state;
+      return {
+        status: "company_sign_in",
+        email: requiredString(state, "email"),
         ...(issue === undefined ? {} : { issue: decodeCentralAuthIssue(issue) }),
       };
     }
@@ -253,7 +328,23 @@ function decodeCentralAuthUser(value: unknown): CentralAuthUser {
     email: requiredString(user, "email"),
     name: nullableString(user, "name"),
     avatarUrl: nullableString(user, "avatarUrl"),
+    ...optionalAnalyticsEnabled(user),
+    ...optionalChatColor(user),
   };
+}
+
+function optionalChatColor(user: DynamicRecord): Pick<CentralAuthUser, "chatColor"> {
+  const { chatColor } = user;
+  if (chatColor === undefined) return {};
+  if (chatColor !== null && !isAvatarColor(chatColor)) throw new Error("Invalid chatColor.");
+  return { chatColor };
+}
+
+function optionalAnalyticsEnabled(user: DynamicRecord): Pick<CentralAuthUser, "analyticsEnabled"> {
+  const { analyticsEnabled } = user;
+  if (analyticsEnabled === undefined) return {};
+  if (analyticsEnabled !== null && !isBoolean(analyticsEnabled)) throw new Error("Invalid analyticsEnabled.");
+  return { analyticsEnabled };
 }
 
 function decodeCentralAuthIssue(value: unknown): CentralAuthIssue {
@@ -361,6 +452,34 @@ export function decodeAppBehaviorPreference(value: unknown): AppBehaviorPreferen
   };
 }
 
+export function decodeExternalLinkPreference(value: unknown): ExternalLinkPreference {
+  const target = decodeExternalLinkTarget(decodeRecord(value, "external link preference").target);
+  if (!target) throw new Error("Invalid external link target.");
+  return { target };
+}
+
+function decodeExternalLinkBrowser(value: unknown): ExternalLinkBrowser {
+  const browser = decodeRecord(value, "browser");
+  return { name: requiredString(browser, "name"), path: requiredString(browser, "path") };
+}
+
+export function decodeExternalLinkBrowserOrNull(value: unknown): ExternalLinkBrowser | null {
+  return value === null ? null : decodeExternalLinkBrowser(value);
+}
+
+export function decodeExternalLinkBrowsers(value: unknown): ExternalLinkBrowsers {
+  const list = decodeRecord(value, "browser list");
+  if (!Array.isArray(list.browsers)) throw new Error("Invalid browser list.");
+  return {
+    defaultBrowser: decodeExternalLinkBrowserOrNull(list.defaultBrowser),
+    browsers: list.browsers.map(decodeExternalLinkBrowser),
+  };
+}
+
+export function decodeExternalLinkFallback(value: unknown): ExternalLinkFallback {
+  return { name: requiredString(decodeRecord(value, "external link fallback"), "name") };
+}
+
 export function decodeRemoteSessionReusePreference(value: unknown): RemoteSessionReusePreference {
   return {
     keepBetweenRuns: requiredBoolean(decodeRecord(value, "remote session preference"), "keepBetweenRuns"),
@@ -440,9 +559,37 @@ export function decodeSpeechModelStatus(value: unknown): SpeechModelStatus {
 
 export function decodeSpeechSettings(value: unknown): SpeechSettings {
   const settings = decodeRecord(value, "speech settings");
-  const { voice } = settings;
-  if (!isSpeechVoice(voice)) throw new Error("Invalid speech settings.");
-  return { readReplies: requiredBoolean(settings, "readReplies"), voice };
+  const { voice, speed, codexLiveVoice } = settings;
+  if (!isSpeechVoice(voice) || !isSpeechSpeed(speed) || !(codexLiveVoice === null || isCodexLiveVoice(codexLiveVoice)))
+    throw new Error("Invalid speech settings.");
+  return {
+    readReplies: requiredBoolean(settings, "readReplies"),
+    voice,
+    speed,
+    codexLive: requiredBoolean(settings, "codexLive"),
+    codexLiveVoice,
+  };
+}
+
+export function decodeVoiceLiveSession(value: unknown): VoiceLiveSession {
+  const session = decodeRecord(value, "live voice session");
+  return { sessionId: requiredString(session, "sessionId"), sdp: requiredString(session, "sdp") };
+}
+
+export function decodeVoiceLiveEvent(value: unknown): VoiceLiveEvent {
+  const event = decodeRecord(value, "live voice event");
+  const sessionId = requiredString(event, "sessionId");
+  if (event.type === "ended") return { type: "ended", sessionId, error: nullableString(event, "error") };
+  const { role } = event;
+  if (event.type !== "transcript" || (role !== "user" && role !== "assistant"))
+    throw new Error("Invalid live voice event.");
+  return {
+    type: "transcript",
+    sessionId,
+    role,
+    text: requiredString(event, "text"),
+    final: requiredBoolean(event, "final"),
+  };
 }
 
 export function decodeSpeechAudio(value: unknown): SpeechAudio {
@@ -452,6 +599,21 @@ export function decodeSpeechAudio(value: unknown): SpeechAudio {
     throw new Error("Invalid speech audio.");
   }
   return { pcm, sampleRate };
+}
+
+export function decodeVoiceServerSettings(value: unknown): VoiceServerSettings | null {
+  if (value === null) return null;
+  if (!isVoiceServerSettings(value)) throw new Error("Invalid voice server settings.");
+  const { address, hasApiKey, routes } = value;
+  const { dictation, speech, transcriptionModel, speechModel, voice } = routes;
+  return { address, hasApiKey, routes: { dictation, speech, transcriptionModel, speechModel, voice } };
+}
+
+export function decodeVoiceServerProbe(value: unknown): VoiceServerProbe {
+  if (!isVoiceServerProbe(value)) throw new Error("Invalid voice server test result.");
+  if (!value.ok) return { ok: false, field: value.field, message: value.message };
+  const { transcription, speech, voices } = value.models;
+  return { ok: true, models: { transcription: [...transcription], speech: [...speech], voices: [...voices] } };
 }
 
 export function decodeExportResult(value: unknown): ExportResult {
@@ -467,6 +629,15 @@ export function decodePendingListing(value: unknown): string | null {
 // The same check for an agent link: the id began in a URL a web page chose.
 export function decodePendingAgentTemplate(value: unknown): string | null {
   return typeof value === "string" && isAgentTemplateId(value) ? value : null;
+}
+
+// The same check for a Marketplace link: the agent id or skill slug began in a URL a web page chose.
+// Only the two fields come through, so nothing else main could add reaches the renderer.
+export function decodePendingMarketplaceListing(value: unknown): MarketplaceListingLink | null {
+  if (!isDynamicRecord(value) || !isString(value.id)) return null;
+  if (value.kind === "agent" && isMarketplaceAgentId(value.id)) return { kind: "agent", id: value.id };
+  if (value.kind === "skill" && isMarketplaceSkillSlug(value.id)) return { kind: "skill", id: value.id };
+  return null;
 }
 
 /** The export skill's text, shown for the user to copy. It is Markdown, never markup. */
@@ -499,6 +670,12 @@ export function decodeGitHubConnectorRepositories(value: unknown): GitHubConnect
   const repositories = parseGitHubConnectorRepositories(value);
   if (!repositories) throw new Error("Invalid GitHub repository list response.");
   return repositories;
+}
+
+export function decodeLinkAccountStatus(value: unknown): LinkAccountStatus {
+  const status = parseLinkAccountStatus(value);
+  if (!status) throw new Error("Invalid Link account response.");
+  return status;
 }
 
 export function decodeOnePasswordConnectorStatus(value: unknown): OnePasswordConnectorStatus {

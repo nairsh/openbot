@@ -1,4 +1,4 @@
-import { APP_INTERFACE_SIZES, type AppInterfaceSize, type AppVariant } from "@openbot/contracts/ipc";
+import { APP_INTERFACE_SIZES, type AppInterfaceSize, type AppVariant, type AvatarColor } from "@openbot/contracts/ipc";
 import type { AppTextKey } from "@openbot/i18n";
 import {
   Item,
@@ -14,9 +14,11 @@ import {
   SelectValue,
   SettingsSection,
   SwitchField,
+  toast,
 } from "@openbot/ui";
 import { AppearanceSelect } from "@openbot/ui/features/settings/AppearanceSelect";
 import type { GeneralSettingsValue } from "@openbot/ui/features/settings/app-settings";
+import { OwnChatColorTrigger } from "@openbot/ui/features/settings/ChatColorSetting";
 import { LanguageSelect } from "@openbot/ui/features/settings/LanguageSelect";
 import { LogoColorPicker } from "@openbot/ui/features/settings/LogoColorPicker";
 import { SendShortcutSelect } from "@openbot/ui/features/settings/SendShortcutSelect";
@@ -27,24 +29,15 @@ import { type ChatWidth, setChatWidth, useChatWidth } from "../../chat-width-pre
 import { useI18n } from "../../i18n-context";
 import { useInterfaceSizeChoice } from "../../interface-size";
 import { useLogoColorChoice } from "../../logo-color";
+import { ExternalLinkSelect } from "./ExternalLinkSelect";
 
 const interfaceSizeOptions = [...APP_INTERFACE_SIZES];
-const linkTargetOptions: GeneralSettingsValue["externalLinkTarget"][] = ["Default browser", "OpenBot"];
 const chatWidthOptions: ChatWidth[] = ["full", "medium"];
 
 const CHAT_WIDTH_KEYS = {
   full: "settings.chatWidth.full",
   medium: "settings.chatWidth.medium",
 } as const satisfies Record<ChatWidth, AppTextKey>;
-
-/**
- * The saved value is the English name, because it is what `app-settings.ts` persists and what the
- * main process compares against. Only the label a reader sees is translated.
- */
-const LINK_TARGET_KEYS = {
-  "Default browser": "settings.externalLinks.defaultBrowser",
-  OpenBot: "settings.externalLinks.openbot",
-} as const satisfies Record<GeneralSettingsValue["externalLinkTarget"], AppTextKey>;
 
 interface SettingsGeneralTabProps {
   value: GeneralSettingsValue;
@@ -56,20 +49,32 @@ interface SettingsGeneralTabProps {
   selectMount: HTMLElement | undefined;
   onUpdateSetting: <Key extends keyof GeneralSettingsValue>(key: Key, value: GeneralSettingsValue[Key]) => void;
   onUpdateSettings: (patch: Partial<GeneralSettingsValue>) => void;
+  /** The chat color of the account, or null for none. */
+  chatColor: AvatarColor | null;
+  onSetChatColor: (color: AvatarColor | null) => Promise<void>;
 }
 
 export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
   const i18n = useI18n();
-  const linkTargetLabel = (value: GeneralSettingsValue["externalLinkTarget"] | undefined) =>
-    value === undefined ? "" : i18n.t(LINK_TARGET_KEYS[value]);
   const appearance = useAppearanceChoice();
   const logoColor = useLogoColorChoice();
   const interfaceSize = useInterfaceSizeChoice();
   const chatWidth = useChatWidth();
   const chatWidthLabel = (value: ChatWidth | undefined) => (value === undefined ? "" : i18n.t(CHAT_WIDTH_KEYS[value]));
-  const { format } = useText();
+  const { format, errorMessage } = useText();
+  const saveChatColor = (color: AvatarColor | null) =>
+    void props
+      .onSetChatColor(color)
+      .catch((error: unknown) =>
+        toast.error(errorMessage(error, i18n.t("settings.preferences.saveFailed")), { error }),
+      );
   const interfaceSizeLabel = (value: AppInterfaceSize | undefined) =>
     value === undefined ? "" : format.percent(value / 100);
+  /** macOS always keeps running after the window closes. There the switch moves OpenBot from the Dock to the menu bar. */
+  const backgroundRow = () =>
+    props.platform === "darwin"
+      ? ({ title: "settings.menuBar.title", description: "settings.menuBar.description" } as const)
+      : ({ title: "settings.keepRunning.title", description: "settings.keepRunning.description" } as const);
   return (
     <>
       <SettingsSection title={i18n.t("settings.appearance.title")}>
@@ -81,8 +86,9 @@ export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
             </ItemContent>
             <ItemActions>
               <AppearanceSelect
-                value={appearance.appearance()}
-                onChange={appearance.changeAppearance}
+                value={appearance.theme()}
+                onChange={appearance.changeTheme}
+                palettes={appearance.palettes()}
                 mount={props.selectMount}
               />
             </ItemActions>
@@ -138,6 +144,15 @@ export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
             </ItemContent>
             <LogoColorPicker value={logoColor.color()} onChange={logoColor.changeColor} />
           </Item>
+          <Item data-settings-row="settings.chatColor.title" class="settings-modal-row">
+            <ItemContent>
+              <ItemTitle>{i18n.t("settings.chatColor.title")}</ItemTitle>
+              <ItemDescription>{i18n.t("settings.chatColor.description")}</ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <OwnChatColorTrigger value={props.chatColor} onChange={saveChatColor} />
+            </ItemActions>
+          </Item>
         </ItemGroup>
       </SettingsSection>
 
@@ -187,29 +202,25 @@ export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
             label={i18n.t("settings.showAgentSteps.title")}
             description={i18n.t("settings.showAgentSteps.description")}
           />
+          <SwitchField
+            data-settings-row="settings.compactMessageActions.title"
+            checked={props.value.compactMessageActions}
+            onChange={(checked) => props.onUpdateSetting("compactMessageActions", checked)}
+            label={i18n.t("settings.compactMessageActions.title")}
+            description={i18n.t("settings.compactMessageActions.description")}
+          />
           <Item data-settings-row="settings.externalLinks.title" class="settings-modal-row">
             <ItemContent>
               <ItemTitle>{i18n.t("settings.externalLinks.title")}</ItemTitle>
               <ItemDescription>{i18n.t("settings.externalLinks.description")}</ItemDescription>
             </ItemContent>
             <ItemActions>
-              <Select<GeneralSettingsValue["externalLinkTarget"]>
-                class="settings-modal-select"
-                options={linkTargetOptions}
-                value={props.value.externalLinkTarget}
-                onChange={(value) => value && props.onUpdateSetting("externalLinkTarget", value)}
-                placement="bottom-end"
-                itemComponent={(selectProps) => (
-                  <SelectItem item={selectProps.item}>{linkTargetLabel(selectProps.item.rawValue)}</SelectItem>
-                )}
-              >
-                <SelectTrigger size="sm" aria-label={i18n.t("settings.externalLinks.title")}>
-                  <SelectValue<GeneralSettingsValue["externalLinkTarget"]>>
-                    {(state) => linkTargetLabel(state.selectedOption())}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent mount={props.selectMount} />
-              </Select>
+              <ExternalLinkSelect
+                target={props.value.externalLinkTarget}
+                platform={props.platform}
+                mount={props.selectMount}
+                onChange={(target) => props.onUpdateSetting("externalLinkTarget", target)}
+              />
             </ItemActions>
           </Item>
         </ItemGroup>
@@ -235,11 +246,11 @@ export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
           />
           <Show when={props.value.keepRunningInBackground !== null}>
             <SwitchField
-              data-settings-row="settings.keepRunning.title"
+              data-settings-row={backgroundRow().title}
               checked={props.value.keepRunningInBackground === true}
               onChange={(checked) => props.onUpdateSetting("keepRunningInBackground", checked)}
-              label={i18n.t("settings.keepRunning.title")}
-              description={i18n.t("settings.keepRunning.description")}
+              label={i18n.t(backgroundRow().title)}
+              description={i18n.t(backgroundRow().description)}
             />
           </Show>
           <Show when={props.value.keepAwake !== null}>

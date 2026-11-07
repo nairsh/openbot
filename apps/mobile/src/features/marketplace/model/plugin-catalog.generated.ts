@@ -78,7 +78,7 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     description:
       "Aave helps users explore live Aave V3 and V4 markets, review wallet positions and DAO governance, simulate lending actions, and prepare non-custodial transactions. Every transaction is returned unsigned: the plugin reads the markets and writes the call, and the wallet stays with the user.",
     category: "data-analytics",
-    creatorName: "avara.xyz",
+    creatorName: "Avara",
     version: "1.0.0",
     prompts: [
       { id: "prompt-stablecoin-yield", text: "Where can I earn the most on stablecoins across Aave right now?" },
@@ -109,7 +109,7 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     description:
       "Canva lets users create and edit designs in words, search their own design library, upload and organize assets, export in the format a channel needs, and leave comments where the work is. Each user signs in to their own Canva account, and the agent can do what that account can do.",
     category: "design",
-    creatorName: "canva.com",
+    creatorName: "Canva",
     version: "1.0.0",
     prompts: [
       { id: "prompt-recent-design", text: "Show me my most recently edited Canva design." },
@@ -142,7 +142,7 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     description:
       "Linear lets agents list assigned issues, triage the backlog, update statuses, and draft new issues in the workspace the signed-in account belongs to. Each user signs in to their own Linear account through the browser.",
     category: "coding",
-    creatorName: "linear.app",
+    creatorName: "Linear",
     version: "1.0.0",
     prompts: [
       { id: "prompt-my-week", text: "What is assigned to me this week?" },
@@ -175,7 +175,7 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     description:
       "Notion lets agents read and write pages, search the workspace, and keep meeting notes and specs where the team already works. Each user signs in to their own Notion account through the browser.",
     category: "productivity",
-    creatorName: "notion.so",
+    creatorName: "Notion",
     version: "1.0.0",
     prompts: [
       { id: "prompt-find-spec", text: "Find the current launch spec and summarize the open questions." },
@@ -202,13 +202,190 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     ],
   },
   {
+    slug: "obsidian",
+    name: "Obsidian",
+    tagline: "Notes in your vault",
+    description:
+      "Obsidian lets agents search, read and write the notes in your vault, so the vault can be their memory. The local server connects to the Local REST API plugin in the Obsidian app on this computer. The plugin's API key is passed to the local server as one environment variable. Keep Obsidian open while agents use it.",
+    category: "productivity",
+    creatorName: "Obsidian",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-recall", text: "What do my notes say about the decisions on this project?" },
+      { id: "prompt-save", text: "Save this decision as a new note in my vault." },
+      { id: "prompt-log", text: "Add a summary of today's work to my Work log note." },
+    ],
+    websiteUrl: "https://obsidian.md",
+    privacyPolicyUrl: "https://obsidian.md/privacy",
+    termsUrl: "https://obsidian.md/terms",
+    featured: false,
+    apps: [
+      {
+        id: "app-obsidian-mcp",
+        name: "Obsidian",
+        description: "Note search, reading and editing, over a local MCP server with the Local REST API plugin key.",
+        server: {
+          name: "obsidian",
+          transport: "stdio",
+          command: "npx",
+          args: ["-y", "obsidian-mcp-server@3.7.2"],
+          auth: [
+            {
+              id: "obsidian-key",
+              kind: "key",
+              label: "API key",
+              fields: [
+                {
+                  id: "token",
+                  label: "API key",
+                  env: "OBSIDIAN_API_KEY",
+                  hint: 'In Obsidian, open Settings > Local REST API. Copy the API key and turn on "Enable non-encrypted (HTTP) server".',
+                },
+              ],
+              docsUrl: "https://github.com/coddingtonbear/obsidian-local-rest-api",
+              docsLabel: "Get a key",
+            },
+          ],
+        },
+      },
+    ],
+  },
+  {
+    slug: "atlassian",
+    name: "Atlassian",
+    tagline: "Jira work items and Confluence pages",
+    description:
+      "Atlassian lets agents search and read Jira work items, Confluence pages and Bitbucket pull requests, and create or update work items, pages and comments. Each user signs in to their own Atlassian account through the browser and approves the access on a consent screen. Agents get the same permissions as the user: they can change work items and pages, change page permissions, and merge pull requests. Tools that delete Jira data stay off until an organization admin turns them on. Each tool call uses Rovo credits.",
+    category: "productivity",
+    creatorName: "Atlassian",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-assigned", text: "Which open Jira work items are assigned to me?" },
+      { id: "prompt-release-page", text: "Find the Confluence page about our release process and summarize it." },
+      { id: "prompt-new-item", text: "Create a Jira work item for the login bug with steps to reproduce." },
+    ],
+    websiteUrl: "https://www.atlassian.com",
+    privacyPolicyUrl: "https://www.atlassian.com/legal/privacy-policy",
+    termsUrl: "https://www.atlassian.com/legal/atlassian-customer-agreement",
+    featured: false,
+    apps: [
+      {
+        id: "app-atlassian-mcp",
+        name: "Atlassian",
+        description: "Jira, Confluence, and Bitbucket, over Atlassian's MCP server with browser sign-in.",
+        server: {
+          name: "atlassian",
+          transport: "http",
+          url: "https://mcp.atlassian.com/v2/mcp",
+          auth: [{ id: "atlassian-oauth", kind: "link", label: "Sign in" }],
+        },
+      },
+    ],
+  },
+  {
+    slug: "todoist",
+    name: "Todoist",
+    tagline: "Tasks, projects and reminders",
+    description:
+      "Todoist lets agents find tasks by date, text, label or filter, add and reschedule tasks, and manage projects, sections, labels, comments and reminders. Each user signs in to their own Todoist account through the browser. Agents get read and write access: they can change, complete and delete tasks, projects and other items.",
+    category: "productivity",
+    creatorName: "Doist",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-today", text: "Which Todoist tasks are due today?" },
+      { id: "prompt-capture", text: "Add these action items to my Todoist Inbox." },
+      { id: "prompt-overdue", text: "Move my overdue Todoist tasks to tomorrow." },
+    ],
+    websiteUrl: "https://www.todoist.com",
+    privacyPolicyUrl: "https://www.todoist.com/privacy",
+    termsUrl: "https://www.todoist.com/terms-of-service",
+    featured: false,
+    apps: [
+      {
+        id: "app-todoist-mcp",
+        name: "Todoist",
+        description: "Tasks, projects, and reminders, over Todoist's MCP server with browser sign-in.",
+        server: {
+          name: "todoist",
+          transport: "http",
+          url: "https://ai.todoist.net/mcp",
+          auth: [{ id: "todoist-oauth", kind: "link", label: "Sign in" }],
+        },
+      },
+    ],
+  },
+  {
+    slug: "ticktick",
+    name: "TickTick",
+    tagline: "Tasks, lists, habits and focus",
+    description:
+      "TickTick lets agents search and filter tasks, add and update tasks, and manage lists, sections, folders, tags and comments. Agents can also read and change habits and focus records, and read events from the calendars connected to TickTick. Each user signs in to their own TickTick account through the browser. Agents get read and write access: they can complete, move and delete tasks, and delete tags and focus records.",
+    category: "productivity",
+    creatorName: "TickTick",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-today", text: "Which TickTick tasks are due today?" },
+      { id: "prompt-capture", text: "Add these action items to my TickTick Inbox." },
+      { id: "prompt-week", text: "Which TickTick tasks did I complete last week?" },
+    ],
+    websiteUrl: "https://ticktick.com",
+    privacyPolicyUrl: "https://ticktick.com/privacy",
+    termsUrl: "https://ticktick.com/tos",
+    featured: false,
+    apps: [
+      {
+        id: "app-ticktick-mcp",
+        name: "TickTick",
+        description: "Tasks, lists, habits and focus records, over TickTick's MCP server with browser sign-in.",
+        server: {
+          name: "ticktick",
+          transport: "http",
+          url: "https://mcp.ticktick.com",
+          auth: [{ id: "ticktick-oauth", kind: "link", label: "Sign in" }],
+        },
+      },
+    ],
+  },
+  {
+    slug: "trello",
+    name: "Trello",
+    tagline: "Boards, lists and cards",
+    description:
+      "Trello lets agents search and read boards, lists, cards, checklists and comments, create boards and cards, move lists and cards, mark cards done, and add checklists, comments and labels. Agents can also read and add cards in the user's Trello Inbox, and read Planner events, which can come from a connected Google or Outlook calendar. Each user signs in to their own Trello account through the browser and chooses the workspaces on a consent screen. Agents get the same permissions as the user in those workspaces. They can archive cards and lists, but the server cannot delete anything permanently.",
+    category: "productivity",
+    creatorName: "Atlassian",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-my-cards", text: "Which Trello cards are assigned to me?" },
+      { id: "prompt-board", text: "Summarize what is in progress on my Trello board." },
+      { id: "prompt-new-cards", text: "Add these action items as cards to my Trello board." },
+    ],
+    websiteUrl: "https://trello.com",
+    privacyPolicyUrl: "https://www.atlassian.com/legal/privacy-policy",
+    termsUrl: "https://www.atlassian.com/legal/atlassian-customer-agreement",
+    featured: false,
+    apps: [
+      {
+        id: "app-trello-mcp",
+        name: "Trello",
+        description: "Boards, lists, and cards, over Trello's MCP server with browser sign-in.",
+        server: {
+          name: "trello",
+          transport: "http",
+          url: "https://mcp.trello.com/v1",
+          auth: [{ id: "trello-oauth", kind: "link", label: "Sign in" }],
+        },
+      },
+    ],
+  },
+  {
     slug: "cobrain",
     name: "Cobrain",
     tagline: "Shared memory for your AI agents",
     description:
       "Cobrain is a Markdown memory that every AI you connect can read and write. Agents load the context of a client or project before working, search past notes and decisions, and save what they learn so the next thread starts where the last one ended. Each user signs in to their own Cobrain account.",
     category: "productivity",
-    creatorName: "cobrain.space",
+    creatorName: "Cobrain",
     version: "1.0.0",
     prompts: [
       { id: "prompt-start-session", text: "Load my Cobrain context for this project before we start." },
@@ -240,7 +417,7 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     description:
       "Figma lets agents read design files, inspect components, styles and variables, and hand production specs to engineers. It connects to the MCP server in the Figma desktop app, on this computer. The server can read designs only; write support is in progress.",
     category: "design",
-    creatorName: "figma.com",
+    creatorName: "Figma",
     version: "1.1.0",
     prompts: [
       { id: "prompt-handoff", text: "Hand off the checkout file: list screens, components, and styles." },
@@ -287,8 +464,8 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     description:
       "Paper lets agents read and write the design file that is open in Paper Desktop: inspect artboards, selections, computed styles, JSX and tokens, and create or change frames, text and styles. Install Paper Desktop, open it once, and open a file before you start. OpenBot starts the Paper CLI that Paper Desktop installs. Paper needs no key. Write tools change the open file, so review each write before you approve it.",
     category: "design",
-    creatorName: "paper.design",
-    version: "1.0.0",
+    creatorName: "Paper",
+    version: "1.0.1",
     prompts: [
       {
         id: "prompt-implement",
@@ -312,13 +489,110 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     ],
   },
   {
+    slug: "higgsfield",
+    name: "Higgsfield",
+    tagline: "AI images, videos and audio",
+    description:
+      "Higgsfield lets agents generate images, videos, characters and audio with Higgsfield models such as Seedance, Kling, Veo and MiniMax Hailuo, check the credit balance, and browse the Asset Library. Results are saved to the user's Higgsfield Assets. Each user signs in to their own Higgsfield account through the browser. Every generation uses credits of that account at standard rates, also on an unlimited plan.",
+    category: "design",
+    creatorName: "Higgsfield",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-credits", text: "How many Higgsfield credits do I have?" },
+      { id: "prompt-product-shot", text: "Make a Higgsfield product photo of a ceramic mug on a wooden table." },
+      { id: "prompt-clip", text: "Make a 5-second Higgsfield video of waves at sunset." },
+    ],
+    websiteUrl: "https://higgsfield.ai",
+    privacyPolicyUrl: "https://higgsfield.ai/privacy-policy",
+    termsUrl: "https://higgsfield.ai/terms-of-use-agreement",
+    featured: false,
+    apps: [
+      {
+        id: "app-higgsfield-mcp",
+        name: "Higgsfield",
+        description:
+          "Image, video and audio generation, characters, credits and assets, over Higgsfield's MCP server with browser sign-in.",
+        server: {
+          name: "higgsfield",
+          transport: "http",
+          url: "https://mcp.higgsfield.ai/mcp",
+          auth: [{ id: "higgsfield-oauth", kind: "link", label: "Sign in" }],
+        },
+      },
+    ],
+  },
+  {
+    slug: "elevenlabs",
+    name: "ElevenLabs",
+    tagline: "Speech, voices and voice agents",
+    description:
+      "ElevenLabs lets agents turn text into speech, work with voices, and create, test and review ElevenLabs voice agents and their conversations. Generated audio comes back as a short-lived download link. Each user signs in to their own ElevenLabs account through the browser, and each generation uses credits of that account.",
+    category: "design",
+    creatorName: "ElevenLabs",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-speech", text: "Read this paragraph aloud with a calm ElevenLabs voice and give me the audio." },
+      { id: "prompt-agents", text: "List my ElevenLabs voice agents and the voice each one uses." },
+      { id: "prompt-conversations", text: "Summarize the last ten conversations of my support voice agent." },
+    ],
+    websiteUrl: "https://elevenlabs.io",
+    privacyPolicyUrl: "https://elevenlabs.io/privacy-policy",
+    termsUrl: "https://elevenlabs.io/terms-of-use",
+    featured: false,
+    apps: [
+      {
+        id: "app-elevenlabs-mcp",
+        name: "ElevenLabs",
+        description:
+          "Text to speech, voices, and voice agent management, over ElevenLabs' MCP server with browser sign-in.",
+        server: {
+          name: "elevenlabs",
+          transport: "http",
+          url: "https://api.elevenlabs.io/v1/mcp",
+          auth: [{ id: "elevenlabs-oauth", kind: "link", label: "Sign in" }],
+        },
+      },
+    ],
+  },
+  {
+    slug: "apple-apps",
+    name: "Apple apps",
+    tagline: "Mail, Calendar and more on your Mac",
+    description:
+      "Apple apps lets agents use Mail, Calendar, Contacts, Reminders, Notes, Messages and Safari on this Mac. It works on macOS only. OpenBot starts mcp-icloud, a community server that is not made by Apple or OpenBot. The server controls the apps through AppleScript, on this computer, and needs no account and no key. When you install it, OpenBot can ask macOS for access to all of these apps at once, with one prompt for each app. If you do not, macOS asks the first time an agent uses an app. To change this later, open System Settings › Privacy & Security › Automation. Agents can send email and iMessages, and change or delete events, contacts and reminders, so review each write before you approve it. What the tools read, such as email text, goes to the model provider of the agent.",
+    category: "productivity",
+    creatorName: "MrGo2",
+    version: "1.1.0",
+    prompts: [
+      { id: "prompt-unread", text: "Summarize my unread email in Apple Mail from today." },
+      { id: "prompt-today", text: "What is on my Apple Calendar today and tomorrow?" },
+      {
+        id: "prompt-schedule",
+        text: "Find the latest email about the project meeting and add the meeting to my calendar.",
+      },
+    ],
+    websiteUrl: "https://github.com/MrGo2/icloud-mcp",
+    privacyPolicyUrl: "https://github.com/MrGo2/icloud-mcp/blob/main/PRIVACY.md",
+    termsUrl: "https://github.com/MrGo2/icloud-mcp/blob/main/LICENSE",
+    featured: false,
+    apps: [
+      {
+        id: "app-apple-apps-mcp",
+        name: "Apple apps",
+        description:
+          "Mail, Calendar, Contacts, Reminders, Notes, Messages and Safari, over the local mcp-icloud server. Needs macOS and Automation access.",
+        server: { name: "apple-apps", transport: "stdio", command: "npx", args: ["-y", "mcp-icloud@2.1.3"] },
+      },
+    ],
+  },
+  {
     slug: "sentry",
     name: "Sentry",
     tagline: "Errors and crash triage",
     description:
       "Sentry lets agents search recent errors, inspect stack traces and affected releases, and summarize what broke after a deploy. Each user signs in to their own Sentry account through the browser.",
     category: "coding",
-    creatorName: "sentry.io",
+    creatorName: "Sentry",
     version: "1.0.0",
     prompts: [
       { id: "prompt-new-errors", text: "What new errors appeared since yesterday's deploy?" },
@@ -345,13 +619,46 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     ],
   },
   {
+    slug: "gitlab",
+    name: "GitLab",
+    tagline: "Issues, merge requests and pipelines",
+    description:
+      "GitLab lets agents search projects, read and create issues, review and update merge requests, read repository files and commits, and check CI pipelines and jobs on GitLab.com. Each user signs in to their own GitLab account through the browser. Agents get the same permissions as the user: they can push commits, change issues and merge requests, and merge them. For a self-hosted GitLab, add an MCP server with your GitLab address followed by /api/v4/mcp in the MCP servers settings, and sign in there.",
+    category: "coding",
+    creatorName: "GitLab",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-review-queue", text: "Which merge requests wait for my review?" },
+      { id: "prompt-failed-pipeline", text: "Why did the last pipeline on the default branch fail?" },
+      { id: "prompt-new-issue", text: "File an issue for the crash in the sync queue with reproduction steps." },
+    ],
+    websiteUrl: "https://about.gitlab.com",
+    privacyPolicyUrl: "https://about.gitlab.com/privacy/",
+    termsUrl: "https://about.gitlab.com/terms/",
+    featured: false,
+    apps: [
+      {
+        id: "app-gitlab-mcp",
+        name: "GitLab",
+        description:
+          "Projects, issues, merge requests, repositories and CI pipelines, over GitLab's MCP server with browser sign-in.",
+        server: {
+          name: "gitlab",
+          transport: "http",
+          url: "https://gitlab.com/api/v4/mcp",
+          auth: [{ id: "gitlab-oauth", kind: "link", label: "Sign in" }],
+        },
+      },
+    ],
+  },
+  {
     slug: "vercel",
     name: "Vercel",
     tagline: "Deployments, build logs and projects",
     description:
       "Vercel lets agents list projects and recent deployments, read build and runtime logs, and find why a build failed. Each user signs in to their own Vercel account through the browser and chooses the teams that agents can use. In those teams, agents get the same rights as the user's account. They can also change environment variables, domains, DNS records and deployments, and buy domains.",
     category: "coding",
-    creatorName: "vercel.com",
+    creatorName: "Vercel",
     version: "1.0.0",
     prompts: [
       { id: "prompt-failed-build", text: "Why did the last production deployment fail?" },
@@ -384,8 +691,8 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     description:
       "Cloudflare lets agents list and manage Workers, DNS records, R2, D1 and KV through the Cloudflare API, query Workers logs, and search the Cloudflare docs. Each user signs in to their own Cloudflare account through the browser. On Cloudflare's consent page, choose Read only: the default, Minimal, does not let agents see Workers, logs or DNS records. With write permissions, agents can deploy and delete Workers, change DNS records and change other account settings.",
     category: "coding",
-    creatorName: "cloudflare.com",
-    version: "1.0.0",
+    creatorName: "Cloudflare",
+    version: "1.0.1",
     prompts: [
       { id: "prompt-workers", text: "Which Workers are deployed in my Cloudflare account?" },
       { id: "prompt-errors", text: "Which Cloudflare Workers logged errors in the last hour?" },
@@ -410,13 +717,227 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     ],
   },
   {
+    slug: "supabase",
+    name: "Supabase",
+    tagline: "Databases, logs and edge functions",
+    description:
+      "Supabase lets agents list projects, run SQL, read table schemas and logs, check security and performance advisors, manage edge functions and branches, and search the Supabase docs. Each user signs in to their own Supabase account through the browser and chooses an organization. Agents get full access: they can run SQL that changes or deletes data, apply migrations, deploy edge functions, and create or pause projects.",
+    category: "coding",
+    creatorName: "Supabase",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-projects", text: "Which projects are in my Supabase organization?" },
+      { id: "prompt-tables", text: "List the tables and columns of my Supabase database." },
+      { id: "prompt-errors", text: "Which errors did my Supabase project log in the last hour?" },
+    ],
+    websiteUrl: "https://supabase.com",
+    privacyPolicyUrl: "https://supabase.com/privacy",
+    termsUrl: "https://supabase.com/terms",
+    featured: false,
+    apps: [
+      {
+        id: "app-supabase-mcp",
+        name: "Supabase",
+        description: "Databases, logs, and edge functions, over Supabase's MCP server with browser sign-in.",
+        server: {
+          name: "supabase",
+          transport: "http",
+          url: "https://mcp.supabase.com/mcp",
+          auth: [{ id: "supabase-oauth", kind: "link", label: "Sign in" }],
+        },
+      },
+    ],
+  },
+  {
+    slug: "neon",
+    name: "Neon",
+    tagline: "Postgres projects, branches and migrations",
+    description:
+      "Neon lets agents list projects and branches, run SQL, read table schemas, test schema changes on a temporary branch, find slow queries, and search the Neon docs. Each user signs in to their own Neon account through the browser and can choose read-only access when they authorize. With full access, agents can run SQL that changes or deletes data, and create, reset or delete branches, databases and projects. Neon recommends its MCP server for development and testing, not for production databases.",
+    category: "coding",
+    creatorName: "Neon",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-projects", text: "Which projects and branches are in my Neon account?" },
+      { id: "prompt-slow-queries", text: "Which queries are the slowest on my Neon database, and why?" },
+      {
+        id: "prompt-migration",
+        text: "Add an index on the orders table in a temporary branch, and show me the result before you apply it.",
+      },
+    ],
+    websiteUrl: "https://neon.com",
+    privacyPolicyUrl: "https://www.databricks.com/legal/privacynotice",
+    termsUrl: "https://neon.com/platform-terms",
+    featured: false,
+    apps: [
+      {
+        id: "app-neon-mcp",
+        name: "Neon",
+        description: "Postgres projects, branches, SQL, and migrations, over Neon's MCP server with browser sign-in.",
+        server: {
+          name: "neon",
+          transport: "http",
+          url: "https://mcp.neon.tech/mcp",
+          auth: [{ id: "neon-oauth", kind: "link", label: "Sign in" }],
+        },
+      },
+    ],
+  },
+  {
+    slug: "prisma",
+    name: "Prisma",
+    tagline: "Postgres databases, backups and Compute apps",
+    description:
+      "Prisma lets agents list and create Prisma Postgres databases, read schemas, run SQL, list backups and restore them to a new database, manage Object Storage buckets, read Compute builds and logs, and search the Prisma docs. Each user signs in to their own Prisma account through the browser and selects a workspace. Agents get full access: they can run SQL that changes or deletes data, update schemas, delete databases and buckets, and stop, roll back or delete Compute deployments.",
+    category: "coding",
+    creatorName: "Prisma",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-databases", text: "Which databases are in my Prisma workspace?" },
+      { id: "prompt-backups", text: "Show me all available backups of my database." },
+      { id: "prompt-logs", text: "Show the runtime logs of my latest Compute deployment." },
+    ],
+    websiteUrl: "https://www.prisma.io",
+    privacyPolicyUrl: "https://www.prisma.io/legal/privacy",
+    termsUrl: "https://www.prisma.io/legal/terms",
+    featured: false,
+    apps: [
+      {
+        id: "app-prisma-mcp",
+        name: "Prisma",
+        description: "Databases, SQL, backups, and Compute apps, over Prisma's MCP server with browser sign-in.",
+        server: {
+          name: "prisma",
+          transport: "http",
+          url: "https://mcp.prisma.io/mcp",
+          auth: [{ id: "prisma-oauth", kind: "link", label: "Sign in" }],
+        },
+      },
+    ],
+  },
+  {
+    slug: "netlify",
+    name: "Netlify",
+    tagline: "Projects, deploys and request logs",
+    description:
+      "Netlify lets agents list projects and deploys, read edge request logs, create projects, and deploy code to an existing project. Each user signs in to their own Netlify account through the browser. Agents get the same access as the user's account: they can change environment variables, forms and visitor access, install or remove extensions, and delete form submissions and environment variables.",
+    category: "coding",
+    creatorName: "Netlify",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-latest-deploy", text: "What is the status of the latest deploy of each of my Netlify projects?" },
+      { id: "prompt-errors", text: "Which URLs of my site returned server errors in the last day?" },
+      { id: "prompt-deploy", text: "Deploy this folder to my existing Netlify project." },
+    ],
+    websiteUrl: "https://www.netlify.com",
+    privacyPolicyUrl: "https://www.netlify.com/privacy/",
+    termsUrl: "https://www.netlify.com/pdf/self-serve-subscription-agreement.pdf",
+    featured: false,
+    apps: [
+      {
+        id: "app-netlify-mcp",
+        name: "Netlify",
+        description:
+          "Projects, deploys, request logs, and site settings, over Netlify's MCP server with browser sign-in.",
+        server: {
+          name: "netlify",
+          transport: "http",
+          url: "https://netlify-mcp.netlify.app/mcp",
+          auth: [{ id: "netlify-oauth", kind: "link", label: "Sign in" }],
+        },
+      },
+    ],
+  },
+  {
+    slug: "railway",
+    name: "Railway",
+    tagline: "Projects, services and deployments",
+    description:
+      "Railway lets agents list projects and services, create projects, redeploy services, and manage feature flags. Agents can also give multi-step work to the Railway Agent, which reads logs, finds why a deploy failed, creates services and sets variables. Each user signs in to their own Railway account through the browser and chooses the workspaces and projects that agents can use. Agents get full access in those projects: they can deploy staged changes, delete feature flags, and change services, variables, databases and networking through the Railway Agent.",
+    category: "coding",
+    creatorName: "Railway",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-projects", text: "Which projects and services are in my Railway workspace?" },
+      { id: "prompt-crash", text: "Why does my backend service on Railway crash on deploy?" },
+      { id: "prompt-redeploy", text: "Redeploy the API service in my Railway project." },
+    ],
+    websiteUrl: "https://railway.com",
+    privacyPolicyUrl: "https://railway.com/legal/privacy",
+    termsUrl: "https://railway.com/legal/terms",
+    featured: false,
+    apps: [
+      {
+        id: "app-railway-mcp",
+        name: "Railway",
+        description: "Projects, services, and deployments, over Railway's MCP server with browser sign-in.",
+        server: {
+          name: "railway",
+          transport: "http",
+          url: "https://mcp.railway.com",
+          auth: [{ id: "railway-oauth", kind: "link", label: "Sign in" }],
+        },
+      },
+    ],
+  },
+  {
+    slug: "render",
+    name: "Render",
+    tagline: "Services, deploys and logs",
+    description:
+      "Render lets agents list workspaces and services, read logs, events and metrics, see the deploy history, trigger deploys, and run read-only SQL on Render Postgres. A Render API key goes into one Authorization header. The key reaches every workspace of the Render account. Agents can create web services, static sites, cron jobs, Postgres databases and Key Value instances, which can cost money, and they can replace the environment variables of a service. The server cannot delete a resource.",
+    category: "coding",
+    creatorName: "Render",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-services", text: "Which services are in my Render workspace?" },
+      { id: "prompt-logs", text: "Which errors did my Render web service log in the last hour?" },
+      { id: "prompt-deploy", text: "Why did the last deploy of my Render service fail?" },
+    ],
+    websiteUrl: "https://render.com",
+    privacyPolicyUrl: "https://render.com/privacy",
+    termsUrl: "https://render.com/terms",
+    featured: false,
+    apps: [
+      {
+        id: "app-render-mcp",
+        name: "Render",
+        description: "Services, deploys, logs, and metrics, over Render's MCP server with an API key.",
+        server: {
+          name: "render",
+          transport: "http",
+          url: "https://mcp.render.com/mcp",
+          auth: [
+            {
+              id: "render-key",
+              kind: "key",
+              label: "API key",
+              fields: [
+                {
+                  id: "token",
+                  label: "API key",
+                  header: "Authorization",
+                  prefix: "Bearer ",
+                  placeholder: "rnd_…",
+                  hint: "Render Account settings → API keys",
+                },
+              ],
+              docsUrl: "https://dashboard.render.com/u/settings?add-api-key",
+              docsLabel: "Create a key",
+            },
+          ],
+        },
+      },
+    ],
+  },
+  {
     slug: "context7",
     name: "Context7",
     tagline: "Current library documentation",
     description:
       "Context7 fetches current documentation and API references for libraries and frameworks, so answers use the version the project actually runs. It needs no account and no key.",
     category: "research",
-    creatorName: "context7.com",
+    creatorName: "Upstash",
     version: "1.0.0",
     prompts: [
       { id: "prompt-api-check", text: "What is the current API for virtualized lists in this framework?" },
@@ -437,13 +958,40 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     ],
   },
   {
+    slug: "huggingface",
+    name: "Hugging Face",
+    tagline: "Models, datasets and papers on the Hub",
+    description:
+      "Hugging Face lets agents search models, datasets, Spaces, collections and papers on the Hugging Face Hub, read model cards and repository files, preview datasets, and search the Hugging Face documentation. It uses public Hub data and needs no account and no key. The tools only read: agents cannot create repositories or run jobs.",
+    category: "research",
+    creatorName: "Hugging Face",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-models", text: "Find small open models for speech recognition on Hugging Face." },
+      { id: "prompt-papers", text: "Which papers are trending on Hugging Face today?" },
+      { id: "prompt-dataset", text: "Find a dataset of weather time series and show its columns." },
+    ],
+    websiteUrl: "https://huggingface.co",
+    privacyPolicyUrl: "https://huggingface.co/privacy",
+    termsUrl: "https://huggingface.co/terms-of-service",
+    featured: false,
+    apps: [
+      {
+        id: "app-huggingface-mcp",
+        name: "Hugging Face",
+        description: "Model, dataset, Space, paper, and docs search, over Hugging Face's MCP server with no sign-in.",
+        server: { name: "huggingface", transport: "http", url: "https://huggingface.co/mcp" },
+      },
+    ],
+  },
+  {
     slug: "stripe",
     name: "Stripe",
     tagline: "Payments and billing review",
     description:
       "Stripe lets agents look up payments, customers, and invoices, and draft payment links, in the account the signed-in user can reach. Each user signs in to their own Stripe account through the browser.",
     category: "other",
-    creatorName: "stripe.com",
+    creatorName: "Stripe",
     version: "1.0.0",
     prompts: [
       { id: "prompt-payment", text: "Look up this payment and explain why it failed." },
@@ -469,13 +1017,67 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     ],
   },
   {
+    slug: "revenuecat",
+    name: "RevenueCat",
+    tagline: "Subscriptions, products and paywalls",
+    description:
+      "RevenueCat lets agents read and change the setup of your in-app subscriptions: apps, products, entitlements, offerings, packages, paywalls and experiments. Agents can also look up customers and their purchases, and read charts and metrics. A RevenueCat secret API key goes into one Authorization header. The key reaches one project. With a read-only key, agents can only read. With a write key, agents can submit products to the App Store for review, grant entitlements to customers, and delete packages, targeting rules and webhooks.",
+    category: "other",
+    creatorName: "RevenueCat",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-offerings", text: "Which offerings and packages does my RevenueCat project have?" },
+      { id: "prompt-revenue", text: "How did my RevenueCat revenue and active subscriptions change this month?" },
+      {
+        id: "prompt-customer",
+        text: "Which entitlements does this RevenueCat customer have, and when do they expire?",
+      },
+    ],
+    websiteUrl: "https://www.revenuecat.com",
+    privacyPolicyUrl: "https://www.revenuecat.com/privacy",
+    termsUrl: "https://www.revenuecat.com/terms",
+    featured: false,
+    apps: [
+      {
+        id: "app-revenuecat-mcp",
+        name: "RevenueCat",
+        description:
+          "Products, entitlements, offerings, paywalls and metrics, over RevenueCat's MCP server with a secret API key.",
+        server: {
+          name: "revenuecat",
+          transport: "http",
+          url: "https://mcp.revenuecat.ai/mcp",
+          auth: [
+            {
+              id: "revenuecat-key",
+              kind: "key",
+              label: "API key",
+              fields: [
+                {
+                  id: "token",
+                  label: "API key",
+                  header: "Authorization",
+                  prefix: "Bearer ",
+                  placeholder: "sk_…",
+                  hint: "In the RevenueCat dashboard, open API keys in your project and create a secret API key. A read-only key is enough to view data.",
+                },
+              ],
+              docsUrl: "https://www.revenuecat.com/docs/projects/authentication#finding-api-keys",
+              docsLabel: "Create a key",
+            },
+          ],
+        },
+      },
+    ],
+  },
+  {
     slug: "posthog",
     name: "PostHog",
     tagline: "Product analytics and flags",
     description:
       "PostHog lets agents query events and funnels, inspect feature flags, and summarize what changed after a release. A personal API key from the project settings goes into one Authorization header.",
     category: "data-analytics",
-    creatorName: "posthog.com",
+    creatorName: "PostHog",
     version: "1.0.0",
     prompts: [
       { id: "prompt-funnel", text: "How does the signup funnel look for the last 14 days?" },
@@ -525,8 +1127,8 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     description:
       "Airtable lets agents list bases, read and update records, and summarize table contents. An API key from the account page is passed to the local server as one environment variable.",
     category: "data-analytics",
-    creatorName: "airtable.com",
-    version: "1.0.0",
+    creatorName: "Airtable",
+    version: "1.0.1",
     prompts: [
       { id: "prompt-bases", text: "What bases do I have access to?" },
       { id: "prompt-records", text: "Summarize the launch tracker table." },
@@ -567,7 +1169,7 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     description:
       "Firecrawl lets agents scrape pages, extract structured data, and search the web through one API. An API key from the Firecrawl dashboard is passed to the local server as one environment variable.",
     category: "research",
-    creatorName: "firecrawl.dev",
+    creatorName: "Firecrawl",
     version: "1.0.0",
     prompts: [
       { id: "prompt-scrape", text: "Extract the pricing table from this page as structured data." },
@@ -617,7 +1219,7 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     description:
       "Brave Search lets agents search the web and local results without tracking. An API key from the Brave Search API dashboard is passed to the local server as one environment variable.",
     category: "research",
-    creatorName: "brave.com",
+    creatorName: "Brave",
     version: "1.0.0",
     prompts: [
       { id: "prompt-search", text: "What are reviewers saying about this framework version?" },
@@ -661,7 +1263,7 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     description:
       "Resend lets agents send transactional email and check delivery through one API. An API key from the Resend dashboard is passed to the local server as one environment variable.",
     category: "automation",
-    creatorName: "resend.com",
+    creatorName: "Resend",
     version: "1.0.0",
     prompts: [
       { id: "prompt-send", text: "Send the launch announcement draft to the beta list." },
@@ -705,13 +1307,46 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
     ],
   },
   {
+    slug: "omnisend",
+    name: "Omnisend",
+    tagline: "Email and SMS marketing",
+    description:
+      "Omnisend lets agents read campaign and form reports, find contacts and segments, and create and edit campaigns, automations, email templates, forms and products. Each user signs in to their own Omnisend account through the browser and selects the access level on the consent screen. With write access, agents can also send campaigns and delete data. Select read-only access when agents only need reports.",
+    category: "automation",
+    creatorName: "Omnisend",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-last-campaign", text: "How did last week's campaigns perform compared to the week before?" },
+      { id: "prompt-segment", text: "How many contacts are in the VIP segment, and how did it change this month?" },
+      { id: "prompt-draft-campaign", text: "Draft a campaign for the new collection, but do not send it." },
+    ],
+    websiteUrl: "https://www.omnisend.com",
+    privacyPolicyUrl: "https://www.omnisend.com/privacy/",
+    termsUrl: "https://www.omnisend.com/terms/",
+    featured: false,
+    apps: [
+      {
+        id: "app-omnisend-mcp",
+        name: "Omnisend",
+        description:
+          "Campaigns, automations, contacts, segments, forms and reports, over Omnisend's MCP server with browser sign-in.",
+        server: {
+          name: "omnisend",
+          transport: "http",
+          url: "https://mcp.omnisend.com/mcp",
+          auth: [{ id: "omnisend-oauth", kind: "link", label: "Sign in" }],
+        },
+      },
+    ],
+  },
+  {
     slug: "composio",
     name: "Composio",
     tagline: "Many apps through your own Composio link",
     description:
       "Composio connects agents to Gmail, Slack, GitHub, and hundreds of other apps through one MCP server. Connect the apps you want in your Composio account, then paste its MCP URL and API key here.",
     category: "automation",
-    creatorName: "composio.dev",
+    creatorName: "Composio",
     version: "1.1.0",
     prompts: [
       { id: "prompt-inbox", text: "Summarize my unread email and draft replies to the urgent ones." },
@@ -756,6 +1391,106 @@ export const MOBILE_PLUGINS: readonly MobilePlugin[] = [
               docsLabel: "Get a key",
             },
           ],
+        },
+      },
+    ],
+  },
+  {
+    slug: "clickup",
+    name: "ClickUp",
+    tagline: "Tasks, docs and team updates",
+    description:
+      "ClickUp lets agents search tasks, docs, comments and chat, create and update tasks, lists and docs, post comments, send chat messages and track time. Each user signs in to their own ClickUp account through the browser. Agents get the same permissions as the user. They can move tasks to the trash and delete comments.",
+    category: "productivity",
+    creatorName: "ClickUp",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-find-tasks", text: "Find my open ClickUp tasks due this week." },
+      { id: "prompt-create-task", text: "Create a ClickUp task for these action items and assign it to me." },
+      {
+        id: "prompt-summarize-doc",
+        text: "Find the latest project update in ClickUp and summarize the open questions.",
+      },
+    ],
+    websiteUrl: "https://clickup.com",
+    privacyPolicyUrl: "https://clickup.com/terms/privacy",
+    termsUrl: "https://clickup.com/terms",
+    featured: false,
+    apps: [
+      {
+        id: "app-clickup-mcp",
+        name: "ClickUp",
+        description: "Tasks, docs, comments, chat and time tracking, over ClickUp's MCP server with browser sign-in.",
+        server: {
+          name: "clickup",
+          transport: "http",
+          url: "https://mcp.clickup.com/mcp",
+          auth: [{ id: "clickup-oauth", kind: "link", label: "Sign in" }],
+        },
+      },
+    ],
+  },
+  {
+    slug: "coinbase",
+    name: "Coinbase",
+    tagline: "Crypto prices, portfolios and trading",
+    description:
+      "Coinbase lets agents read prices, balances, portfolios, orders and fees in Coinbase Advanced Trade, preview and place orders, convert between assets, and move funds between portfolios. Each user signs in to their own Coinbase account through the browser. Agents get the same permissions as the user. Orders and conversions use real funds, and agents can pay for x402 requests from the USDC balance.",
+    category: "data-analytics",
+    creatorName: "Coinbase",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-balances", text: "What are my Coinbase balances in each portfolio?" },
+      { id: "prompt-price", text: "Show the BTC-USD price on Coinbase and how it moved this week." },
+      { id: "prompt-preview-order", text: "Preview a 50 USD market buy of ETH on Coinbase. Do not place the order." },
+    ],
+    websiteUrl: "https://www.coinbase.com",
+    privacyPolicyUrl: "https://www.coinbase.com/legal/privacy",
+    termsUrl: "https://www.coinbase.com/legal/user_agreement",
+    featured: false,
+    apps: [
+      {
+        id: "app-coinbase-mcp",
+        name: "Coinbase",
+        description:
+          "Prices, balances, portfolios, orders and conversions, over Coinbase's MCP server with browser sign-in.",
+        server: {
+          name: "coinbase",
+          transport: "http",
+          url: "https://agents.coinbase.com/mcp",
+          auth: [{ id: "coinbase-oauth", kind: "link", label: "Sign in" }],
+        },
+      },
+    ],
+  },
+  {
+    slug: "robinhood",
+    name: "Robinhood",
+    tagline: "Brokerage accounts and agentic trading",
+    description:
+      "Robinhood lets agents read the accounts, positions, balances, transaction history and watchlists of a Robinhood customer, read market data, and place stock, options and crypto orders. Each user signs in to their own Robinhood account through the browser. At the first sign-in, Robinhood asks the user to open a separate Agentic account. Agents can trade only in that account, and by default they place orders without asking the user to approve each one.",
+    category: "data-analytics",
+    creatorName: "Robinhood",
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-positions", text: "Summarize my Robinhood positions and how they moved today." },
+      { id: "prompt-watchlist", text: "How did each stock on my Robinhood watchlist move this week?" },
+      { id: "prompt-agentic-cash", text: "How much cash is in my Robinhood Agentic account?" },
+    ],
+    websiteUrl: "https://robinhood.com",
+    privacyPolicyUrl: "https://robinhood.com/us/en/support/articles/privacy-policy/",
+    termsUrl: "https://robinhood.com/us/en/about/legal/",
+    featured: false,
+    apps: [
+      {
+        id: "app-robinhood-mcp",
+        name: "Robinhood",
+        description: "Accounts, positions, market data and trades, over Robinhood's MCP server with browser sign-in.",
+        server: {
+          name: "robinhood",
+          transport: "http",
+          url: "https://agent.robinhood.com/mcp/trading",
+          auth: [{ id: "robinhood-oauth", kind: "link", label: "Sign in" }],
         },
       },
     ],

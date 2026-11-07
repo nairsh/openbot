@@ -20,16 +20,20 @@ import { avatarFileExtension, isAvatarMimeType, isValidAvatarImage } from "@open
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import type { AgentProfileDraft } from "@openbot/contracts/ipc";
 import {
+  AGENT_FOLDER_LIMIT,
   AGENT_PROVIDERS,
   type AgentAccess,
   type AgentBackupModels,
   type AgentDefaults,
   type AgentModelId,
+  type AgentPendingRuntime,
   type AgentProviderId,
   type AgentReasoningEffort,
   type AgentSessionSettingOverrides,
   type AgentSummary,
   type AgentUsageLimitReturn,
+  type AvatarColor,
+  type AvatarHue,
   type AvatarImageInput,
   type BusyMessageMode,
   type CreateAgentInput,
@@ -41,12 +45,15 @@ import {
   decodeSaveAgentProfileResult,
   defaultProviderModel,
   isAgentAccess,
+  isAgentAdditionalFolders,
   isAgentBackupModels,
   isAgentModel,
+  isAgentPendingRuntime,
   isAgentSessionSettingOverrides,
   isAgentSessionSettingResets,
   isAgentTaskLimit,
   isAgentUsageLimitReturn,
+  isAvatarColor,
   isAvatarHue,
   isAvatarSeed,
   isBrowserProfileId,
@@ -55,6 +62,7 @@ import {
   isProviderAccountId,
   isReasoningEffort,
   isSidebarLayoutSnapshot,
+  nearestAvatarHue,
   providerForLegacyModel,
   type SaveAgentProfileResult,
   type SidebarLayoutSnapshot,
@@ -82,6 +90,10 @@ type PersistedStoredAgent = Omit<StoredAgent, "avatarUrl" | "provider" | "access
   access?: AgentAccess;
   // Absent on every agent stored before the setting existed, which keeps Computer Use on.
   computerUse?: boolean;
+  // Absent on every agent stored before folders existed, and on an agent with none.
+  additionalFolders?: string[];
+  // Absent on every agent stored before excluded folders existed, and on an agent with none.
+  excludedFolders?: string[];
   // Absent means the account default, which is off until the user changes it in Settings › Agents.
   allowAutomation?: boolean;
   // Absent means the account default, which is off until the user changes it in Settings › Agents.
@@ -105,6 +117,8 @@ type PersistedStoredAgent = Omit<StoredAgent, "avatarUrl" | "provider" | "access
   backupModels?: AgentBackupModels;
   // Present only while the agent works on a backup model for a usage limit.
   usageLimitReturn?: AgentUsageLimitReturn;
+  // Present only while a turn or task still runs on the previous provider.
+  pendingRuntime?: AgentPendingRuntime;
   // Present only while a user hides the agent. Absent on every agent stored before hiding existed.
   hiddenAt?: string;
 };
@@ -121,7 +135,7 @@ interface StoredState {
   agents: StoredAgent[];
 }
 
-type LegacyStoredAgent = Omit<PersistedStoredAgent, "avatarSeed" | "avatarHue"> & {
+type LegacyStoredAgent = Omit<PersistedStoredAgent, "avatarSeed" | "avatarHue" | "avatarColor"> & {
   avatarShape: string;
   avatarColor: string;
 };
@@ -178,6 +192,8 @@ export class AgentStore {
   readonly #sharedRoot: string;
   readonly #downloadsRoot: string;
   readonly #avatarsRoot: string;
+  /** Uploaded channel images. They live beside the agent avatars, but `ChannelService` owns them. */
+  readonly channelImagesRoot: string;
   readonly #duplicationsRoot: string;
   readonly #automationRoot: string;
   readonly #profileCreationRecovery: ProfileCreationRecovery;
@@ -193,14 +209,16 @@ export class AgentStore {
     homePath: string,
     database = new OpenBotDatabase(userDataPath),
     agentDefaults: () => AgentDefaults = () => DEFAULT_AGENT_DEFAULTS,
+    /** The folder of the agents, shared files and downloads. A local server has its own. */
+    openbotRoot = join(homePath, "OpenBot"),
   ) {
-    const openbotRoot = join(homePath, "OpenBot");
     this.#statePath = join(userDataPath, LEGACY_AGENTS_STATE_FILE);
     this.#agentsRoot = join(openbotRoot, "Agents");
     this.#legacyAgentsRoot = join(openbotRoot, "Bots");
     this.#sharedRoot = join(openbotRoot, "Shared");
     this.#downloadsRoot = join(openbotRoot, "Downloads");
     this.#avatarsRoot = join(userDataPath, "avatars", "agents");
+    this.channelImagesRoot = join(userDataPath, "avatars", "channels");
     this.#duplicationsRoot = join(userDataPath, "agent-duplications");
     this.#automationRoot = automationRoot(userDataPath);
     this.#database = database;
@@ -344,9 +362,11 @@ export class AgentStore {
       const description = limitedText(input.description, "Agent description", INPUT_LIMITS.agentDescription);
       if (!isAvatarSeed(input.avatarSeed)) throw new Error("Invalid avatar seed.");
       if (input.avatarHue !== null && !isAvatarHue(input.avatarHue)) throw new Error("Invalid avatar hue.");
+      if (input.avatarColor != null && !isAvatarColor(input.avatarColor)) throw new Error("Invalid avatar color.");
       const record = this.#createRecord(`agent-${randomUUID()}`, name, "", description);
       record.avatarSeed = input.avatarSeed;
       record.avatarHue = input.avatarHue;
+      applyAvatarColor(record, input.avatarHue, input.avatarColor);
       if (profileOperationId) yield* this.#profileCreationRecovery.begin(record.id, profileOperationId);
       yield* storedIO(() => mkdir(record.workspacePath, { recursive: true, mode: 0o700 }));
       this.#state.agents.unshift(record);
@@ -399,12 +419,22 @@ export class AgentStore {
       if (source.sessionSettingOverrides)
         record.sessionSettingOverrides = structuredClone(source.sessionSettingOverrides);
       record.access = source.access;
+      if (source.additionalFolders) record.additionalFolders = [...source.additionalFolders];
+      // An exclusion in the source workspace applies to the same folder in the copied workspace.
+      if (source.excludedFolders)
+        record.excludedFolders = source.excludedFolders.map((folder) =>
+          isPathInside(source.workspacePath, folder)
+            ? join(record.workspacePath, relative(source.workspacePath, folder))
+            : folder,
+        );
       record.computerUse = source.computerUse;
       if (source.busyMessageMode) record.busyMessageMode = source.busyMessageMode;
       if (source.taskLimit !== undefined) record.taskLimit = source.taskLimit;
       if (source.backupModels) record.backupModels = structuredClone(source.backupModels);
       record.avatarSeed = source.avatarSeed;
       record.avatarHue = source.avatarHue;
+      if (source.avatarColor) record.avatarColor = source.avatarColor;
+      if (source.chatColor) record.chatColor = source.chatColor;
 
       const stagedWorkspace = `${record.workspacePath}.openbot-stage`;
       const avatarDirectory = join(this.#avatarsRoot, record.id);
@@ -580,6 +610,8 @@ export class AgentStore {
       avatarUrl: null,
       updatedAt: new Date().toISOString(),
     });
+    // A profile draft names a hue only. The colour stays while the hue is the same.
+    if (draft.avatarHue !== previous.avatarHue) delete agent.avatarColor;
     try {
       this.#persist("agent.updated");
     } catch (error) {
@@ -662,10 +694,16 @@ export class AgentStore {
     input: UpdateAgentInput & {
       /** The model to go back to after a usage limit. `null` removes it. */
       usageLimitReturn?: AgentUsageLimitReturn | null;
+      /** The provider to use from the next turn. `null` removes it. */
+      pendingRuntime?: AgentPendingRuntime | null;
       /** The shared or the agent's own session. It replaces a named profile. */
       ownBrowserSession?: boolean;
       /** The named browser profile. `null` removes it. The caller checks that the profile exists. */
       browserProfileId?: string | null;
+      /** The whole list. The caller checks each folder; an empty list removes it. */
+      additionalFolders?: string[];
+      /** The whole list, like `additionalFolders`. */
+      excludedFolders?: string[];
     },
     initiatingAgentId?: string,
   ): Effect.fn.Return<AgentSummary, StoredStateFailure> {
@@ -702,6 +740,16 @@ export class AgentStore {
       if (input.access !== undefined) {
         if (!isAgentAccess(input.access)) throw new Error("Invalid agent access.");
         next.access = input.access;
+      }
+      if (input.additionalFolders !== undefined) {
+        if (!isAgentAdditionalFolders(input.additionalFolders)) throw new Error("Invalid agent folders.");
+        if (input.additionalFolders.length === 0) delete next.additionalFolders;
+        else next.additionalFolders = [...input.additionalFolders];
+      }
+      if (input.excludedFolders !== undefined) {
+        if (!isAgentAdditionalFolders(input.excludedFolders)) throw new Error("Invalid agent folders.");
+        if (input.excludedFolders.length === 0) delete next.excludedFolders;
+        else next.excludedFolders = [...input.excludedFolders];
       }
       if (input.computerUse !== undefined) {
         if (!isBoolean(input.computerUse)) throw new Error("Invalid Computer Use value.");
@@ -768,9 +816,18 @@ export class AgentStore {
         if (!isAvatarSeed(input.avatarSeed)) throw new Error("Invalid avatar seed.");
         next.avatarSeed = input.avatarSeed;
       }
-      if (input.avatarHue !== undefined) {
-        if (input.avatarHue !== null && !isAvatarHue(input.avatarHue)) throw new Error("Invalid avatar hue.");
-        next.avatarHue = input.avatarHue;
+      if (input.avatarHue !== undefined && input.avatarHue !== null && !isAvatarHue(input.avatarHue)) {
+        throw new Error("Invalid avatar hue.");
+      }
+      if (input.avatarColor != null && !isAvatarColor(input.avatarColor)) throw new Error("Invalid avatar color.");
+      if (input.avatarHue !== undefined || input.avatarColor !== undefined) {
+        const hue = input.avatarHue === undefined ? next.avatarHue : input.avatarHue;
+        applyAvatarColor(next, hue, input.avatarColor, hue !== next.avatarHue);
+      }
+      if (input.chatColor === null) delete next.chatColor;
+      else if (input.chatColor !== undefined) {
+        if (!isAvatarColor(input.chatColor)) throw new Error("Invalid chat color.");
+        next.chatColor = input.chatColor;
       }
       // A model the user picks ends the way back from a usage limit.
       if (
@@ -784,6 +841,14 @@ export class AgentStore {
       else if (input.usageLimitReturn !== undefined) {
         if (!isAgentUsageLimitReturn(input.usageLimitReturn)) throw new Error("Invalid usage limit model.");
         next.usageLimitReturn = { ...input.usageLimitReturn };
+      }
+      if (input.pendingRuntime === null) delete next.pendingRuntime;
+      else if (input.pendingRuntime !== undefined) {
+        if (!isAgentPendingRuntime(input.pendingRuntime)) throw new Error("Invalid pending runtime.");
+        next.pendingRuntime = { ...input.pendingRuntime };
+      } else if (next.provider !== agent.provider || next.providerAccountId !== agent.providerAccountId) {
+        // A handover that landed ends the queued change.
+        delete next.pendingRuntime;
       }
       next.updatedAt = new Date().toISOString();
       const previous = { ...agent };
@@ -807,11 +872,16 @@ export class AgentStore {
       if (next.taskLimit === undefined) delete agent.taskLimit;
       if (next.providerAccountId === undefined) delete agent.providerAccountId;
       if (next.backupModels === undefined) delete agent.backupModels;
+      if (next.additionalFolders === undefined) delete agent.additionalFolders;
+      if (next.excludedFolders === undefined) delete agent.excludedFolders;
       if (next.usageLimitReturn === undefined) delete agent.usageLimitReturn;
+      if (next.pendingRuntime === undefined) delete agent.pendingRuntime;
       if (next.browserProfileId === undefined) delete agent.browserProfileId;
       if (next.allowAutomation === undefined) delete agent.allowAutomation;
       if (next.allowNewChat === undefined) delete agent.allowNewChat;
       if (next.quickAcknowledgement === undefined) delete agent.quickAcknowledgement;
+      if (next.avatarColor === undefined) delete agent.avatarColor;
+      if (next.chatColor === undefined) delete agent.chatColor;
       try {
         this.#persist(modelChange ? "agent.model-changed" : "agent.updated", modelChange);
       } catch (error) {
@@ -820,11 +890,16 @@ export class AgentStore {
         if (previous.taskLimit === undefined) delete agent.taskLimit;
         if (previous.providerAccountId === undefined) delete agent.providerAccountId;
         if (previous.backupModels === undefined) delete agent.backupModels;
+        if (previous.additionalFolders === undefined) delete agent.additionalFolders;
+        if (previous.excludedFolders === undefined) delete agent.excludedFolders;
         if (previous.usageLimitReturn === undefined) delete agent.usageLimitReturn;
+        if (previous.pendingRuntime === undefined) delete agent.pendingRuntime;
         if (previous.browserProfileId === undefined) delete agent.browserProfileId;
         if (previous.allowAutomation === undefined) delete agent.allowAutomation;
         if (previous.allowNewChat === undefined) delete agent.allowNewChat;
         if (previous.quickAcknowledgement === undefined) delete agent.quickAcknowledgement;
+        if (previous.avatarColor === undefined) delete agent.avatarColor;
+        if (previous.chatColor === undefined) delete agent.chatColor;
         throw error;
       }
       return { ...agent };
@@ -1826,6 +1901,8 @@ function isStoredAgent(value: unknown): value is PersistedStoredAgent {
     (record.sessionSettingOverrides === undefined || isAgentSessionSettingOverrides(record.sessionSettingOverrides)) &&
     (record.sessionSettingResets === undefined || isAgentSessionSettingResets(record.sessionSettingResets)) &&
     (record.access === undefined || isAgentAccess(record.access)) &&
+    (record.additionalFolders === undefined || isAgentAdditionalFolders(record.additionalFolders)) &&
+    (record.excludedFolders === undefined || isAgentAdditionalFolders(record.excludedFolders)) &&
     (record.computerUse === undefined || isBoolean(record.computerUse)) &&
     (record.allowAutomation === undefined || isBoolean(record.allowAutomation)) &&
     (record.allowNewChat === undefined || isBoolean(record.allowNewChat)) &&
@@ -1838,9 +1915,12 @@ function isStoredAgent(value: unknown): value is PersistedStoredAgent {
     (record.providerAccountId === undefined || isProviderAccountId(record.providerAccountId)) &&
     (record.backupModels === undefined || isAgentBackupModels(record.backupModels)) &&
     (record.usageLimitReturn === undefined || isAgentUsageLimitReturn(record.usageLimitReturn)) &&
+    (record.pendingRuntime === undefined || isAgentPendingRuntime(record.pendingRuntime)) &&
     (record.hiddenAt === undefined || isHiddenAt(record.hiddenAt)) &&
     isAvatarSeed(record.avatarSeed) &&
     (record.avatarHue === null || isAvatarHue(record.avatarHue)) &&
+    (record.avatarColor === undefined || isAvatarColor(record.avatarColor)) &&
+    (record.chatColor === undefined || isAvatarColor(record.chatColor)) &&
     isMarketplaceSource(record.marketplaceSource)
   );
 }
@@ -1891,6 +1971,16 @@ function readStoredAgent(value: unknown): ReadStoredAgent | UnreadableStoredAgen
     : reset("model", provider === undefined ? DEFAULT_AGENT_MODEL : defaultProviderModel(provider));
   const access =
     value.access === undefined || isAgentAccess(value.access) ? value.access : reset("access", DEFAULT_AGENT_ACCESS);
+  // A list that this build cannot read keeps the folders it can, so the agent loses no more access than it must.
+  const additionalFolders =
+    value.additionalFolders === undefined || isAgentAdditionalFolders(value.additionalFolders)
+      ? value.additionalFolders
+      : readableFolders(value.additionalFolders, () => repaired.push("additionalFolders"));
+  // The same for excluded folders: a write block that this build cannot read stays for the paths it can.
+  const excludedFolders =
+    value.excludedFolders === undefined || isAgentAdditionalFolders(value.excludedFolders)
+      ? value.excludedFolders
+      : readableFolders(value.excludedFolders, () => repaired.push("excludedFolders"));
   const computerUse =
     value.computerUse === undefined || isBoolean(value.computerUse) ? value.computerUse : reset("computerUse", true);
   const allowAutomation =
@@ -1937,12 +2027,24 @@ function readStoredAgent(value: unknown): ReadStoredAgent | UnreadableStoredAgen
     value.usageLimitReturn === undefined || isAgentUsageLimitReturn(value.usageLimitReturn)
       ? value.usageLimitReturn
       : reset("usageLimitReturn", undefined);
+  const pendingRuntime =
+    value.pendingRuntime === undefined || isAgentPendingRuntime(value.pendingRuntime)
+      ? value.pendingRuntime
+      : reset("pendingRuntime", undefined);
   // A time this build cannot read keeps the agent hidden, at the time of the read: a user hid it,
   // and showing it again would run its routines without a decision of the user.
   const hiddenAt =
     value.hiddenAt === undefined || isHiddenAt(value.hiddenAt)
       ? value.hiddenAt
       : reset("hiddenAt", new Date().toISOString());
+  const avatarHue =
+    value.avatarHue === null || isAvatarHue(value.avatarHue) ? value.avatarHue : reset("avatarHue", null);
+  const avatarColor =
+    value.avatarColor === undefined || isAvatarColor(value.avatarColor)
+      ? value.avatarColor
+      : reset("avatarColor", undefined);
+  const chatColor =
+    value.chatColor === undefined || isAvatarColor(value.chatColor) ? value.chatColor : reset("chatColor", undefined);
   let marketplaceSource: StoredAgent["marketplaceSource"];
   if (value.marketplaceSource !== undefined) {
     if (isMarketplaceSource(value.marketplaceSource)) {
@@ -1977,10 +2079,17 @@ function readStoredAgent(value: unknown): ReadStoredAgent | UnreadableStoredAgen
     preview: isString(value.preview) ? value.preview : reset("preview", NEW_AGENT_PREVIEW),
     updatedAt: isString(value.updatedAt) || value.updatedAt === null ? value.updatedAt : reset("updatedAt", null),
     avatarSeed: isAvatarSeed(value.avatarSeed) ? value.avatarSeed : reset("avatarSeed", id),
-    avatarHue: value.avatarHue === null || isAvatarHue(value.avatarHue) ? value.avatarHue : reset("avatarHue", null),
+    avatarHue,
+    // A released build reads only the fields it knows, so its next write removes the colour. A stored
+    // colour is thus always the newest choice, and it stays even if the nearest hue changes later.
+    ...(avatarColor === undefined ? {} : { avatarColor }),
+    // Only a build with chat colours keeps it. It is separate from the avatar colour.
+    ...(chatColor === undefined ? {} : { chatColor }),
     avatarUrl: isString(value.avatarUrl) ? value.avatarUrl : null,
     ...(provider === undefined ? {} : { provider }),
     ...(access === undefined ? {} : { access }),
+    ...(additionalFolders === undefined || additionalFolders.length === 0 ? {} : { additionalFolders }),
+    ...(excludedFolders === undefined || excludedFolders.length === 0 ? {} : { excludedFolders }),
     ...(computerUse === undefined ? {} : { computerUse }),
     ...(allowAutomation === undefined ? {} : { allowAutomation }),
     ...(allowNewChat === undefined ? {} : { allowNewChat }),
@@ -1993,6 +2102,7 @@ function readStoredAgent(value: unknown): ReadStoredAgent | UnreadableStoredAgen
     ...(providerAccountId === undefined ? {} : { providerAccountId }),
     ...(backupModels === undefined ? {} : { backupModels }),
     ...(usageLimitReturn === undefined ? {} : { usageLimitReturn }),
+    ...(pendingRuntime === undefined ? {} : { pendingRuntime }),
     ...(hiddenAt === undefined ? {} : { hiddenAt }),
     ...(sessionSettingOverrides === undefined ? {} : { sessionSettingOverrides }),
     ...(sessionSettingResets === undefined ? {} : { sessionSettingResets }),
@@ -2043,6 +2153,26 @@ function isLegacyStoredAgent(value: unknown): value is LegacyStoredAgent {
   );
 }
 
+/**
+ * Sets the colour of an agent. A colour sets the nearest released hue, which released apps and Team
+ * API peers draw. `null` removes the colour. With no colour given, a changed hue removes the colour:
+ * a released app or peer, which knows only hues, chose another colour.
+ */
+function applyAvatarColor(
+  agent: Pick<StoredAgent, "avatarHue" | "avatarColor">,
+  hue: AvatarHue | null,
+  color: AvatarColor | null | undefined,
+  hueChanged = true,
+): void {
+  if (color) {
+    agent.avatarColor = color;
+    agent.avatarHue = nearestAvatarHue(color);
+    return;
+  }
+  agent.avatarHue = hue;
+  if (color === null || hueChanged) delete agent.avatarColor;
+}
+
 function migrateLegacyAgent(agent: LegacyStoredAgent): StoredAgent {
   return {
     id: agent.id,
@@ -2063,6 +2193,14 @@ function migrateLegacyAgent(agent: LegacyStoredAgent): StoredAgent {
     avatarHue: null,
     avatarUrl: null,
   };
+}
+
+function readableFolders(value: unknown, repair: () => void): string[] {
+  repair();
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((path): path is string => isString(path) && path.length > 0 && path.length <= INPUT_LIMITS.path)
+    .slice(0, AGENT_FOLDER_LIMIT);
 }
 
 function normalizeStoredAgent(agent: PersistedStoredAgent): StoredAgent {

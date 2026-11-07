@@ -1,9 +1,13 @@
 import { basename } from "node:path";
-import { type OAuthClientProvider, UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { getDefaultEnvironment, StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport, StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { AccessDeniedError, UnauthorizedClientError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
+import {
+  AccessDeniedError,
+  InvalidClientError,
+  UnauthorizedClientError,
+} from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import type { FetchLike, Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
@@ -31,7 +35,17 @@ import {
 } from "./mcp-provider-shapes";
 import { redactMcpSecrets, redactMcpValues } from "./mcp-redaction";
 
-export const MCP_PROBE_TIMEOUT_MS = 10_000;
+const MCP_PROBE_TIMEOUT_MS = 10_000;
+
+/**
+ * The deadline for a stdio server. Its first start can download the package and all its
+ * dependencies: `npx -y firecrawl-mcp` fetches about 170 packages before the server answers.
+ */
+export const MCP_STDIO_PROBE_TIMEOUT_MS = 60_000;
+
+function probeTimeoutMs(config: McpServerConfig) {
+  return config.transport === "stdio" ? MCP_STDIO_PROBE_TIMEOUT_MS : MCP_PROBE_TIMEOUT_MS;
+}
 
 interface McpProbeResult {
   toolCount: number;
@@ -57,8 +71,8 @@ export interface McpProbeOutcome extends McpProbeResult {
  * Tests one configuration, saved or not: connects, counts the tools, and disconnects.
  *
  * Only a user asking for it starts this. OpenBot does not test by itself, because a connection is
- * not free - an http server can want an OAuth sign-in, a cold `npx` can take longer than the
- * deadline below, and a server can do real work at startup. The answer is reported once and not
+ * not free - an http server can want an OAuth sign-in, a cold `npx` can download for most of the
+ * stdio deadline, and a server can do real work at startup. The answer is reported once and not
  * stored.
  */
 // SDK errors can quote credentials. Internal operations have no tracing spans; only the
@@ -78,7 +92,7 @@ export type McpSignInPlace = "here" | "host";
 
 export const testMcpServer = Effect.fnUntraced(function* (
   config: McpServerConfig,
-  timeoutMs = MCP_PROBE_TIMEOUT_MS,
+  timeoutMs = probeTimeoutMs(config),
   tools: McpToolRuntimes = NO_MCP_TOOL_RUNTIMES,
   oauth?: Pick<McpOAuthAuthority, "accessToken" | "signIn">,
   signInPlace: McpSignInPlace | null = null,
@@ -90,7 +104,7 @@ export const testMcpServer = Effect.fnUntraced(function* (
 /** `testMcpServer` with the tool names and the need an agent reads. */
 export const inspectMcpServer = Effect.fnUntraced(function* (
   config: McpServerConfig,
-  timeoutMs = MCP_PROBE_TIMEOUT_MS,
+  timeoutMs = probeTimeoutMs(config),
   tools: McpToolRuntimes = NO_MCP_TOOL_RUNTIMES,
   oauth?: Pick<McpOAuthAuthority, "accessToken" | "signIn">,
   signInPlace: McpSignInPlace | null = null,
@@ -159,12 +173,12 @@ const probeMcpServerEffect = Effect.fnUntraced(function* (
     const retry = yield* Effect.result(
       active
         .complete()
-        .pipe(toMcpProbeFailure, Effect.andThen(connectAndCountEffect(server, timeoutMs, active.provider, record))),
+        .pipe(toMcpProbeFailure, Effect.andThen(connectAndCountEffect(server, timeoutMs, active, record))),
     );
     return Result.isFailure(retry) ? failure(retry.failure.cause) : found(retry.success);
   });
   const startedAt = Date.now();
-  const first = yield* Effect.result(connectAndCountEffect(server, timeoutMs, signIn?.provider, record));
+  const first = yield* Effect.result(connectAndCountEffect(server, timeoutMs, signIn, record));
   if (Result.isSuccess(first)) {
     // The user pressed Sign in, and the server answered without a sign-in: it can still want one
     // to run a tool. Its sign-in starts here, or the press ends with nothing opened and nothing said.
@@ -211,7 +225,7 @@ function describeProbeFailure(
   signInPlace: McpSignInPlace | null,
 ): string {
   if (signIn?.cancelled()) return sourceText("error.backend.mcpSignInCancelled");
-  if (signIn?.registrationFailed() && isRegistrationRefusal(error)) return REGISTRATION_REFUSED;
+  if (signIn && isRegistrationRefusal(error, signIn)) return REGISTRATION_REFUSED;
   if (signIn && httpStatus(error) === 401) return sourceText("error.backend.mcpSignInNotAccepted");
   // A key the user pasted into a header is theirs to fix; the sign-in would not replace it.
   if (challenge?.status === 401 && challenge.bearer && !hasCredentialHeader(config)) {
@@ -283,14 +297,14 @@ function probeSecrets(server: UsableMcpServer, signIn: McpSignIn | null): string
 const connectAndCountEffect = Effect.fnUntraced(function* (
   server: ResolvedMcpServer,
   timeoutMs: number,
-  authProvider: OAuthClientProvider | undefined,
+  signIn: McpSignIn | null,
   onChallenge: (challenge: McpChallenge) => void,
 ) {
   return yield* Effect.acquireUseRelease(
     Effect.try({
       try: () => ({
         client: new Client({ name: "openbot-probe", version: "1" }, { capabilities: {} }),
-        transport: createTransport(server, authProvider, onChallenge),
+        transport: createTransport(server, signIn, onChallenge),
       }),
       catch: (cause) => new McpProbeFailure({ cause }),
     }),
@@ -347,10 +361,11 @@ function boundedError(text: string): string {
 
 function createTransport(
   server: ResolvedMcpServer,
-  authProvider: OAuthClientProvider | undefined,
+  signIn: McpSignIn | null,
   onChallenge: (challenge: McpChallenge) => void,
 ): Transport {
   const { config } = server;
+  const authProvider = signIn?.provider;
   if (config.transport === "http") {
     /*
      * The `authProvider` is what turns a 401 into a sign-in instead of a sentence. Without one the
@@ -370,10 +385,11 @@ function createTransport(
      * gets the same fetch - without it a discovery document could name a plain-text token endpoint
      * and this one request would still honour it. A provider is only attached to a URL that already
      * passed `normalizeResource`, so the guard refuses nothing this probe could otherwise reach.
+     * It is also where the SDK registers, so it keeps the status of that answer.
      */
     return new StreamableHTTPClientTransport(new URL(config.url), {
-      fetch: authProvider
-        ? secureOAuthFetch({ resource: config.url, mcpTraffic: true })
+      fetch: signIn
+        ? signIn.watchRegistration(secureOAuthFetch({ resource: config.url, mcpTraffic: true }))
         : challengeRecordingFetch(onChallenge),
       ...(authProvider ? { authProvider } : {}),
       requestInit: { headers },
@@ -583,11 +599,27 @@ function isAccessRefusal(status: number | null): boolean {
 }
 
 /**
+ * Whether the server refused to register OpenBot. Only an error from a registration counts: the
+ * same error classes from the token endpoint mean that the server refused a client it issued.
+ *
  * The SDK keeps the status only when the refusal body is not an OAuth error. A body such as
  * `{"error":"access_denied"}` arrives as its error class, with the status gone.
+ *
+ * RevenueCat answers each registration it did not approve with 400 `invalid_client` ("The client
+ * is not registered.").
  */
-function isRegistrationRefusal(error: unknown): boolean {
-  if (error instanceof AccessDeniedError || error instanceof UnauthorizedClientError) return true;
+function isRegistrationRefusal(error: unknown, signIn: McpSignIn): boolean {
+  const status = signIn.registrationStatus();
+  if (isAccessRefusal(status)) return true;
+  // The SDK also registers when it drops a client bound to another issuer. `registrationFailed`
+  // misses that registration, and the watched status shows it.
+  if (!signIn.registrationFailed() && status === null) return false;
+  if (
+    error instanceof AccessDeniedError ||
+    error instanceof UnauthorizedClientError ||
+    error instanceof InvalidClientError
+  )
+    return true;
   return isAccessRefusal(httpStatus(error));
 }
 

@@ -1,7 +1,17 @@
 import type { AttachmentSummary } from "@openbot/contracts/ipc";
 import { Button, ChevronLeft, ChevronRight, Dialog, Spinner, X } from "@openbot/ui";
 import { prefersReducedMotion } from "@openbot/ui/utils";
-import { createMemo, createSignal, createStore, For, onCleanup, onSettled, Show, untrack } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  createStore,
+  For,
+  onCleanup,
+  onSettled,
+  Show,
+  untrack,
+} from "solid-js";
 import { useText } from "../../text";
 import { CloseIcon, DownloadIcon } from "./ConversationIcons";
 import { justifiedGalleryLayout } from "./image-gallery-layout";
@@ -18,6 +28,8 @@ import {
   ZOOM_OUT,
   ZOOM_OUT_DURATION,
 } from "./lightbox-motion";
+import { createSteadyImageUrl } from "./steady-image-url";
+import { type Camera, DOUBLE_CLICK_ZOOM, MAX_SCALE, WHEEL_ZOOM_RATE, ZOOM_STEP, ZoomControls } from "./ZoomControls";
 
 /** The images that the viewer steps through, the one it opens on, and the thumbnail it grows from. */
 export interface ImageLightboxOpening {
@@ -37,6 +49,16 @@ const GALLERY_GAP = 6;
 const GALLERY_MIN_RATIO = 0.5;
 const GALLERY_MAX_RATIO = 3;
 const SWIPE_DISTANCE = 48;
+/** A drag of a zoomed image that moves this far is not a click, so it does not close the viewer. */
+const DRAG_DISTANCE = 4;
+
+/** The zoom of the shown image: its scale over the fitted size and its offset from the centre. */
+const FIT: Camera = { x: 0, y: 0, scale: 1 };
+
+interface Point {
+  x: number;
+  y: number;
+}
 
 /** Several images of one message, laid out in justified rows. */
 export function ImageGallery(props: {
@@ -46,14 +68,15 @@ export function ImageGallery(props: {
   onDownload?: ((attachment: AttachmentSummary) => void) | undefined;
 }) {
   const { t } = useText();
-  const [ratios, setRatios] = createStore<Record<string, number>>({});
+  // By position: a sent message's images get new ids and URLs when the host stores them, and each
+  // tile keeps its size and pixels until the stored copy loads.
+  const [ratios, setRatios] = createStore<Record<number, number>>({});
   const [missing, setMissing] = createStore<Record<string, boolean>>({});
-  const [loaded, setLoaded] = createStore<Record<string, boolean>>({});
   const [width, setWidth] = createSignal(0);
   let gallery: HTMLUListElement | undefined;
   const layout = createMemo(() =>
     justifiedGalleryLayout(
-      props.images.map((image) => ratios[image.id] ?? 1),
+      props.images.map((_, index) => ratios[index] ?? 1),
       {
         width: width(),
         rowHeight: GALLERY_ROW_HEIGHT,
@@ -81,12 +104,29 @@ export function ImageGallery(props: {
       aria-label={t("chat.image.gallery", { count: props.images.length })}
       style={{ height: `${layout().height}px` }}
     >
-      <For each={props.images}>
+      <For each={props.images} keyed={false}>
         {(image, index) => {
-          const box = () => layout().boxes[index()];
-          // Keyed by URL: a new URL for the same attachment gets a new try.
-          const key = () => image.previewUrl ?? image.id;
+          const box = () => layout().boxes[index];
+          // Once the tile draws an image, a new URL draws over it when it loads, with no spinner.
+          const [loaded, setLoaded] = createSignal(false);
+          const url = createSteadyImageUrl(() => image().previewUrl);
+          // Keyed by the drawn URL: a new URL for the same attachment gets a new try.
+          const key = () => url() ?? image().id;
           const isMissing = () => missing[key()] === true;
+          let element: HTMLImageElement | undefined;
+          const measure = ({ naturalHeight, naturalWidth }: HTMLImageElement) => {
+            setLoaded(true);
+            if (naturalWidth <= 0 || naturalHeight <= 0) return;
+            const ratio = Math.min(GALLERY_MAX_RATIO, Math.max(GALLERY_MIN_RATIO, naturalWidth / naturalHeight));
+            setRatios((state) => {
+              state[index] = ratio;
+            });
+          };
+          // An image in the memory cache, such as one the composer showed, is complete at once. Its
+          // `load` comes frames later, and the tile would be square until then.
+          createEffect(url, () => {
+            if (element?.complete && element.naturalWidth > 0) measure(element);
+          });
           return (
             <li
               class="image-gallery-item"
@@ -101,46 +141,36 @@ export function ImageGallery(props: {
                 variant="ghost"
                 type="button"
                 class={["image-gallery-tile", { "image-gallery-tile-missing": isMissing() }]}
-                data-attachment-id={image.id}
+                data-attachment-id={image().id}
                 disabled={isMissing() && !props.onDownload}
                 data-cuelume-tap={isMissing() ? undefined : "open"}
                 aria-label={
                   !isMissing()
-                    ? t("chat.image.preview", { name: image.name })
+                    ? t("chat.image.preview", { name: image().name })
                     : props.onDownload
-                      ? t("chat.image.download", { name: image.name })
+                      ? t("chat.image.download", { name: image().name })
                       : t("chat.image.unavailable")
                 }
                 onClick={(event) => {
-                  if (!isMissing()) props.onOpen(image, event.currentTarget);
-                  else props.onDownload?.(image);
+                  if (!isMissing()) props.onOpen(image(), event.currentTarget);
+                  else props.onDownload?.(image());
                 }}
               >
                 <Show when={!isMissing()} fallback={props.onDownload ? <DownloadIcon /> : <X aria-hidden="true" />}>
-                  <Show when={!loaded[key()]}>
+                  <Show when={!loaded()}>
                     <span class="image-gallery-tile-loading">
                       <Spinner />
                     </span>
                   </Show>
                   <img
-                    src={image.previewUrl ?? ""}
+                    src={url() ?? ""}
                     alt=""
                     decoding="async"
                     draggable={false}
-                    onLoad={(event) => {
-                      setLoaded((state) => {
-                        state[key()] = true;
-                      });
-                      const { naturalHeight, naturalWidth } = event.currentTarget;
-                      if (naturalWidth <= 0 || naturalHeight <= 0) return;
-                      const ratio = Math.min(
-                        GALLERY_MAX_RATIO,
-                        Math.max(GALLERY_MIN_RATIO, naturalWidth / naturalHeight),
-                      );
-                      setRatios((state) => {
-                        state[image.id] = ratio;
-                      });
+                    ref={(node) => {
+                      element = node;
                     }}
+                    onLoad={(event) => measure(event.currentTarget)}
                     onError={() =>
                       setMissing((state) => {
                         state[key()] = true;
@@ -209,6 +239,10 @@ export function ImageLightbox(props: {
   /** Finds the thumbnail of an image, so the viewer closes back into the one it shows. */
   thumbnail?: (attachment: AttachmentSummary) => HTMLElement | undefined;
   onDownload?: ((attachment: AttachmentSummary) => void) | undefined;
+  /** Absent, every image can download. */
+  canDownload?: ((attachment: AttachmentSummary) => boolean) | undefined;
+  /** The window draws the macOS window controls over the top start corner, so the toolbar leaves room. */
+  macWindowControls?: boolean | undefined;
   onClose: () => void;
 }) {
   const { t } = useText();
@@ -228,6 +262,10 @@ export function ImageLightbox(props: {
   const [failed, setFailed] = createStore<Record<string, boolean>>({});
   const images = () => props.opening.images;
   const current = createMemo(() => images()[Math.min(index(), images().length - 1)]);
+  const downloadable = () => {
+    const image = current();
+    return image && (props.canDownload?.(image) ?? true) ? image : undefined;
+  };
   const imageElements = new Map<string, HTMLImageElement>();
   const tiles = createTileMotion();
   // The thumbnails move only when the viewer grows out of one of them.
@@ -238,6 +276,173 @@ export function ImageLightbox(props: {
   let opened = false;
   let swipeStart: { x: number; y: number } | undefined;
   let swiped = false;
+  // The zoom writes the image's `scale` and `translate` styles, so the open, close and slide
+  // animations of its `transform` still apply on top.
+  const [zoom, setZoom] = createSignal(1);
+  const [zoomed, setZoomed] = createSignal(false);
+  let stage: HTMLDivElement | undefined;
+  let camera = FIT;
+  const pointers = new Map<number, Point>();
+  let gesture: { camera: Camera; point: Point; distance: number } | undefined;
+
+  /** The loaded image of `entry`, which the zoom moves. */
+  const zoomImage = (entry = current()) => {
+    const image = entry ? imageElements.get(entry.id) : undefined;
+    return image?.isConnected && image.complete && image.naturalWidth ? image : undefined;
+  };
+  /** The scale over the fitted size, from the fitted size to MAX_SCALE times the natural size. */
+  const limited = (scale: number, image: HTMLImageElement) =>
+    Math.min(Math.max(scale, 1), Math.max(1, (MAX_SCALE * image.naturalWidth) / image.offsetWidth));
+  /** A zoomed image keeps its edges outside the stage edges; a smaller one stays centred. */
+  const settled = (from: Camera, image: HTMLImageElement): Camera => {
+    const scale = limited(from.scale, image);
+    const axis = (position: number, size: number, length: number) => {
+      const room = Math.max(0, (size * scale - length) / 2);
+      return Math.min(Math.max(position, -room), room);
+    };
+    return {
+      scale,
+      x: axis(from.x, image.offsetWidth, stage?.clientWidth ?? 0),
+      y: axis(from.y, image.offsetHeight, stage?.clientHeight ?? 0),
+    };
+  };
+  /** Buttons, keys and a double-click glide to the new zoom; a drag, a scroll or a pinch follows at once. */
+  const move = (next: Camera, animate = false, entry = current()) => {
+    const image = zoomImage(entry);
+    camera = image ? settled(next, image) : FIT;
+    const isZoomed = camera.scale > 1;
+    setZoomed(isZoomed);
+    if (!image) {
+      // An image that is not loaded, or that failed, does not show the level of the one before.
+      setZoom(1);
+      stage?.removeAttribute("data-zoomed");
+      return;
+    }
+    // Layout sizes, not `getBoundingClientRect`: the zoom and the animations transform the image.
+    setZoom((camera.scale * image.offsetWidth) / image.naturalWidth);
+    const glide = animate && motion;
+    image.toggleAttribute("data-settling", glide);
+    // A glide back to fit keeps the clip and the sharp drawing until the image is fitted.
+    if (glide && !isZoomed && image.hasAttribute("data-zoomed")) {
+      const fitted = () => {
+        if (camera.scale > 1) return;
+        stage?.removeAttribute("data-zoomed");
+        image.removeAttribute("data-zoomed");
+      };
+      image.addEventListener("transitionend", fitted, { once: true });
+    } else {
+      stage?.toggleAttribute("data-zoomed", isZoomed);
+      image.toggleAttribute("data-zoomed", isZoomed);
+    }
+    image.style.scale = isZoomed ? String(camera.scale) : "";
+    image.style.translate = isZoomed ? `${camera.x}px ${camera.y}px` : "";
+  };
+  /** The camera at `scale` that keeps the image point under `point` where it is. */
+  const zoomAround = (from: Camera, point: Point, scale: number): Camera => {
+    const image = zoomImage();
+    const next = image ? limited(scale, image) : 1;
+    return {
+      scale: next,
+      x: point.x - ((point.x - from.x) * next) / from.scale,
+      y: point.y - ((point.y - from.y) * next) / from.scale,
+    };
+  };
+  const zoomBy = (factor: number) => move(zoomAround(camera, { x: 0, y: 0 }, camera.scale * factor), true);
+  /** A window point from the centre of the stage, where the fitted image is centred. */
+  const stagePoint = (event: MouseEvent): Point => {
+    const rect = stage?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return { x: event.clientX - rect.left - rect.width / 2, y: event.clientY - rect.top - rect.height / 2 };
+  };
+  /** One pointer drags a zoomed image; two pinch it. */
+  const startGesture = () => {
+    const [first, second] = [...pointers.values()];
+    gesture =
+      first && (second || zoomed())
+        ? {
+            camera,
+            point: second ? { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 } : first,
+            distance: second ? Math.hypot(second.x - first.x, second.y - first.y) : 0,
+          }
+        : undefined;
+    if (gesture) stage?.setAttribute("data-dragging", "");
+    else stage?.removeAttribute("data-dragging");
+  };
+
+  onSettled(() => {
+    const area = stage;
+    if (!area) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      // A trackpad pinch arrives as a wheel event with Ctrl held.
+      if (event.ctrlKey || event.metaKey) {
+        move(zoomAround(camera, stagePoint(event), camera.scale * Math.exp(-event.deltaY * WHEEL_ZOOM_RATE)));
+        return;
+      }
+      if (!zoomed()) return;
+      const sideways = event.shiftKey && event.deltaX === 0 ? event.deltaY : event.deltaX;
+      const down = event.shiftKey && event.deltaX === 0 ? 0 : event.deltaY;
+      move({ ...camera, x: camera.x - sideways, y: camera.y - down });
+    };
+    const onDown = (event: PointerEvent) => {
+      // A touch can start a pinch; a mouse only drags an image that is zoomed in. The step buttons
+      // on the stage keep their clicks.
+      if (event.button !== 0 || !zoomImage() || (event.pointerType === "mouse" && !zoomed())) return;
+      if (event.target instanceof Element && event.target.closest("button")) return;
+      pointers.set(event.pointerId, stagePoint(event));
+      startGesture();
+    };
+    const onMove = (event: PointerEvent) => {
+      if (!pointers.has(event.pointerId)) return;
+      pointers.set(event.pointerId, stagePoint(event));
+      const start = gesture;
+      const [first, second] = [...pointers.values()];
+      if (!start || !first) return;
+      const point = second ? { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 } : first;
+      const from =
+        second && start.distance
+          ? zoomAround(
+              start.camera,
+              start.point,
+              (start.camera.scale * Math.hypot(second.x - first.x, second.y - first.y)) / start.distance,
+            )
+          : start.camera;
+      move({ ...from, x: from.x + point.x - start.point.x, y: from.y + point.y - start.point.y });
+      // The capture waits for a drag: a captured click lands on the stage, and that closes the viewer.
+      if (Math.hypot(point.x - start.point.x, point.y - start.point.y) <= DRAG_DISTANCE) return;
+      swiped = true;
+      if (!area.hasPointerCapture(event.pointerId)) area.setPointerCapture(event.pointerId);
+    };
+    const onUp = (event: PointerEvent) => {
+      if (pointers.delete(event.pointerId)) startGesture();
+    };
+    const onDoubleClick = (event: MouseEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest(".image-lightbox-image")) return;
+      if (zoomed()) move(FIT, true);
+      else move(zoomAround(camera, stagePoint(event), DOUBLE_CLICK_ZOOM), true);
+    };
+    const onResize = new ResizeObserver(() => {
+      // A new fitted size keeps the zoom level, the percent of the natural size.
+      const image = zoomImage();
+      move(image && zoomed() ? { ...camera, scale: (zoom() * image.naturalWidth) / image.offsetWidth } : camera);
+    });
+    area.addEventListener("wheel", onWheel, { passive: false });
+    area.addEventListener("pointerdown", onDown);
+    area.addEventListener("pointermove", onMove);
+    area.addEventListener("pointerup", onUp);
+    area.addEventListener("pointercancel", onUp);
+    area.addEventListener("dblclick", onDoubleClick);
+    onResize.observe(area);
+    return () => {
+      area.removeEventListener("wheel", onWheel);
+      area.removeEventListener("pointerdown", onDown);
+      area.removeEventListener("pointermove", onMove);
+      area.removeEventListener("pointerup", onUp);
+      area.removeEventListener("pointercancel", onUp);
+      area.removeEventListener("dblclick", onDoubleClick);
+      onResize.disconnect();
+    };
+  });
 
   onSettled(() => {
     if (!motion) return;
@@ -266,6 +471,7 @@ export function ImageLightbox(props: {
     setLoaded((state) => {
       state[shown.id] = true;
     });
+    if (shown.id === current()?.id) move(FIT);
     if (opened || shown.id !== current()?.id) return;
     opened = true;
     if (!motion) return;
@@ -298,8 +504,10 @@ export function ImageLightbox(props: {
     // A step during a slide goes on from where the track is now.
     const from = motion && track ? new DOMMatrixReadOnly(getComputedStyle(track).transform).m41 : 0;
     slide?.cancel();
+    move(FIT);
     setDirection(offset);
     setIndex(next);
+    move(FIT, false, images()[next]);
     const shown = current();
     if (tilesMove && originRect && previous && shown) {
       const left = props.thumbnail?.(previous);
@@ -335,7 +543,8 @@ export function ImageLightbox(props: {
       const image = imageElements.get(shown.id);
       const target = visibleRect(thumbnail);
       const imageRect = image?.isConnected && loaded[shown.id] ? image.getBoundingClientRect() : undefined;
-      if (image && imageRect && target && thumbnail) {
+      // A zoomed image fades where it is, rather than shrink into a thumbnail it no longer matches.
+      if (image && imageRect && target && thumbnail && !zoomed()) {
         animations.push(
           image.animate(
             zoomKeyframes(target, imageRect, cornerRadius(thumbnail), cornerRadius(image)).reverse(),
@@ -364,12 +573,15 @@ export function ImageLightbox(props: {
       <Dialog.Portal>
         <Dialog.Overlay ref={overlay} class="image-lightbox-backdrop" />
         <Dialog.Content
-          class="image-lightbox"
+          class={`image-lightbox${props.macWindowControls ? " image-lightbox-mac-controls" : ""}`}
           data-dialog-surface="unstyled"
           data-closing={closing() ? "" : undefined}
           onPointerDown={(event: PointerEvent) => {
             swiped = false;
-            swipeStart = event.pointerType === "mouse" ? undefined : { x: event.clientX, y: event.clientY };
+            swipeStart =
+              event.pointerType === "mouse" || zoomed() || pointers.size > 1
+                ? undefined
+                : { x: event.clientX, y: event.clientY };
           }}
           onPointerUp={(event: PointerEvent) => {
             const start = swipeStart;
@@ -395,6 +607,11 @@ export function ImageLightbox(props: {
             if (offset !== undefined) step(offset);
             else if (event.key === "Home") go(0, -1);
             else if (event.key === "End") go(images().length - 1, 1);
+            // With Command, Ctrl or Alt, the keys are the app's own zoom shortcuts.
+            else if (event.metaKey || event.ctrlKey || event.altKey) return;
+            else if (event.key === "+" || event.key === "=") zoomBy(ZOOM_STEP);
+            else if (event.key === "-") zoomBy(1 / ZOOM_STEP);
+            else if (event.key === "0") move(FIT, true);
             else return;
             event.preventDefault();
           }}
@@ -409,8 +626,17 @@ export function ImageLightbox(props: {
                 </span>
               </Show>
             </span>
-            <span class="image-lightbox-actions">
-              <Show when={props.onDownload && current()}>
+            <div class="image-lightbox-actions">
+              <ZoomControls
+                class="image-lightbox-zoom"
+                levelClass="image-lightbox-zoom-level"
+                buttonClass="image-lightbox-action"
+                zoom={zoom()}
+                onZoomOut={() => zoomBy(1 / ZOOM_STEP)}
+                onFit={() => move(FIT, true)}
+                onZoomIn={() => zoomBy(ZOOM_STEP)}
+              />
+              <Show when={props.onDownload && downloadable()}>
                 {(shown) => (
                   <Button
                     variant="ghost"
@@ -437,9 +663,9 @@ export function ImageLightbox(props: {
               >
                 <CloseIcon />
               </Button>
-            </span>
+            </div>
           </header>
-          <div class="image-lightbox-stage">
+          <div ref={(element) => (stage = element)} class="image-lightbox-stage">
             <div ref={(element) => (track = element)} class="image-lightbox-track">
               <For each={images()}>
                 {(entry, position) => {

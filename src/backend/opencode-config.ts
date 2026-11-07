@@ -8,7 +8,7 @@
 // This lives beside `provider-drivers.ts` rather than inside it because the driver table is a table:
 // the shape of one CLI's config is a concern of its own, and it is the half worth unit testing.
 
-import type { CustomProviderHeader, CustomProviderModel } from "@openbot/contracts/ipc";
+import type { CustomProviderHarness, CustomProviderHeader, CustomProviderModel } from "@openbot/contracts/ipc";
 
 /** One endpoint, as the main process stores it. Carries the secrets, so it never crosses IPC. */
 export interface CustomProviderConfig {
@@ -18,6 +18,8 @@ export interface CustomProviderConfig {
   readonly apiKey: string | null;
   readonly models: readonly CustomProviderModel[];
   readonly headers: readonly CustomProviderHeader[];
+  /** The provider that runs the endpoint. Absent: OpenCode, as before the choice existed. */
+  readonly harness?: CustomProviderHarness;
 }
 
 /**
@@ -29,11 +31,40 @@ export interface CustomProviderConfig {
  */
 export type CustomProviderSource = () => readonly CustomProviderConfig[];
 
-/** The options block OpenCode hands to its bundled OpenAI-compatible or Anthropic adapter. */
+/** The endpoints that one harness runs, read at each call like the source. */
+export function customProvidersOn(source: CustomProviderSource, harness: CustomProviderHarness): CustomProviderSource {
+  return () => source().filter((provider) => (provider.harness ?? "opencode") === harness);
+}
+
+/** The options block OpenCode hands to its bundled OpenAI-compatible, OpenAI or Anthropic adapter. */
 interface OpenCodeProviderOptions {
   readonly baseURL: string;
   readonly apiKey?: string;
   readonly headers?: Readonly<Record<string, string>>;
+}
+
+/**
+ * One model of an endpoint. OpenCode refuses a `limit` without `output`, and then lists none of the
+ * endpoint's models. `output: 0` is not a safe marker: OpenCode 2.2.5 then asks for its own 32,000-token
+ * fallback, which a model with a smaller output cap refuses on every turn (#4234). So the entry always
+ * writes a real output limit, from {@link customModelOutputLimit}.
+ */
+interface OpenCodeModelEntry {
+  readonly name: string;
+  readonly limit?: { readonly context: number; readonly output: number };
+  /**
+   * The efforts of the model's effort menu, each sent as `reasoning_effort`. OpenCode 2.2.5 gives a
+   * custom model without `variants` its own Low, Medium and High, and it drops a `reasoning` key
+   * (`migrateModel` in `packages/core/src/v1/config/migrate.ts`). Listed variants replace that set.
+   */
+  readonly variants?: Readonly<Record<string, { readonly reasoningEffort: string }>>;
+  /**
+   * What the model reads and writes. OpenCode 2.2.5 gives a custom model without it text and image input
+   * (`Capabilities.default()` in `packages/schema/src/model.ts`); with it, the read tool refuses a kind
+   * that is not listed. `migrateModel` turns it into the model's
+   * capabilities (`packages/core/src/v1/config/migrate.ts`).
+   */
+  readonly modalities?: { readonly input: readonly string[]; readonly output: readonly string[] };
 }
 
 /** One entry under OpenCode's own `provider` key, keyed there by the endpoint's id. */
@@ -41,7 +72,7 @@ interface OpenCodeProviderEntry {
   readonly npm: string;
   readonly name: string;
   readonly options: OpenCodeProviderOptions;
-  readonly models: Readonly<Record<string, { readonly name: string }>>;
+  readonly models: Readonly<Record<string, OpenCodeModelEntry>>;
 }
 
 /**
@@ -61,12 +92,22 @@ type OpenCodePermissionLayer = Readonly<Record<string, "allow" | "ask" | "deny">
 
 /** The config layer OpenBot owns on `OPENCODE_CONFIG_CONTENT`. The user's own file is untouched. */
 interface OpenCodeConfig {
+  readonly agent?: { readonly title: { readonly disable: true } };
   readonly permission?: OpenCodePermissionLayer;
   readonly provider?: Readonly<Record<string, OpenCodeProviderEntry | OpenCodeKeyEntry>>;
 }
 
-/** What a caller starts from: every layer except the providers this module adds. */
-export type OpenCodeConfigBase = Omit<OpenCodeConfig, "provider">;
+/** What a caller starts from: every layer except the ones this module adds. */
+export type OpenCodeConfigBase = Omit<OpenCodeConfig, "agent" | "provider">;
+
+/**
+ * OpenBot names its own chats and never reads OpenCode's titles. OpenCode asks its `small_model` for
+ * a title on the first turn of each session, and a llama-swap server loads each model that a request
+ * names: a `small_model` on the same server unloaded the agent's model and loaded it again for the
+ * next turn. Checked in OpenCode 2.2.3 with `scripts/opencode-custom-model-e2e.ts`. OpenCode merges
+ * `agent` by key, so the user's own agents stay: `opencode debug agents` lost only "Title".
+ */
+const OPENCODE_TITLE_OFF = { title: { disable: true } } as const;
 
 /**
  * Profile generation runs a throwaway OpenCode session for a one-shot prompt, so it must not be able
@@ -79,6 +120,17 @@ export type OpenCodeConfigBase = Omit<OpenCodeConfig, "provider">;
  * permission request, and OpenCode rejects a cancelled one, so neither tool can run.
  */
 export const OPENCODE_PROFILE_CONFIG: OpenCodeConfigBase = { permission: { "*": "deny", bash: "ask", read: "ask" } };
+
+/**
+ * OpenCode 2.2.5 lists its `session_*` and `worktree_*` tools in the Code Mode catalog of each
+ * request, about 1.2k characters. OpenBot names its own chats, and `session_move` would move the
+ * session out of the agent's workspace. OpenCode leaves a denied tool out of the catalog. A rule names
+ * the tool id, `opencode_<name>`, and OpenCode checks `worktree_remove` with the `edit` permission, so
+ * that tool stays.
+ */
+export const OPENCODE_AGENT_CONFIG: OpenCodeConfigBase = {
+  permission: { "opencode_session_*": "deny", "opencode_worktree_*": "deny" },
+};
 
 const OPENCODE_CONFIG_ENV = "OPENCODE_CONFIG_CONTENT";
 
@@ -94,6 +146,9 @@ const OPENCODE_COMPATIBLE_NPM = "@ai-sdk/openai-compatible";
 /** The adapter OpenCode bundles for its own Anthropic provider. */
 const OPENCODE_ANTHROPIC_NPM = "@ai-sdk/anthropic";
 
+/** The adapter OpenCode bundles for OpenAI, which calls the Responses API. */
+const OPENCODE_OPENAI_NPM = "@ai-sdk/openai";
+
 /**
  * Anthropic's OpenAI-compatible endpoint ignores prompt caching, so each turn paid the full input
  * price. An endpoint on Anthropic's own API host uses the Messages API instead: OpenCode 1.19.3 adds
@@ -105,10 +160,31 @@ function anthropicBaseUrl(baseUrl: string): string | null {
   return url?.protocol === "https:" && url.hostname === "api.anthropic.com" ? `${url.origin}/v1` : null;
 }
 
+/**
+ * Azure OpenAI and Foundry refuse function tools with `reasoning_effort` on `/chat/completions`, and
+ * every agent turn sends both, so each turn failed with a 400 (#3460). Their v1 API serves
+ * `/responses` at the same base URL and takes the key as a bearer token, so the OpenAI adapter works
+ * unchanged. `@ai-sdk/azure` is no fix: it builds `/deployments/<model>/responses`, which a v1
+ * resource answers with 404.
+ *
+ * Only with a key: without `apiKey`, the OpenAI adapter reads `OPENAI_API_KEY` from the environment
+ * that OpenCode inherits, and would send the user's OpenAI key to Azure. A keyless endpoint, such as
+ * one with an Entra ID `Authorization` header, keeps the OpenAI-compatible adapter.
+ */
+function isAzureOpenAiV1(provider: CustomProviderConfig): boolean {
+  const url = URL.parse(provider.baseUrl);
+  return (
+    Boolean(provider.apiKey) &&
+    url?.protocol === "https:" &&
+    (url.hostname.endsWith(".openai.azure.com") || url.hostname.endsWith(".services.ai.azure.com")) &&
+    (url.pathname === "/openai/v1" || url.pathname === "/openai/v1/")
+  );
+}
+
 function providerEntry(provider: CustomProviderConfig): OpenCodeProviderEntry {
   const anthropic = anthropicBaseUrl(provider.baseUrl);
   return {
-    npm: anthropic ? OPENCODE_ANTHROPIC_NPM : OPENCODE_COMPATIBLE_NPM,
+    npm: anthropic ? OPENCODE_ANTHROPIC_NPM : isAzureOpenAiV1(provider) ? OPENCODE_OPENAI_NPM : OPENCODE_COMPATIBLE_NPM,
     name: provider.name,
     options: {
       baseURL: anthropic ?? provider.baseUrl,
@@ -120,7 +196,35 @@ function providerEntry(provider: CustomProviderConfig): OpenCodeProviderEntry {
         ? { headers: Object.fromEntries(provider.headers.map((header) => [header.name, header.value])) }
         : {}),
     },
-    models: Object.fromEntries(provider.models.map((model) => [model.id, { name: model.name }])),
+    models: Object.fromEntries(provider.models.map((model) => [model.id, modelEntry(model)])),
+  };
+}
+
+/** The output limit for a model with no saved `maxOutput`. Pi uses the same default. */
+const DEFAULT_OUTPUT_LIMIT = 16_384;
+
+/**
+ * The output limit to write for a custom model: the saved `maxOutput`, or else a guess that a model
+ * with a small output cap still accepts. An output cap has no relation to the context window, so the
+ * guess only takes half the window when the window is small: the prompt needs the other half.
+ */
+export function customModelOutputLimit(model: CustomProviderModel, contextWindow: number): number {
+  return model.maxOutput ?? Math.min(DEFAULT_OUTPUT_LIMIT, Math.floor(contextWindow / 2));
+}
+
+function modelEntry(model: CustomProviderModel): OpenCodeModelEntry {
+  return {
+    name: model.name,
+    // With no window, the entry keeps OpenCode's own defaults, and a saved cap is not written.
+    ...(model.contextWindow === undefined
+      ? {}
+      : { limit: { context: model.contextWindow, output: customModelOutputLimit(model, model.contextWindow) } }),
+    ...(model.reasoningEfforts === undefined
+      ? {}
+      : {
+          variants: Object.fromEntries(model.reasoningEfforts.map((effort) => [effort, { reasoningEffort: effort }])),
+        }),
+    ...(model.inputs === undefined ? {} : { modalities: { input: ["text", ...model.inputs], output: ["text"] } }),
   };
 }
 
@@ -148,27 +252,25 @@ function mergeOpenCodeConfig(
   base: OpenCodeConfigBase,
   providers: readonly CustomProviderConfig[],
   apiKey: string | null,
-): OpenCodeConfig | null {
+): OpenCodeConfig {
   const entries = {
     ...(apiKey ? Object.fromEntries(OPENCODE_KEY_PROVIDERS.map((id) => [id, { options: { apiKey } }])) : {}),
     ...customProviderEntries(providers),
   };
-  if (Object.keys(entries).length === 0) return Object.keys(base).length > 0 ? { ...base } : null;
-  return { ...base, provider: entries };
+  return { ...base, agent: OPENCODE_TITLE_OFF, ...(Object.keys(entries).length > 0 ? { provider: entries } : {}) };
 }
 
 /**
- * The spawn environment for one OpenCode client. Returns `{}` when there is nothing to configure, so
- * a build with no custom providers, no stored key and no base layer spawns exactly as it did before
- * this existed. With no stored key, the user's own `opencode auth login` keys stay in use.
+ * The spawn environment for one OpenCode client. OpenCode applies it after the user's own config, so
+ * the title setting is always off. With no stored key, the user's own `opencode auth login` keys stay
+ * in use.
  */
 export function openCodeConfigEnv(
   base: OpenCodeConfigBase,
   source: CustomProviderSource,
   apiKey: string | null,
 ): Record<string, string> {
-  const config = mergeOpenCodeConfig(base, source(), apiKey);
-  return config ? { [OPENCODE_CONFIG_ENV]: JSON.stringify(config) } : {};
+  return { [OPENCODE_CONFIG_ENV]: JSON.stringify(mergeOpenCodeConfig(base, source(), apiKey)) };
 }
 
 /** OpenCode's own providers, by the names that OpenCode 1 showed (models.dev). */

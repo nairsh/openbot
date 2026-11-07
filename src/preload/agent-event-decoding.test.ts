@@ -44,6 +44,18 @@ const hiddenAgents = {
   event: { type: "hidden-agents-changed", agents: [{ agentId: "agent-1", hiddenAt: "2026-10-16T09:00:00.000Z" }] },
 } satisfies ScopedAgentEvent;
 
+const sidebarPins = {
+  serverId: "server-1",
+  event: {
+    type: "sidebar-pins-changed",
+    items: [
+      { kind: "channel", id: "channel-1" },
+      { kind: "agent", id: "agent-1" },
+    ],
+    updatedAt: "2026-11-02T09:00:00.000Z",
+  },
+} satisfies ScopedAgentEvent;
+
 const memoryChanges = {
   serverId: "local",
   event: {
@@ -85,6 +97,34 @@ function withMemoryChange(change: unknown) {
   };
 }
 
+const threadContext = {
+  agentId: "agent-1",
+  threadId: "thread-2",
+  usage: { usedTokens: 148_000, windowTokens: 258_000, autoCompactAt: 0.8, nativeManaged: false },
+  compaction: null,
+};
+
+function withThreadContexts(threadContextStates: unknown[]) {
+  return {
+    serverId: "local",
+    event: {
+      type: "runtime-snapshot",
+      snapshot: {
+        threadContextStates,
+        agents: [],
+        activeTurns: [],
+        work: [],
+        latestMessages: [],
+        attentionComplete: true,
+        pendingPrompts: [],
+        pendingApprovals: [],
+        pendingBrowserTakeovers: [],
+        failedTurns: [],
+      },
+    },
+  };
+}
+
 describe("decodeScopedAgentEvent", () => {
   it.each([
     ["an event", delta],
@@ -95,7 +135,22 @@ describe("decodeScopedAgentEvent", () => {
     ["a hidden agents change", hiddenAgents],
     ["an empty hidden agents change", { serverId: "local", event: { type: "hidden-agents-changed", agents: [] } }],
     ["the memory changes of a turn", memoryChanges],
+    ["a change of the pinned chats", sidebarPins],
+    [
+      "the pins of a user who never saved a list",
+      { serverId: "local", event: { type: "sidebar-pins-changed", items: [], updatedAt: null } },
+    ],
+    ["a workflow change", { serverId: "local", event: { type: "workflows-changed", workflowId: "workflow-1" } }],
+    [
+      "a workflow change that an agent saved",
+      { serverId: "local", event: { type: "workflows-changed", workflowId: "workflow-1", agentId: "agent-1" } },
+    ],
   ] satisfies [string, ScopedAgentEvent][])("keeps %s", (_name, value) => {
+    expect(decodeScopedAgentEvent(value)).toEqual(value);
+  });
+
+  it("keeps the context of a side thread", () => {
+    const value = withThreadContexts([threadContext]);
     expect(decodeScopedAgentEvent(value)).toEqual(value);
   });
 
@@ -122,11 +177,36 @@ describe("decodeScopedAgentEvent", () => {
       },
     ],
     ["hidden agents that are not a list", { ...hiddenAgents, event: { ...hiddenAgents.event, agents: null } }],
+    [
+      "a pin of an unknown kind",
+      { ...sidebarPins, event: { ...sidebarPins.event, items: [{ kind: "workflow", id: "workflow-1" }] } },
+    ],
+    [
+      "a pin that is in the list two times",
+      {
+        ...sidebarPins,
+        event: { ...sidebarPins.event, items: [...sidebarPins.event.items, sidebarPins.event.items[0]] },
+      },
+    ],
+    ["pins with a time that is not a date", { ...sidebarPins, event: { ...sidebarPins.event, updatedAt: "today" } }],
+    [
+      "a workflow change with an agent that is not an id",
+      { serverId: "local", event: { type: "workflows-changed", workflowId: "workflow-1", agentId: 7 } },
+    ],
     ["a bufferedLive that is not a boolean", { ...delta, bufferedLive: "yes" }],
     ["a memory change of an unknown action", withMemoryChange({ memoryId: "memory-1", action: "pinned", text: "x" })],
     [
       "a memory change with a text longer than a memory",
       withMemoryChange({ memoryId: "memory-1", action: "saved", text: "x".repeat(501) }),
+    ],
+    [
+      "a side thread context with no window",
+      withThreadContexts([{ ...threadContext, usage: { ...threadContext.usage, windowTokens: 0 } }]),
+    ],
+    ["a side thread context with no thread", withThreadContexts([{ ...threadContext, threadId: undefined }])],
+    [
+      "more side thread contexts than the agents can have threads",
+      withThreadContexts(Array(100 * 50 + 1).fill(threadContext)),
     ],
     ["a value that is not a record", "event"],
   ])("rejects %s", (_name, value) => {

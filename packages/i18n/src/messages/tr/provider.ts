@@ -33,7 +33,7 @@ export const messages = {
 
   "provider.status.off": "Kapalı",
   "provider.gemini.hostSignIn":
-    "Gemini'yi bağlamak için ana makinede OpenBot'u açın ve Ayarlar > Sağlayıcılar bölümünde Bağlan'ı seçin. Google ile oturum açmak için o ana makinede bir tarayıcı gerekir. Uzaktan oturum açma desteklenmez.",
+    "Gemini'yi bağlamak için ana makinede OpenBot'u açın ve Sunucu ayarları > Sağlayıcılar bölümünde Bağlan'ı seçin. Google ile oturum açmak için o ana makinede bir tarayıcı gerekir. Uzaktan oturum açma desteklenmez.",
   "provider.key.free": "Ücretsiz",
 
   "provider.action.connect": "Bağlan",
@@ -49,6 +49,7 @@ export const messages = {
   "provider.action.signIn": "Oturum aç",
   "provider.action.apiKey": "API anahtarı",
   "provider.action.signInWithCode": "Kodla oturum aç",
+  "provider.action.signInMainlandChina": "{site} ile oturum aç (Çin)",
   "provider.action.pasteAddress": "Adresi yapıştır",
   "provider.aria.download": "{name} sağlayıcısını indir",
   "provider.aria.cancel": "{name} için işlemi iptal et",
@@ -95,6 +96,8 @@ export const messages = {
   "provider.codeLogin.relayStarting": "{name} oturum açma işlemi {host} üzerinde başlatılıyor…",
   "provider.codeLogin.pageOpening": "{name} oturum açma sayfası {host} üzerinde açılıyor…",
   "provider.codeLogin.linkStep": "{name} hesabında oturum açın. OpenBot kendiliğinden devam eder.",
+  "provider.codeLogin.chatgptDeviceSetting":
+    "Bir bilgisayarda ChatGPT'de güvenlik ayarlarını açın ve Codex için cihaz koduyla oturum açmayı açın. İş hesabında bunu çalışma alanı yöneticiniz açar.",
   "provider.useApp.title": "{name} bağlantısını OpenBot uygulamasında yapın",
   "provider.useApp.description":
     "{name} oturum açma işlemi onu başlatan bilgisayara döner ve bir tarayıcı sekmesi bunu alamaz. {name} bağlantısını OpenBot uygulamasında yapın. Uygulama oturum açmayı kendiliğinden tamamlar.",
@@ -114,12 +117,22 @@ export const messages = {
   "provider.picker.download": "{name} indirmesi",
   "provider.picker.search": "Modellerde ara",
   "provider.picker.noMatches": "Aramanızla eşleşen model yok.",
+  "provider.picker.olderModels": "Eski modeller",
+  "provider.picker.olderModelsList": "Eski {name} modelleri",
   "provider.picker.noModels": "{name} sağlayıcısından kullanılabilir model yok.",
   "provider.picker.customEmpty":
     "OpenAI uyumlu bir uç nokta ekleyin — bu bilgisayardaki bir model sunucusu veya bir temel URL ve anahtara sahip herhangi bir hizmet.",
+  "provider.picker.customPending":
+    "Uç noktalarınızın modelleri henüz yüklenmedi. Sağlayıcı bunları geçerli görevi durduktan sonra okur.",
   "provider.picker.defaultModelLabel": "{name}, varsayılan",
+  "provider.picker.usageLimit": "Kullanım sınırına ulaşıldı",
+  "provider.picker.usageLimitWindow": "{window} sınırı",
+  "provider.picker.usageLimitResets": "{limit} · {time} tarihinde sıfırlanır",
+  "provider.picker.usageLimitLabel": "{name}, kullanım sınırına ulaşıldı",
+  "provider.picker.usageLimitResetsLabel": "{name}, kullanım sınırına ulaşıldı, {time} tarihinde sıfırlanır",
   "provider.picker.effort": "Efor",
   "provider.picker.effortLabel": "Ajan akıl yürütme eforu",
+  "provider.picker.effortFixed": "{effort}, {provider} tarafından sabit",
   "provider.picker.fast": "Hızlı",
   "provider.picker.fastLabel": "Hızlı mod",
   "provider.picker.selectEffort": "Efor seçin",
@@ -127,12 +140,16 @@ export const messages = {
   "provider.picker.cliReady": "{cli} hazır",
   "provider.status.signInRequired": "Oturum açılmalı",
   "provider.model.free": "Ücretsiz",
+  "provider.model.new": "Yeni",
   "provider.model.default": "varsayılan",
+  "provider.effort.none": "Yok",
+  "provider.effort.minimal": "Minimum",
   "provider.effort.low": "Düşük",
   "provider.effort.medium": "Orta",
   "provider.effort.high": "Yüksek",
   "provider.effort.xhigh": "Ekstra yüksek",
   "provider.effort.max": "Maksimum",
+  "provider.effort.ultra": "Ultra",
 
   "provider.museKey.title": "Muse için Meta API anahtarı",
   "provider.museKey.description":
@@ -150,6 +167,14 @@ export const messages = {
   "provider.inceptionKey.description":
     "Mercury modellerini kullanmak için bu bilgisayara bir Inception API anahtarı kaydedin. OpenBot bunları indirdiği Pi CLI'da çalıştırır.",
   "provider.inceptionKey.label": "Inception API anahtarı",
+  "provider.deepseekKey.title": "DeepSeek API anahtarı",
+  "provider.deepseekKey.description":
+    "DeepSeek modellerini kullanmak için bu bilgisayara bir DeepSeek API anahtarı kaydedin. OpenBot bunları indirdiği Pi CLI'da çalıştırır.",
+  "provider.deepseekKey.label": "DeepSeek API anahtarı",
+  "provider.openrouterKey.title": "OpenRouter API anahtarı",
+  "provider.openrouterKey.description":
+    "OpenRouter modellerini kullanmak için bu bilgisayara bir OpenRouter API anahtarı kaydedin. OpenBot bunları indirdiği Pi CLI'da çalıştırır.",
+  "provider.openrouterKey.label": "OpenRouter API anahtarı",
   "provider.openCodeKey.title": "OpenCode Go'da oturum açın",
   "provider.openCodeKey.description":
     "Ücretsiz modeller hesap gerektirmez. Bir anahtar, ücretli Go modellerinin kilidini açar.",
@@ -177,6 +202,7 @@ export const messages = {
   "provider.account.cancelSignIn": "Oturum açmayı iptal et",
   "provider.account.finishSignIn": "Oturum açma işlemini tarayıcıda tamamlayın.",
   "provider.account.remove": "Hesabı kaldır",
+  "provider.account.disconnect": "Bağlantıyı kes",
   "provider.account.actionFailed": "{name} hesabı değiştirilemedi.",
   "provider.account.resetUsage": "Kullanımı sıfırla",
   "provider.account.resetUsageTitle": "{name} kullanımı sıfırlansın mı?",
@@ -191,6 +217,13 @@ export const messages = {
   "provider.account.resetUsageNoCredit": "{name} hesabında kullanım sıfırlama kredisi kalmadı.",
   "provider.account.resetUsageAlreadyRedeemed": "{name} hesabının bu sıfırlama kredisi zaten kullanıldı.",
   "provider.account.resetUsageFailed": "{name} kullanımı sıfırlanamadı.",
+  "provider.settings.disconnectTitle": "{name} bağlantısı kesilsin mi?",
+  "provider.settings.disconnectOthers": "Diğer {provider} hesapları, {provider} yeniden bağlanana kadar bekler.",
+  "provider.settings.disconnectLocal":
+    "OpenBot bu bilgisayarda {provider} oturumunu kapatır. Terminalinizdeki {provider} CLI oturumu da kapanır.",
+  "provider.settings.disconnectHost": "OpenBot sunucuda {provider} oturumunu kapatır.",
+  "provider.settings.versionInstalledByUser": "{version} · senin yüklediğin",
+  "provider.settings.versionDownloaded": "{version} · OpenBot tarafından indirildi",
   "provider.settings.cache": "Önbellek",
   "provider.settings.promptCache": "İstem önbelleği",
   "provider.settings.promptCacheDescription":
@@ -198,4 +231,22 @@ export const messages = {
   "provider.settings.promptCacheHour": "1 saat",
   "provider.settings.promptCacheDefault": "Claude Code varsayılanı",
   "provider.settings.promptCacheLoadFailed": "Bu sunucunun istem önbelleği süresi yüklenemedi.",
+  "provider.settings.models": "Modeller",
+  "provider.settings.modelsDescription": {
+    one: "{count} modelden {shown} tanesi model seçicide görünür.",
+    other: "{count} modelden {shown} tanesi model seçicide görünür.",
+  },
+  "provider.settings.modelsSearch": "Model ara",
+  "provider.settings.modelsHideAll": "Tümünü gizle",
+  "provider.settings.modelsReset": "Varsayılana sıfırla",
+  "provider.settings.modelsShowAll": "Tümünü göster",
+  "provider.settings.modelShow": "{name} ({id}) modelini model seçicide göster",
+  "provider.settings.modelsNoMatch": "Aramanızla eşleşen model yok.",
+  "provider.settings.modelsLoadFailed": "Bu sunucunun modelleri yüklenemedi.",
+  "provider.settings.deleteTitle": "{name} sil",
+  "provider.settings.deleteOn":
+    "{name} kapatılır ve OpenBot'un indirdiği CLI silinir. Hesaplar, oturumlar ve ajanlar kalır.",
+  "provider.settings.deleteOff":
+    "OpenBot'un {name} için indirdiği CLI silinir ({size}). Hesaplar, oturumlar ve ajanlar kalır.",
+  "provider.settings.removeDownloadFailed": "İndirme kaldırılamadı.",
 } as const satisfies PartialTranslation<typeof source>;

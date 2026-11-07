@@ -1,10 +1,10 @@
 {
-  "version": "0.50.0",
+  "version": "0.63.0",
   "highlights": [
-    "Sign in to Google MCP servers, such as Gmail, Calendar or Drive, again after you update. Then the sign-in keeps working after the first hour.",
-    "Draw a workflow on a canvas with agent, model, condition and approval steps, and run it on a schedule or from a webhook.",
-    "Save logins, payment cards and contact info in the Vault. Agents use them, but never see a password or a card number.",
-    "Open the trace of an agent's turn to see each thought, tool call and subagent on one timeline, with its cost.",
-    "Claude can use an Anthropic API key, and Gemini can hold more than one Google account."
+    "Claude stays signed in after a restart or an update, and Claude agents use less of the 5-hour usage window.",
+    "Choose when the plan card starts a long task by itself, or let it start only when you press Start.",
+    "Choose the provider account when you create an agent.",
+    "The Usage page shows how often your agents load each skill and what it costs.",
+    "Connect Higgsfield in the Marketplace to make images, videos and audio."
   ]
 }

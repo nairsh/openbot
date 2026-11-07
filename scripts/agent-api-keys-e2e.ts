@@ -1,7 +1,10 @@
 // Runs `request_api_key` end to end on the real modules: the real `AttentionRegistry` shows the form
 // that the router builds, the owner, a member and an admin answer it, and the real `AgentApiKeys` saves
 // the key in a temporary folder. It checks that the value reaches the file and the log redaction, and
-// no tool result, event or stored message. No provider or account is used.
+// no tool result, event or stored message. It also saves API keys in the real Vault and checks that
+// `list` writes them to files for every agent and that a Vault change rewrites or removes the files.
+// With a Vault, the form saves the key there by default, and "Only this agent" keeps it for the agent.
+// No provider or account is used.
 // `bun scripts/agent-api-keys-e2e.ts`. Writes .openbot-build/agent-api-keys-e2e/report.json.
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -12,18 +15,32 @@ import { type UiBlockSpec, uiBlockAnswersFromResponse } from "@openbot/contracts
 import { redactText } from "@openbot/logging";
 import { Effect } from "effect";
 import { AttentionRegistry, type PromptResponder } from "../src/backend/agent/attention-registry";
-import { API_KEY_FIELD_ID, apiKeyFormSpec } from "../src/backend/agent/prompts";
+import {
+  API_KEY_FIELD_ID,
+  API_KEY_SCOPE_AGENT,
+  API_KEY_SCOPE_FIELD_ID,
+  apiKeyFormSpec,
+} from "../src/backend/agent/prompts";
 import { AgentApiKeys } from "../src/backend/agent-api-keys";
 import { CodexAppServerClient } from "../src/backend/app-server-client";
 import { runCauseEffect } from "../src/backend/effect-boundary";
 import { requestApiKeyToolSchema } from "../src/backend/openbot-tools";
 import type { RequestId } from "../src/backend/protocol";
+import { VaultService } from "../src/main/vault-service";
+import { VaultStore } from "../src/main/vault-store";
 
 const OUT = resolve(import.meta.dirname, "../.openbot-build/agent-api-keys-e2e");
 const AGENT = "agent-1";
 const THREAD = "thread-1";
 const KEY = "e2e-key-value-4be1c0d7";
 const NEW_KEY = "e2e-key-replaced-77c1a0b2";
+const VAULT_KEY = "e2e-vault-key-5d0e9a41";
+const NEW_VAULT_KEY = "e2e-vault-key-changed-c3f8";
+/** Reverses the bytes, so the Vault file never holds the plain text. */
+const REVERSING_CIPHER = {
+  encrypt: (value: string) => Buffer.from(value, "utf8").reverse(),
+  decrypt: (value: Buffer) => Buffer.from(value).reverse().toString("utf8"),
+};
 const MEMBER: PromptResponder = { sender: { id: "member-1", name: "Mia" }, privileged: false };
 const ADMIN: PromptResponder = { sender: { id: "admin-1", name: "Ada" }, privileged: true };
 
@@ -46,6 +63,7 @@ interface AgentAnswer {
   blockId?: string;
   name?: string;
   path?: string;
+  source?: string;
   next?: string;
 }
 
@@ -69,10 +87,11 @@ const snapshot: ConversationSnapshot = {
   messages: [],
 };
 const events: AgentEvent[] = [];
-const registry = new AttentionRegistry({
+/** The registry options that do not change between the stores. */
+const registryHost = {
   conversation: {
-    agentForThread: (threadId) => (threadId === THREAD ? AGENT : undefined),
-    publicThreadId: (_agentId, threadId) => threadId,
+    agentForThread: (threadId: string) => (threadId === THREAD ? AGENT : undefined),
+    publicThreadId: (_agentId: string, threadId: string) => threadId,
     ensureSnapshot: () => snapshot,
     emitConversation: () => {
       snapshot.revision += 1;
@@ -81,11 +100,28 @@ const registry = new AttentionRegistry({
   browser: { listTabs: () => [], beginTakeover: () => Effect.void, endTakeover: () => {} },
   hostedSites: { prepareApproval: () => Effect.succeed(null), resolveApproval: () => Effect.void },
   routines: { markNeedsAttention: () => {}, markRunningForTurn: () => {} },
-  emit: (event) => events.push(event),
+  emit: (event: AgentEvent) => events.push(event),
   emitError: () => {},
   emitRuntimeSnapshot: () => {},
-  apiKeys,
-});
+};
+const registry = new AttentionRegistry({ ...registryHost, apiKeys });
+
+/** A registry with its own key folder and a real Vault, as OpenBot wires them when the Vault is ready. */
+async function vaultRegistry(name: string) {
+  const vault = new VaultService({
+    store: new VaultStore(join(root, `openbot-vault-${name}.json`), REVERSING_CIPHER),
+    canPersist: () => true,
+  });
+  await Effect.runPromise(vault.load());
+  const keys = new AgentApiKeys(join(root, `${name}-api-keys`), () => vault.items.apiKeys());
+  const registry = new AttentionRegistry({
+    ...registryHost,
+    apiKeys: keys,
+    vaultItems: vault.items,
+    agentName: () => "Coder",
+  });
+  return { vault, keys, registry };
+}
 
 let nextRequest = 1;
 
@@ -175,6 +211,8 @@ try {
     assert.ok(!JSON.stringify(snapshot).includes(KEY), "the key is in the stored conversation");
     const message = snapshot.messages.find((candidate) => candidate.uiBlock?.blockId === "block-1");
     assert.equal(message?.uiBlock?.state.status, "answered");
+    // With no Vault the form has no scope choice, so the app draws no small select.
+    assert.equal(message?.uiBlock?.apiKey, undefined);
     return { mode: mode.toString(8), folderMode: folderMode.toString(8) };
   });
 
@@ -232,6 +270,163 @@ try {
     await Effect.runPromise(apiKeys.removeAgent("agent-2"));
     await assert.rejects(stat(join(root, "agent-api-keys", "agent-2")));
     await assert.rejects(Effect.runPromise(apiKeys.list("../agent-1")));
+  });
+
+  await step(
+    "a Vault key reaches every agent as a file, the agent's own key wins, and a Vault change follows",
+    async () => {
+      const vault = new VaultService({
+        store: new VaultStore(join(root, "openbot-vault-v1.json"), REVERSING_CIPHER),
+        canPersist: () => true,
+      });
+      await Effect.runPromise(vault.load());
+      const keys = new AgentApiKeys(join(root, "agent-api-keys"), () => vault.items.apiKeys());
+      // As OpenBot wires it: each Vault change brings the written files in line.
+      let synced: Promise<void> = Promise.resolve();
+      vault.onChanged(() => {
+        synced = Effect.runPromise(keys.syncVault());
+      });
+      const saveKey = async (id: string | null, name: string, key: string) => {
+        await Effect.runPromise(vault.save({ kind: "apiKey", id, name, notes: "", key }));
+        await synced;
+        return vault.state().items.find((item) => item.kind === "apiKey" && item.name === name)?.id ?? "";
+      };
+      const githubId = await saveKey(null, "GITHUB_TOKEN", VAULT_KEY);
+      await saveKey(null, "OPENAI_API_KEY", "e2e-vault-openai-key-31b0");
+      await Effect.runPromise(keys.save("agent-3", "OPENAI_API_KEY", KEY));
+      const vaultFolder = join(root, "agent-api-keys", ".vault");
+      // A start registers the agents' own keys and writes no Vault key: only an agent's list does.
+      await Effect.runPromise(keys.registerSaved());
+      await assert.rejects(stat(vaultFolder));
+      const listed = await Effect.runPromise(keys.list("agent-3"));
+      assert.deepEqual(listed, [
+        { name: "OPENAI_API_KEY", path: join(root, "agent-api-keys", "agent-3", "OPENAI_API_KEY") },
+        { name: "GITHUB_TOKEN", path: join(vaultFolder, "GITHUB_TOKEN"), source: "vault" },
+      ]);
+      assert.equal(await readFile(join(vaultFolder, "GITHUB_TOKEN"), "utf8"), VAULT_KEY);
+      if (process.platform !== "win32")
+        assert.equal((await stat(join(vaultFolder, "GITHUB_TOKEN"))).mode & 0o777, 0o600);
+      assert.ok(!JSON.stringify(listed).includes(VAULT_KEY), "the Vault key is in the list result");
+      assert.ok(!redactText(`token ${VAULT_KEY}`).includes(VAULT_KEY), "the Vault key is not masked in logs");
+      const forOther = await Effect.runPromise(keys.list(AGENT));
+      assert.deepEqual(
+        forOther.map((key) => [key.name, key.source]),
+        [
+          ["GITHUB_TOKEN", "vault"],
+          ["OPENAI_API_KEY", "vault"],
+        ],
+      );
+      // The Vault folder is not an agent: a restart registers the agents' keys and skips it.
+      await Effect.runPromise(keys.registerSaved());
+      await saveKey(githubId, "GITHUB_TOKEN", NEW_VAULT_KEY);
+      assert.equal(await readFile(join(vaultFolder, "GITHUB_TOKEN"), "utf8"), NEW_VAULT_KEY);
+      await Effect.runPromise(vault.delete(githubId));
+      await synced;
+      await assert.rejects(stat(join(vaultFolder, "GITHUB_TOKEN")));
+      assert.equal(await readFile(join(vaultFolder, "OPENAI_API_KEY"), "utf8"), "e2e-vault-openai-key-31b0");
+      // A Vault that cannot be read leaves no key file behind after the next sync.
+      await writeFile(join(root, "openbot-vault-v1.json"), "not json");
+      await Effect.runPromise(vault.load());
+      await Effect.runPromise(keys.syncVault());
+      await assert.rejects(stat(join(vaultFolder, "OPENAI_API_KEY")));
+      assert.deepEqual(await Effect.runPromise(keys.list("agent-3")), [
+        { name: "OPENAI_API_KEY", path: join(root, "agent-api-keys", "agent-3", "OPENAI_API_KEY") },
+      ]);
+    },
+  );
+
+  await step(
+    "with a Vault, the form saves the key there for every agent and deletes the asking agent's own copy",
+    async () => {
+      const { vault, keys, registry: formRegistry } = await vaultRegistry("form");
+      const formClient = new RecordingClient("/nonexistent/codex");
+      const ask = (name: string, turnId: string) => {
+        const spec = apiKeyFormSpec({ name, title: `${name} for the deploy`, vault: true });
+        assert.ok(spec?.type === "form", "the router would refuse this form");
+        const id = nextRequest++;
+        formRegistry.surfaceUiBlock(
+          formClient,
+          { id, method: "item/tool/call", params: { threadId: THREAD, turnId } },
+          { blockId: `block-${id}`, spec, apiKey: { name, vault: true } },
+        );
+        return { id, spec };
+      };
+      const respond = (requestId: number, answers: Record<string, string[]>, responder?: PromptResponder) =>
+        runCauseEffect(formRegistry.respondToPrompt({ requestId, answers }, responder));
+
+      // The Vault option comes first and is selected when the form opens.
+      const scope = ask("DEPLOY_TOKEN", "turn-vault-0").spec;
+      assert.ok(scope.type === "form");
+      const scopeField = scope.fields?.find((field) => field.id === API_KEY_SCOPE_FIELD_ID);
+      assert.ok(scopeField && scopeField.kind === "segmented");
+      assert.deepEqual(scopeField.options, ["All agents (Vault)", API_KEY_SCOPE_AGENT]);
+      assert.equal(scopeField.value, "All agents (Vault)");
+      formRegistry.cancelRequest(formClient, nextRequest - 1);
+
+      // An agent that asked before keeps its own copy, which would hide the Vault key.
+      await Effect.runPromise(keys.save(AGENT, "DEPLOY_TOKEN", KEY));
+      const { id, spec } = ask("DEPLOY_TOKEN", "turn-vault-1");
+      const values = { [API_KEY_FIELD_ID]: ` ${VAULT_KEY}\n`, [API_KEY_SCOPE_FIELD_ID]: "All agents (Vault)" };
+      const answers = uiBlockAnswersFromResponse(spec, { actionId: "submit", values });
+      await assert.rejects(respond(id, answers, MEMBER));
+      assert.equal(vault.items.apiKeys().length, 0, "a member saved a key in the Vault");
+      await respond(id, answers);
+      const vaultPath = join(root, "form-api-keys", ".vault", "DEPLOY_TOKEN");
+      const result = agentAnswer(formClient.answers.get(id));
+      assert.deepEqual(result, {
+        status: "saved",
+        blockId: `block-${id}`,
+        name: "DEPLOY_TOKEN",
+        path: vaultPath,
+        source: "vault",
+      });
+      assert.deepEqual(vault.items.apiKeys(), [{ name: "DEPLOY_TOKEN", value: VAULT_KEY }]);
+      assert.equal(await readFile(vaultPath, "utf8"), VAULT_KEY);
+      await assert.rejects(stat(join(root, "form-api-keys", AGENT, "DEPLOY_TOKEN")));
+      const otherAgent = await Effect.runPromise(keys.list("agent-4"));
+      assert.deepEqual(otherAgent, [{ name: "DEPLOY_TOKEN", path: vaultPath, source: "vault" }]);
+      const added = vault.state().items.find((item) => item.kind === "apiKey" && item.name === "DEPLOY_TOKEN");
+      assert.equal(added?.addedBy, "Coder");
+      const message = snapshot.messages.find((candidate) => candidate.uiBlock?.blockId === `block-${id}`);
+      assert.equal(message?.uiBlock?.state.status, "answered");
+      assert.equal(message?.uiBlock?.state.outcome, "Saved to Vault: DEPLOY_TOKEN");
+      // The app draws the scope choice small, next to the submit button, also after the answer.
+      assert.equal(message?.uiBlock?.apiKey, true);
+      for (const raw of formClient.answers.values()) assert.ok(!raw.includes(VAULT_KEY), "the key is in a result");
+      assert.ok(!JSON.stringify(events).includes(VAULT_KEY), "the key is in an event");
+      assert.ok(!JSON.stringify(snapshot).includes(VAULT_KEY), "the key is in the stored conversation");
+
+      return { result };
+    },
+  );
+
+  await step("with a Vault, Only this agent keeps the key in the agent's private file", async () => {
+    const { vault, keys, registry: privateRegistry } = await vaultRegistry("private");
+    const spec = apiKeyFormSpec({ name: "PRIVATE_TOKEN", title: "Private token", vault: true });
+    assert.ok(spec);
+    const id = nextRequest++;
+    privateRegistry.surfaceUiBlock(
+      client,
+      { id, method: "item/tool/call", params: { threadId: THREAD, turnId: "turn-private" } },
+      { blockId: `block-${id}`, spec, apiKey: { name: "PRIVATE_TOKEN", vault: true } },
+    );
+    const values = { [API_KEY_FIELD_ID]: KEY, [API_KEY_SCOPE_FIELD_ID]: API_KEY_SCOPE_AGENT };
+    await runCauseEffect(
+      privateRegistry.respondToPrompt({
+        requestId: id,
+        answers: uiBlockAnswersFromResponse(spec, { actionId: "submit", values }),
+      }),
+    );
+    const path = join(root, "private-api-keys", AGENT, "PRIVATE_TOKEN");
+    assert.deepEqual(agentAnswer(client.answers.get(id)), {
+      status: "saved",
+      blockId: `block-${id}`,
+      name: "PRIVATE_TOKEN",
+      path,
+    });
+    assert.equal(await readFile(path, "utf8"), KEY);
+    assert.deepEqual(vault.items.apiKeys(), []);
+    assert.deepEqual(await Effect.runPromise(keys.list("agent-4")), []);
   });
 
   await writeFile(join(OUT, "report.json"), `${JSON.stringify({ passed: true, steps }, null, 2)}\n`);

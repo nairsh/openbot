@@ -5,6 +5,7 @@ import { fn } from "storybook/test";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { TasksView } from "../src/features/tasks/TasksView";
 import { desktopTasksSource } from "../src/features/tasks/tasks-port";
+import { PlatformProvider } from "../src/platform";
 import { requireFixture, STORY_AGENTS } from "./fixtures";
 import { createMockOpenBot } from "./mock-openbot";
 
@@ -204,21 +205,23 @@ function TasksPageStory(props: {
     window.openbot = previousApi;
   });
   return (
-    <div style={{ height: "100vh" }}>
-      <TasksView
-        serverId="local"
-        hostName="This computer"
-        onBack={fn()}
-        source={desktopTasksSource()}
-        agents={props.agents ?? TASK_AGENTS}
-        onOpenLink={fn()}
-        onAttachmentAction={fn()}
-        approvals={props.approvals ?? []}
-        onRespondApproval={fn(async () => true)}
-        agentsOpen={agentsOpen()}
-        onToggleAgents={props.agentsToggle ? () => setAgentsOpen((open) => !open) : undefined}
-      />
-    </div>
+    <PlatformProvider>
+      <div style={{ height: "100vh" }}>
+        <TasksView
+          serverId="local"
+          hostName="This computer"
+          onBack={fn()}
+          source={desktopTasksSource()}
+          agents={props.agents ?? TASK_AGENTS}
+          onOpenLink={fn()}
+          onAttachmentAction={fn()}
+          approvals={props.approvals ?? []}
+          onRespondApproval={fn(async () => true)}
+          agentsOpen={agentsOpen()}
+          onToggleAgents={props.agentsToggle ? () => setAgentsOpen((open) => !open) : undefined}
+        />
+      </div>
+    </PlatformProvider>
   );
 }
 

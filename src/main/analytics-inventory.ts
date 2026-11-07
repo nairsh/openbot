@@ -1,6 +1,7 @@
 import {
   type AgentSummary,
   COMPUTER_USE_MCP_SERVER_NAME,
+  isHomeSkillId,
   type McpServerConfig,
   RESERVED_MCP_SERVER_NAMES,
   type Routine,
@@ -40,7 +41,12 @@ const BUILTIN_SERVER_NAMES = new Set<string>([...RESERVED_MCP_SERVER_NAMES, COMP
 
 export interface AnalyticsInventorySources {
   agents: () => AgentSummary[];
+  /** The agent's routines with a schedule. */
   routines: (agentId: string) => Routine[];
+  /** How many of the agent's webhook routines are on. */
+  enabledWebhookRoutineCount: (agentId: string) => number;
+  /** The webhook addresses of all agents, channels and workflows. */
+  webhookRouteCount: () => number;
   workflowCount: () => number;
   skills: SkillMarketplaceService["listInstalledForChatTags"];
   mcpServers: () => McpServerConfig[];
@@ -68,11 +74,14 @@ export const collectAnalyticsInventory = Effect.fn("Analytics.collectInventory")
   let localSkillCount = 0;
   let communitySkillCount = 0;
   let enabledRoutineCount = 0;
+  let enabledWebhookRoutineCount = 0;
   for (const agent of agents) {
     enabledRoutineCount += sources.routines(agent.id).filter((routine) => routine.active).length;
+    enabledWebhookRoutineCount += sources.enabledWebhookRoutineCount(agent.id);
     const skills = yield* sources.skills(agent.id).pipe(Effect.catch(() => Effect.succeed([])));
     for (const skill of skills) {
-      if (skill.enabled === false) continue;
+      // A home skill is the host user's and the same for every agent, so it is not counted per agent.
+      if (skill.enabled === false || isHomeSkillId(skill.skillId)) continue;
       if (skill.skillId.startsWith(CURATED_SKILL_PREFIX))
         curatedSkills.add(skill.skillId.slice(CURATED_SKILL_PREFIX.length));
       else if (skill.origin === "local" || skill.origin === "workspace") localSkillCount += 1;
@@ -86,6 +95,8 @@ export const collectAnalyticsInventory = Effect.fn("Analytics.collectInventory")
   return {
     agentCount: agents.length,
     enabledRoutineCount,
+    enabledWebhookRoutineCount,
+    webhookRouteCount: sources.webhookRouteCount(),
     workflowCount: sources.workflowCount(),
     customMcpServerCount,
     plugins: [...plugins],

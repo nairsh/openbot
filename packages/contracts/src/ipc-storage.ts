@@ -7,6 +7,7 @@
  * a row without a second shape. Rows never carry a path: the host resolves a file from its id.
  */
 
+import { MANAGED_RUNTIME_PROVIDERS, type ManagedProviderId } from "./agent-providers";
 import { type AttachmentSummary, isAttachmentSummary } from "./ipc-attachments";
 import { isBoundedString, isIdentifier, isNullableBoundedString } from "./ipc-bounded-values";
 import { isBoolean, isDynamicRecord, isNumber, isOneOf, isString } from "./runtime-values";
@@ -142,9 +143,21 @@ export interface OpenStoredFileInput {
   action: "open" | "reveal" | "download";
 }
 
-/** The provider CLI versions on this computer that no OpenBot app uses any more. */
-export interface OldRuntimeVersions {
+/**
+ * The provider CLI downloads on this computer that OpenBot can remove now: the versions that no
+ * OpenBot app uses any more, and the whole download of each provider in `providers`.
+ */
+export interface RemovableRuntimes {
   bytes: number;
+  /** The providers that are off, or that run the CLI the user installed. No agent runs their download. */
+  providers: ManagedProviderId[];
+}
+
+/** The downloaded versions of one provider CLI that OpenBot can remove now. */
+export interface ProviderRuntimeDownload {
+  bytes: number;
+  /** How many versions of the CLI those bytes hold. */
+  versions: number;
 }
 
 export interface OpenStorageLocationInput {
@@ -215,8 +228,20 @@ export function parseOpenStorageLocationInput(value: unknown): OpenStorageLocati
   return { agentId: identifier(record(value, "location request").agentId, "agent") };
 }
 
-export function decodeOldRuntimeVersions(value: unknown): OldRuntimeVersions {
-  return { bytes: byteCount(record(value, "old runtime versions").bytes, "old runtime versions") };
+export function decodeRemovableRuntimes(value: unknown): RemovableRuntimes {
+  const runtimes = record(value, "removable runtimes");
+  const providers = runtimes.providers ?? [];
+  if (!Array.isArray(providers) || !providers.every((provider) => isOneOf(MANAGED_RUNTIME_PROVIDERS, provider)))
+    invalid("removable runtimes");
+  return { bytes: byteCount(runtimes.bytes, "removable runtimes"), providers };
+}
+
+export function decodeProviderRuntimeDownload(value: unknown): ProviderRuntimeDownload {
+  const download = record(value, "provider runtime download");
+  return {
+    bytes: byteCount(download.bytes, "provider runtime download"),
+    versions: byteCount(download.versions, "provider runtime download"),
+  };
 }
 
 function decodeBreakdown(value: unknown): StorageBreakdown {

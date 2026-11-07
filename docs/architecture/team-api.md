@@ -2,7 +2,7 @@
 
 ## Team API compatibility boundary
 
-Current remote connections use Team API protocol v8 over three ordered WebRTC DataChannels: `rpc`,
+Current remote connections use Team API protocol v9 over three ordered WebRTC DataChannels: `rpc`,
 `events`, and `files`. A sandboxed hidden Chromium page owns each `RTCPeerConnection`. Electron main
 uses a `MessagePort` and transfers binary data as `ArrayBuffer`. Signal carries SDP and ICE only,
 except the Slack requests of an agent's Slack app (see [Messaging connections](channels-and-messaging.md#messaging-connections)).
@@ -104,8 +104,9 @@ links from email invitations. Email mode creates an address-bound invitation and
 the same delivery endpoint as desktop; failed delivery attempts revoke the new invitation. Released restore endpoints
 remain compatible with older clients. Member and invitation lists refresh after changes or on explicit request.
 Conversation read cursors belong to a team member and are shared across that member's devices.
-Advancing a cursor emits a conversation invalidation without the reader's identity or cursor;
-clients reload their own read state even when the conversation content revision is unchanged.
+Moving a cursor emits a conversation invalidation without the reader's identity or cursor, only to the
+connections of that member; other members get no event, because their read state did not change. The
+member's clients reload their own read state even when the conversation content revision is unchanged.
 Mobile acknowledges rendered replies only in the foreground, focused chat at the latest messages.
 Mobile attachments use the shared desktop filename allowlist in `packages/contracts/src/attachment-files.ts`.
 The native document and photo pickers and the in-chat camera panel prepare local drafts. The existing Team file protocol
@@ -143,6 +144,15 @@ the native/DOM bridge limits each file to 10 MB and cancels transfers when its c
 The optional `conversation-unread` capability adds a separate `POST /v1/agents/:id/conversation/unread`
 operation. Ordinary read acknowledgements remain monotonic; explicit unread resets persist in the
 host's SQLite and emit the same invalidation. Older hosts disable only this optional action.
+That route marks the whole chat. The optional `conversation-unread-from-v1` capability (protocol 9
+only, `packages/contracts/src/team-protocol/conversation-unread-from-v1.ts`, host route
+`src/main/team-api/route-conversation-unread-from.ts`) adds `POST /v1/conversations/unread-from` with
+`{ agentId, fromMessageId }`: the member's read mark moves to the message shown before it, and the
+answer is the new read state. It needs `view` on the agent, as the other read routes do. A message
+the chat does not show is not found. The phone's message sheet and the desktop message menu on a
+joined server use it for Mark unread. After it, the open chat does not read itself again until it
+opens again. The chat shows a NEW line above the first unread message. The line keeps the message
+that the host had as first unread when the chat opened, because the open chat then reads itself.
 Mobile external links enter through Expo Router's `+native-intent` and the links feature.
 Invitation and Mobile Connect tokens stay in a bounded memory store; navigation carries only a
 local request ID. Invitations wait through sign-in and show a verified host preview before an
@@ -151,8 +161,16 @@ The one exception is development builds: `bun run dev:mobile` opens the link wit
 and a `__DEV__` build redeems it without confirmation only when its account service is a loopback
 or private-network `http:` origin. Release builds always use the confirmed flow.
 Plugin links open their validated public page in the in-app browser. Unsupported links show a
-safe fallback. A share from another app opens `openbot://expo-sharing` (the iOS share extension or an
-Android share intent of `expo-sharing`); the share waits in native storage through sign-in. The share
+safe fallback. On iOS the share extension sends a share by itself, without the app: it shows the
+agents, and a hidden web view runs `share-sender.html`, a build of the Team client
+(`apps/mobile/src/features/share/extension/share-sender.ts`) that connects, uploads the files and
+sends the message. The extension makes every account service request itself and refuses any other
+origin. It reads the servers in the app's order, the agents with their avatar pictures, the accent
+and the localized text that `ShareExtensionSync` writes to the App Group, and the session from a
+keychain group that only the app and the extension share. The app donates `INSendMessageIntent`
+for each agent it sends to, with its avatar, so the share sheet offers those agents first. With no data, the app lock on, a share that one message cannot hold, or a failed send that the
+user gives to the app, the extension opens `openbot://expo-sharing` as before. Android always uses that
+path. The share waits in native storage through sign-in. The share
 sheet moves its files into the app cache, the user chooses an agent, and that chat's composer gets the
 text and files, which follow the attachment rules above. The phone reads the response headers of a
 shared link; a link to an image of at most 10 MB is downloaded and comes as a file instead of the link. Permanent invitation metadata comes from the shared Team client; revocation stops
@@ -262,7 +280,14 @@ Each protocol has a frozen codec and adapter in `packages/contracts/src/team-pro
 From protocol 8, provider ids and auth kinds are open values. A new provider is a new value, not a
 new protocol. A client keeps an agent of a provider that it does not know, and shows it disabled
 with an update prompt. See [Providers](providers.md) for the frozen lists that hide new providers
-from peers below 8, and for the local-only providers that no protocol shows.
+from peers below 8.
+
+Protocol 9 is the protocol 8 wire with capability lists of up to 256 names (`v9.ts`). Protocols 7
+and 8 read at most 128 capabilities, and their lists are full. A capability added after them is in
+`TEAM_PROTOCOL_V9_ONLY_CAPABILITIES` (`current.ts`): a host leaves it out of the compatibility list
+of a peer below 9, and a client sends it only to a host that negotiated 9. On WebRTC, where no
+protocol header is sent, the marker `long-capability-lists-v1` says that a peer reads 256. It is in
+the bootstrap list, so the first compatibility read of a protocol 9 host is already complete.
 
 Capabilities describe additive behavior. The client sends its capability list when it sets the event scope. The host sends optional events only when the client declared the related capability. A missing capability disables only that feature. An unknown optional event is ignored. A malformed known event closes the connection as `protocol_error` because the client cannot safely apply it.
 
@@ -286,8 +311,9 @@ Claude gets that block with a user turn instead: the full block in the first tur
 compaction, and only the change after a memory edit. A memory change then keeps the cached
 system prompt and does not restart the Claude query. A profile change still restarts it.
 Saved memories stay on the host in SQLite. Agents can use bounded local search and ID-paged
-listing to recall other entries. FTS5 uses `unicode61` and BM25. Queries match any literal term;
-equal scores use the newest update, then the memory ID. Search returns at most 10 entries,
+listing to recall other entries. FTS5 uses `unicode61` and BM25. Queries match any literal term.
+`unicode61` has no stemming, so a term of 6 or more characters also matches as a prefix of its first
+characters, all but the last 3 and at least 4: "closing" also finds "closes". Equal scores use the newest update, then the memory ID. Search returns at most 10 entries,
 and maintenance pages return at most 25. Both responses are limited to 8,192 UTF-8 bytes.
 The search index stays local. Essential prompt text and requested tool results go to the active
 provider through the existing secret-redaction path.
@@ -298,6 +324,20 @@ serializer checks the complete prompt block during migration, mutation, and prom
 Automatic text and selection changes stay pending until the turn completes successfully. Commit
 checks ownership, revisions, user choices, and capacity again. Agent tools cannot change or delete
 a user-controlled selection. The user can release that control without changing its inclusion.
+
+The optional `message-delete-v1` capability (protocol 9 only) adds three POST routes that delete one
+message and return an empty acknowledgement: `/v1/messages/delete` (`agentId`, `messageId`),
+`/v1/messages/delete-task` (`agentId`, `taskId`, `messageId`) and `/v1/channels/messages/delete`
+(`channelId`, `messageId`). The host always advertises it to a protocol 9 peer, because every host
+that has the routes can delete. `src/main/team-api/route-message-delete.ts` owns the authorization.
+In an agent chat, the agent must be visible to the member (else 404), and the member needs `chat` on
+the agent to delete their own messages; `manage` lets them delete any message. In a channel, each
+member deletes their own messages, and owners and admins delete any message. A host without channels
+answers the channel route with 400 `channelsUnsupported`, as it answers each channel route. A refusal
+from the service gets 403 (not the member's message), 404 (no shown message with that ID) or 409 (the
+message is in a running turn), with the host's sentence. A delete removes the message from the host's
+history, search and attachments; the provider session can still remember it. The host sends its
+usual change events (`conversation-invalidated` and `channels-changed`), so other members refresh.
 
 Team API failures use a JSON error envelope with `error` and a stable `code`. Compatibility codes are `client_update_required`, `host_update_required`, and `protocol_error`. Authentication and network failures are projected to `authentication_required` and `network_unavailable` in the desktop connection state. A confirmed compatibility or protocol error stops data-plane requests and automatic reconnect until the user selects `Retry`, restarts, or updates.
 

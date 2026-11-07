@@ -39,7 +39,7 @@ export const messages = {
 
   "provider.status.off": "Désactivé",
   "provider.gemini.hostSignIn":
-    "Pour connecter Gemini, ouvrez OpenBot sur l’hôte et sélectionnez « Connecter » dans Réglages > Fournisseurs. La connexion Google nécessite un navigateur sur cet hôte. La connexion à distance n’est pas prise en charge.",
+    "Pour connecter Gemini, ouvrez OpenBot sur l’hôte et sélectionnez « Connecter » dans Réglages du serveur > Fournisseurs. La connexion Google nécessite un navigateur sur cet hôte. La connexion à distance n’est pas prise en charge.",
   // Which account tier the OpenCode row runs on. It shows only while it adds to the runtime
   // badge: a saved key leaves the runtime "Connected" to speak for the row.
   "provider.key.free": "Gratuit",
@@ -59,6 +59,7 @@ export const messages = {
   "provider.action.signIn": "Se connecter",
   "provider.action.apiKey": "Clé d’API",
   "provider.action.signInWithCode": "Connexion par code",
+  "provider.action.signInMainlandChina": "Connexion via {site} (Chine)",
   "provider.action.pasteAddress": "Coller l’adresse",
   "provider.aria.download": "Télécharger {name}",
   "provider.aria.cancel": "Annuler {name}",
@@ -104,6 +105,8 @@ export const messages = {
   "provider.codeLogin.relayStarting": "Démarrage de la connexion à {name} sur {host}…",
   "provider.codeLogin.pageOpening": "Ouverture de la page de connexion de {name} sur {host}…",
   "provider.codeLogin.linkStep": "Connectez-vous à {name}. OpenBot continue tout seul.",
+  "provider.codeLogin.chatgptDeviceSetting":
+    "Dans ChatGPT sur un ordinateur, ouvrez les paramètres de sécurité et activez la connexion par code d’appareil pour Codex. Pour un compte professionnel, l’administrateur de votre espace de travail l’active.",
   "provider.useApp.title": "Connectez {name} dans l’app OpenBot",
   "provider.useApp.description":
     "La connexion à {name} revient sur l’ordinateur qui l’a lancée, et un onglet du navigateur ne peut pas la recevoir. Connectez {name} dans l’app OpenBot. L’app termine la connexion toute seule.",
@@ -123,12 +126,22 @@ export const messages = {
   "provider.picker.download": "Téléchargement de {name}",
   "provider.picker.search": "Rechercher des modèles",
   "provider.picker.noMatches": "Aucun modèle ne correspond à votre recherche.",
+  "provider.picker.olderModels": "Modèles plus anciens",
+  "provider.picker.olderModelsList": "Modèles {name} plus anciens",
   "provider.picker.noModels": "Aucun modèle n’est disponible chez {name}.",
   "provider.picker.customEmpty":
     "Ajoutez un point de terminaison compatible OpenAI : un serveur de modèles sur cet ordinateur, ou tout service avec une URL de base et une clé.",
+  "provider.picker.customPending":
+    "Les modèles de vos points de terminaison ne sont pas encore chargés. Le fournisseur les lit quand sa tâche en cours s’arrête.",
   "provider.picker.defaultModelLabel": "{name}, par défaut",
+  "provider.picker.usageLimit": "Limite d’utilisation atteinte",
+  "provider.picker.usageLimitWindow": "Limite ({window})",
+  "provider.picker.usageLimitResets": "{limit} · Réinitialisation le {time}",
+  "provider.picker.usageLimitLabel": "{name}, limite d’utilisation atteinte",
+  "provider.picker.usageLimitResetsLabel": "{name}, limite d’utilisation atteinte, réinitialisation le {time}",
   "provider.picker.effort": "Effort",
   "provider.picker.effortLabel": "Effort de raisonnement de l’agent",
+  "provider.picker.effortFixed": "{effort}, fixé par {provider}",
   "provider.picker.fast": "Rapide",
   "provider.picker.fastLabel": "Mode rapide",
   "provider.picker.selectEffort": "Choisir l’effort",
@@ -136,12 +149,16 @@ export const messages = {
   "provider.picker.cliReady": "{cli} prêt",
   "provider.status.signInRequired": "Connexion requise",
   "provider.model.free": "Gratuit",
+  "provider.model.new": "Nouveau",
   "provider.model.default": "par défaut",
+  "provider.effort.none": "Aucun",
+  "provider.effort.minimal": "Minimal",
   "provider.effort.low": "Faible",
   "provider.effort.medium": "Moyen",
   "provider.effort.high": "Élevé",
   "provider.effort.xhigh": "Très élevé",
   "provider.effort.max": "Max",
+  "provider.effort.ultra": "Ultra",
 
   "provider.museKey.title": "Clé d’API Meta pour Muse",
   "provider.museKey.description":
@@ -159,6 +176,14 @@ export const messages = {
   "provider.inceptionKey.description":
     "Enregistrez une clé d’API Inception sur cet ordinateur pour utiliser les modèles Mercury. OpenBot les exécute dans la CLI Pi qu’il télécharge.",
   "provider.inceptionKey.label": "Clé d’API Inception",
+  "provider.deepseekKey.title": "Clé d’API DeepSeek",
+  "provider.deepseekKey.description":
+    "Enregistrez une clé d’API DeepSeek sur cet ordinateur pour utiliser les modèles DeepSeek. OpenBot les exécute dans la CLI Pi qu’il télécharge.",
+  "provider.deepseekKey.label": "Clé d’API DeepSeek",
+  "provider.openrouterKey.title": "Clé d’API OpenRouter",
+  "provider.openrouterKey.description":
+    "Enregistrez une clé d’API OpenRouter sur cet ordinateur pour utiliser les modèles d’OpenRouter. OpenBot les exécute dans la CLI Pi qu’il télécharge.",
+  "provider.openrouterKey.label": "Clé d’API OpenRouter",
   "provider.openCodeKey.title": "Se connecter à OpenCode Go",
   "provider.openCodeKey.description":
     "Les modèles gratuits ne demandent pas de compte. Une clé donne accès aux modèles Go payants.",
@@ -186,6 +211,7 @@ export const messages = {
   "provider.account.cancelSignIn": "Annuler la connexion",
   "provider.account.finishSignIn": "Terminez la connexion dans le navigateur.",
   "provider.account.remove": "Supprimer le compte",
+  "provider.account.disconnect": "Déconnecter",
   "provider.account.actionFailed": "Impossible de modifier le compte {name}.",
   "provider.account.resetUsage": "Réinitialiser l’usage",
   "provider.account.resetUsageTitle": "Réinitialiser l’usage de {name} ?",
@@ -200,6 +226,13 @@ export const messages = {
   "provider.account.resetUsageNoCredit": "{name} n’a plus de crédits de réinitialisation d’usage.",
   "provider.account.resetUsageAlreadyRedeemed": "Ce crédit de réinitialisation de {name} a déjà été utilisé.",
   "provider.account.resetUsageFailed": "Impossible de réinitialiser l’usage de {name}.",
+  "provider.settings.disconnectTitle": "Déconnecter {name} ?",
+  "provider.settings.disconnectOthers": "Les autres comptes {provider} attendent que vous reconnectiez {provider}.",
+  "provider.settings.disconnectLocal":
+    "OpenBot déconnecte {provider} sur cet ordinateur. La CLI {provider} de votre terminal est aussi déconnectée.",
+  "provider.settings.disconnectHost": "OpenBot déconnecte {provider} sur le serveur.",
+  "provider.settings.versionInstalledByUser": "{version} · installée par vous",
+  "provider.settings.versionDownloaded": "{version} · téléchargée par OpenBot",
   "provider.settings.cache": "Cache",
   "provider.settings.promptCache": "Cache de prompt",
   "provider.settings.promptCacheDescription":
@@ -207,4 +240,22 @@ export const messages = {
   "provider.settings.promptCacheHour": "1 heure",
   "provider.settings.promptCacheDefault": "Défaut de Claude Code",
   "provider.settings.promptCacheLoadFailed": "Impossible de charger la durée du cache de prompt de ce serveur.",
+  "provider.settings.models": "Modèles",
+  "provider.settings.modelsDescription": {
+    one: "{shown} modèle sur {count} apparaît dans le sélecteur de modèle.",
+    other: "{shown} modèles sur {count} apparaissent dans le sélecteur de modèle.",
+  },
+  "provider.settings.modelsSearch": "Rechercher des modèles",
+  "provider.settings.modelsHideAll": "Tout masquer",
+  "provider.settings.modelsReset": "Rétablir par défaut",
+  "provider.settings.modelsShowAll": "Tout afficher",
+  "provider.settings.modelShow": "Afficher {name} ({id}) dans le sélecteur de modèle",
+  "provider.settings.modelsNoMatch": "Aucun modèle ne correspond à votre recherche.",
+  "provider.settings.modelsLoadFailed": "Impossible de charger les modèles de ce serveur.",
+  "provider.settings.deleteTitle": "Supprimer {name}",
+  "provider.settings.deleteOn":
+    "Désactive {name} et supprime la CLI qu'OpenBot a téléchargée. Les comptes, les connexions et les agents restent.",
+  "provider.settings.deleteOff":
+    "Supprime la CLI qu'OpenBot a téléchargée pour {name} ({size}). Les comptes, les connexions et les agents restent.",
+  "provider.settings.removeDownloadFailed": "Impossible de supprimer le téléchargement.",
 } as const satisfies PartialTranslation<typeof source>;

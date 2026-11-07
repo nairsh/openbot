@@ -25,6 +25,10 @@ import { isAvatarMimeType } from "@openbot/contracts/avatar-images";
 import { AVATAR_IMAGE_LIMITS, INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import { type CreateAgentInput, type DuplicateAgentResult, WORKFLOWS_USAGE_ID } from "@openbot/contracts/ipc";
 import { TEAM_API_ROUTES } from "@openbot/contracts/team-api-routes";
+import {
+  BROWSER_SECRET_VAULT_CAPABILITY,
+  BROWSER_SECRET_VAULT_ROUTES,
+} from "@openbot/contracts/team-protocol/browser-secret-vault-v1";
 import { V5_AGENT_MODEL } from "@openbot/contracts/team-protocol/v5-adapter";
 import { V6_AGENT_MODEL } from "@openbot/contracts/team-protocol/v6-adapter";
 import { WORKFLOWS_CAPABILITY } from "@openbot/contracts/team-protocol/workflows-v1";
@@ -34,6 +38,7 @@ import type { AgentDuplicationFailed } from "../../backend/agent/duplication-gat
 import { ForbiddenAttentionAnswer, InactiveAttentionRequest } from "../../backend/agent/inactive-attention-request";
 import { runCauseEffect } from "../../backend/effect-boundary";
 import { parseSidebarLayoutAction } from "../ipc/agent-inputs";
+import type { ModelVisibility } from "../model-visibility";
 import type { TeamApiAgents, TeamApiOptions, TeamApiSidebarLayout } from "./dependencies";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
@@ -44,14 +49,17 @@ import {
   browserTakeoverDecision,
   markerExclusionsForCapabilities,
   memberSender,
+  messageTextCut,
   pageLimit,
   pathIdentifier,
   promptAnswers,
   promptRequestId,
   readBinary,
   readJson,
+  requireAdmin,
   requireAgentLevel,
   stringField,
+  WEBRTC_FRAME_BODY_BUDGET,
 } from "./request-helpers";
 import { routeAgentConversation } from "./route-agent-conversation";
 import { routeAgentMemories } from "./route-agent-memories";
@@ -65,11 +73,13 @@ export interface AgentRouteDependencies {
   skills?: TeamApiOptions["skills"];
   sidebarLayout: Pick<TeamApiSidebarLayout, "getSnapshot" | "mutate" | "removeAgent" | "withProfileAssignment">;
   duplicateAgent: (agentId: string, operationId: string) => Effect.Effect<DuplicateAgentResult, AgentDuplicationFailed>;
+  /** `model-visibility-v1`: the models that the model picker of this server shows. */
+  visibleModels?: Pick<ModelVisibility, "picker">;
 }
 
 export async function routeAgents(
   context: TeamApiRequestContext,
-  { agents, skills, sidebarLayout, duplicateAgent }: AgentRouteDependencies,
+  { agents, skills, sidebarLayout, duplicateAgent, visibleModels }: AgentRouteDependencies,
 ): Promise<RouteOutcome> {
   const { method, url, request, response, member, capabilities, json, empty } = context;
   const hidden = hiddenProviderAgentIds(agents.listAgents(), context.protocol);
@@ -121,7 +131,8 @@ export async function routeAgents(
       !agents.listAgents().some((agent) => agent.id === input.agentId)
     )
       throw new HttpError(404, sourceText("error.team.agentNotFound"));
-    const report = agents.getHostAnalytics(input);
+    // The frozen host analytics wire has no skills: only the local Usage page shows them.
+    const { skills: _localOnly, ...report } = agents.getHostAnalytics(input);
     return json(
       200,
       workflows ? report : { ...report, agents: report.agents.filter((row) => row.agentId !== WORKFLOWS_USAGE_ID) },
@@ -157,17 +168,33 @@ export async function routeAgents(
     if (!query.trim() || query.length > INPUT_LIMITS.messageText) {
       throw new HttpError(400, sourceText("error.team.searchQueryRequired"));
     }
-    return json(
-      200,
-      agents.searchConversationMessages(
-        query,
-        // A query parameter is part of the released URL, and the versioned adapters translate JSON
-        // bodies only. `botId` is what every shipped client sends and what every shipped host reads.
-        url.searchParams.get("botId") ?? undefined,
-        url.searchParams.get("cursor") ?? undefined,
-        pageLimit(url),
-      ),
+    // A query parameter is part of the released URL, and the versioned adapters translate JSON
+    // bodies only. `botId` is what every shipped client sends and what every shipped host reads.
+    const agentId = url.searchParams.get("botId") ?? undefined;
+    const cursor = url.searchParams.get("cursor") ?? undefined;
+    // Each result holds its whole message, so a page can be larger than one WebRTC frame. Then the
+    // page keeps the results that fit, and one result alone that is too large is cut. The text filter
+    // reads every stored message, so the search runs at most twice: the second time at the kept
+    // count, which gives the cursor of the next page.
+    let page = agents.searchConversationMessages(query, agentId, cursor, pageLimit(url));
+    let bytes = Buffer.byteLength(JSON.stringify(page));
+    if (bytes > WEBRTC_FRAME_BODY_BUDGET) {
+      let kept = 0;
+      let size = Buffer.byteLength(JSON.stringify({ ...page, results: [] }));
+      for (const result of page.results) {
+        size += Buffer.byteLength(JSON.stringify(result)) + 1;
+        if (size > WEBRTC_FRAME_BODY_BUDGET) break;
+        kept += 1;
+      }
+      page = agents.searchConversationMessages(query, agentId, cursor, Math.max(1, kept));
+      bytes = Buffer.byteLength(JSON.stringify(page));
+    }
+    if (bytes <= WEBRTC_FRAME_BODY_BUDGET) return json(200, page);
+    const cut = messageTextCut(
+      page.results.map((result) => result.message),
+      bytes - WEBRTC_FRAME_BODY_BUDGET,
     );
+    return json(200, { ...page, results: page.results.map((result) => ({ ...result, message: cut(result.message) })) });
   }
   if (method === "GET" && url.pathname === TEAM_API_ROUTES.agents.status) {
     return json(200, agents.getStatus());
@@ -192,9 +219,13 @@ export async function routeAgents(
     // Only ids the peer's protocol accepts: its model list decoder fails closed on the whole array, and
     // `isAgentModel` also accepts `=` and `,`, which only protocol 6 knows.
     const modelId = context.protocol < 6 ? V5_AGENT_MODEL : V6_AGENT_MODEL;
+    const models = (await agents.listModels()).filter((model) => modelId.test(model.id));
+    if (!visibleModels) return json(200, models);
+    // The released model list does not carry `listing`; `model-visibility-v1` gives it on its own route.
+    const listed = await runCauseEffect(visibleModels.picker(models));
     return json(
       200,
-      (await agents.listModels()).filter((model) => modelId.test(model.id)),
+      listed.map(({ listing: _listing, ...model }) => model),
     );
   }
   if (method === "GET" && url.pathname === TEAM_API_ROUTES.agents.all) {
@@ -239,7 +270,8 @@ export async function routeAgents(
     if (method === "PATCH" && !action) {
       const input = agentUpdate(await readJson(request), agentId);
       if (input.provider !== undefined) requireVisibleProvider({ provider: input.provider });
-      return json(200, await runCauseEffect(agents.updateAgent(input)));
+      // The released protocol has no `pendingRuntime`, so a provider change during work is refused.
+      return json(200, await runCauseEffect(agents.updateAgent(input, undefined, false)));
     }
     if (method === "POST" && action === "duplicate") {
       const body = await readJson(request);
@@ -323,6 +355,19 @@ export async function routeAgents(
     requireRequestAgent(input.agentId);
     await runCauseEffect(agents.respondToBrowserSecret(input));
     return empty(204);
+  }
+  if (method === "POST" && url.pathname === BROWSER_SECRET_VAULT_ROUTES.respond) {
+    // The submit has the gates of the released route; the save adds its own.
+    if (!capabilities.has("browser-secret-handoff"))
+      throw new HttpError(400, sourceText("error.team.secureAuthUnsupported"));
+    if (!capabilities.has(BROWSER_SECRET_VAULT_CAPABILITY))
+      throw new HttpError(400, sourceText("error.team.vaultUnsupported"));
+    // The Vault is the owner's and the admins', as on the `vault-v1` routes.
+    requireAdmin(member);
+    const input = parseBrowserSecretResponse({ ...(await readJson(request)), decision: "submit" });
+    requireRequestAgent(input.agentId);
+    await runCauseEffect(agents.respondToBrowserSecret({ ...input, saveToVault: true }));
+    return json(200, {});
   }
   if (method === "POST" && url.pathname === TEAM_API_ROUTES.respond.browserTakeover) {
     const body = await readJson(request);

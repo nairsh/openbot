@@ -39,49 +39,106 @@ export type ProviderAccountRows = (provider: AgentProvider) => ProviderAccountSt
 interface ProviderModels {
   provider: AgentProvider;
   defaultModel: string;
-  models: Pick<AgentModelOption, "id" | "name" | "defaultReasoningEffort" | "supportedReasoningEfforts">[];
+  models: (Pick<AgentModelOption, "id" | "name"> &
+    Partial<Pick<AgentModelOption, "defaultReasoningEffort" | "supportedReasoningEfforts">>)[];
+  /** The number of models of the provider that the list leaves out. */
+  omittedModels?: number;
   accounts?: Pick<ProviderAccountStatus, "id" | "label" | "state">[];
 }
 
+/** The models of each provider that a list with no query shows, before the models in use. */
+const SHORT_LIST_LENGTH = 8;
+/** The models that a `list_models` query returns at most, over all providers. */
+const QUERY_RESULT_LIMIT = 20;
+
+export interface ListModelsRequest {
+  provider?: AgentProvider | undefined;
+  /** Words that the id or the name of each model must contain. */
+  query?: string | undefined;
+  /** The models that agents on this computer use now, as their model or as a backup model. */
+  inUse?: readonly Pick<AgentModelChoice, "provider" | "model">[];
+}
+
 /**
- * The `list_models` payload: each provider that lists a model, in `AGENT_PROVIDERS` order. It is the
- * list the model picker shows, so the same models `create_agent` accepts. An account has its id and
- * the name the user gave it, never its email, its credentials or its folder.
+ * The models of one provider in a short list, in catalog order: each model in `pinned`, then the first
+ * models of the catalog up to `SHORT_LIST_LENGTH`.
+ */
+function shortList(own: AgentModelOption[], pinned: ReadonlySet<string>): AgentModelOption[] {
+  let room = SHORT_LIST_LENGTH - own.filter((model) => pinned.has(model.id)).length;
+  return own.filter((model) => {
+    if (pinned.has(model.id)) return true;
+    room -= 1;
+    return room >= 0;
+  });
+}
+
+/** True when the id or the name of the model contains each word of the query, in any case. */
+function matchesQuery(model: AgentModelOption, words: readonly string[]): boolean {
+  const text = `${model.id} ${model.name}`.toLowerCase();
+  return words.every((word) => text.includes(word));
+}
+
+/**
+ * The `list_models` payload: each provider that lists a model, in `AGENT_PROVIDERS` order. The models
+ * are the ones the model picker shows, so the ones `create_agent` accepts. With no query, a provider
+ * shows its default model, the models in use, and its first models; `omittedModels` counts the rest.
+ * A query searches all models. An account has its id and the name the user gave it, never its email,
+ * its credentials or its folder.
  */
 export function listModelsPayload(
   models: AgentModelOption[],
   preferredProvider: AgentProvider,
   accounts: ProviderAccountRows,
-  provider?: AgentProvider,
+  request: ListModelsRequest = {},
 ): { preferredProvider: AgentProvider; providers: ProviderModels[] } {
-  const providers = AGENT_PROVIDERS.filter((id) => provider === undefined || id === provider).flatMap((id) => {
-    const fallback = providerDefault(id, models);
-    if (!fallback) return [];
-    const rows = accounts(id);
-    return [
-      {
-        provider: id,
-        defaultModel: fallback.id,
-        models: models
-          .filter((model) => model.provider === id)
-          .map((model) => ({
+  const words = request.query?.toLowerCase().split(/\s+/).filter(Boolean) ?? [];
+  let resultRoom = QUERY_RESULT_LIMIT;
+  const providers = AGENT_PROVIDERS.filter((id) => request.provider === undefined || id === request.provider).flatMap(
+    (id) => {
+      const fallback = providerDefault(id, models);
+      if (!fallback) return [];
+      const own = models.filter((model) => model.provider === id);
+      const candidates = words.length > 0 ? own.filter((model) => matchesQuery(model, words)) : own;
+      let listed: AgentModelOption[];
+      if (words.length > 0) {
+        listed = candidates.slice(0, resultRoom);
+        resultRoom -= listed.length;
+      } else {
+        const inUse = (request.inUse ?? []).filter((choice) => choice.provider === id).map((choice) => choice.model);
+        listed = shortList(own, new Set([fallback.id, ...inUse]));
+      }
+      const omitted = candidates.length - listed.length;
+      const rows = accounts(id);
+      return [
+        {
+          provider: id,
+          defaultModel: fallback.id,
+          models: listed.map((model) => ({
             id: model.id,
             name: model.name,
-            defaultReasoningEffort: model.defaultReasoningEffort,
-            supportedReasoningEfforts: model.supportedReasoningEfforts,
+            // A model with no effort setting holds only a `medium` placeholder that never reaches the
+            // provider, and an agent read it as a choice (#5215).
+            ...(model.reasoningEffortConfigurable === false
+              ? {}
+              : {
+                  defaultReasoningEffort: model.defaultReasoningEffort,
+                  supportedReasoningEfforts: model.supportedReasoningEfforts,
+                }),
           })),
-        ...(rows
-          ? {
-              accounts: rows.map((account) => ({
-                id: account.id,
-                label: account.label,
-                state: account.state,
-              })),
-            }
-          : {}),
-      },
-    ];
-  });
+          ...(omitted > 0 ? { omittedModels: omitted } : {}),
+          ...(rows
+            ? {
+                accounts: rows.map((account) => ({
+                  id: account.id,
+                  label: account.label,
+                  state: account.state,
+                })),
+              }
+            : {}),
+        },
+      ];
+    },
+  );
   return { preferredProvider, providers };
 }
 
@@ -141,17 +198,21 @@ export function requestedBackupModels(
   return request.automatic || order.length > 0 ? { automatic: request.automatic, order } : null;
 }
 
+/**
+ * The model ids that an error names: for each provider, the short list that `list_models` shows with
+ * no query, and "…" when the list leaves models out.
+ */
 export function modelList(models: AgentModelOption[], provider?: AgentProvider): string {
-  if (provider !== undefined) {
-    return models
-      .filter((model) => model.provider === provider)
-      .map((model) => model.id)
-      .join(", ");
-  }
-  return AGENT_PROVIDERS.flatMap((id) => {
-    const ids = models.filter((model) => model.provider === id).map((model) => model.id);
-    return ids.length > 0 ? [`${id}: ${ids.join(", ")}`] : [];
-  }).join("; ");
+  const ids = (id: AgentProvider) => {
+    const own = models.filter((model) => model.provider === id);
+    const fallback = providerDefault(id, models);
+    const listed = shortList(own, new Set(fallback ? [fallback.id] : [])).map((model) => model.id);
+    return [...listed, ...(listed.length < own.length ? ["…"] : [])].join(", ");
+  };
+  if (provider !== undefined) return ids(provider);
+  return AGENT_PROVIDERS.flatMap((id) =>
+    models.some((model) => model.provider === id) ? [`${id}: ${ids(id)}`] : [],
+  ).join("; ");
 }
 
 /**
@@ -172,10 +233,27 @@ export function requestedToolModel(request: ModelRequest, models: AgentModelOpti
         (candidate) => candidate.id === model && (provider === undefined || candidate.provider === provider),
       ) ?? null;
     if (!chosen && models.length === 0) throw new AgentSettingsRefused(sourceText("error.agent.modelUnavailable"));
-    if (!chosen)
-      throw new AgentSettingsRefused(
-        sourceText("error.agent.modelNotListed", { model, models: modelList(models, provider) }),
+    if (!chosen) {
+      // Cursor puts the settings of a model in its value (`grok-4.7[context=256k,…]`) and lists only
+      // some of them. The short list can leave them out, so name the listed values of that model (#4411).
+      // `grok-4.7` and `grok-4.7[context=500k]` both name the model `grok-4.7`.
+      const base = `${model.includes("[") ? model.slice(0, model.indexOf("[")) : model}[`;
+      const first = models.find(
+        (candidate) => candidate.id.startsWith(base) && (provider === undefined || candidate.provider === provider),
       );
+      const variants = first
+        ? models.filter((candidate) => candidate.provider === first.provider && candidate.id.startsWith(base))
+        : [];
+      throw new AgentSettingsRefused(
+        first
+          ? sourceText("error.agent.modelVariantNotListed", {
+              model,
+              provider: providerLabel(first.provider),
+              models: variants.map((candidate) => candidate.id).join(", "),
+            })
+          : sourceText("error.agent.modelNotListed", { model, models: modelList(models, provider) }),
+      );
+    }
   } else if (provider !== undefined) {
     chosen = providerDefault(provider, models);
   }

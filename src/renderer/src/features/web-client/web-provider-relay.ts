@@ -2,7 +2,8 @@
 // of its CLI and opens no page. This browser opens the page when the user asks, and the user pastes the
 // address that the browser shows at the end: a web page cannot listen for the callback. Only its query
 // goes to the host. A device page returns nowhere, so the user only opens it. The sign-in of an account
-// after the first starts on its own route (`provider-account-relay-v1`) and then runs as the others do.
+// after the first starts on its own route (`provider-account-relay-v1` or `-v2`) and then runs as the
+// others do.
 
 import {
   type AgentProviderId,
@@ -11,7 +12,7 @@ import {
   type ProviderAdminDesktopApi,
   relayCallbackQuery,
 } from "@openbot/contracts/ipc";
-import { PROVIDER_ACCOUNT_RELAY_PROVIDERS } from "@openbot/contracts/team-protocol/provider-account-relay-v1";
+import type { ProviderAccountRelay } from "@openbot/contracts/team-protocol/provider-account-relays";
 import { SIGN_IN_RELAY_PROVIDERS } from "@openbot/contracts/team-protocol/sign-in-relay-v1";
 import { sourceText } from "@openbot/i18n/source";
 import { runTeamEffect } from "@openbot/team-client";
@@ -37,6 +38,8 @@ interface RelayedSignIn {
   state: string | null;
   result: { error: string | null } | null;
   stopped: boolean;
+  /** A pasted address went to the host, which completes the sign-in: nothing waits for a paste. */
+  accepted: boolean;
 }
 
 type RelayApi = Pick<
@@ -49,7 +52,10 @@ type RelayApi = Pick<
   | "cancelRelaySignIn"
 >;
 
-export function webProviderRelay(request: (serverId?: string) => TeamApiRequest): RelayApi {
+export function webProviderRelay(
+  request: (serverId?: string) => TeamApiRequest,
+  accountRelay: () => ProviderAccountRelay | null,
+): RelayApi {
   const relayed = new Map<string, RelayedSignIn>();
   const keyOf = (provider: AgentProviderId, serverId: string) => `${serverId}\n${provider}`;
   const run = <T>(effect: Effect.Effect<T, TeamAdminRequestError>) =>
@@ -86,7 +92,15 @@ export function webProviderRelay(request: (serverId?: string) => TeamApiRequest)
     if (previous) previous.stopped = true;
     const send = request(serverId);
     const { flowId } = await run(start(send));
-    const entry: RelayedSignIn = { flowId, page: null, url: null, state: null, result: null, stopped: false };
+    const entry: RelayedSignIn = {
+      flowId,
+      page: null,
+      url: null,
+      state: null,
+      result: null,
+      stopped: false,
+      accepted: false,
+    };
     relayed.set(key, entry);
     void follow(entry, send).catch((error: unknown) => {
       entry.result = { error: error instanceof Error ? error.message : sourceText("error.mcp.relayEnded") };
@@ -106,16 +120,17 @@ export function webProviderRelay(request: (serverId?: string) => TeamApiRequest)
       return startRelay(provider, serverId, (send) => startProviderSignInRelay(send, relayProvider));
     },
     startAccountRelaySignIn: ({ provider, accountId }, serverId) => {
-      const relayProvider = PROVIDER_ACCOUNT_RELAY_PROVIDERS.find((candidate) => candidate === provider);
-      if (!relayProvider) return Promise.reject(new Error(sourceText("error.team.providersUnsupported")));
+      const relay = accountRelay();
+      const relayProvider = relay?.providers.find((candidate) => candidate === provider);
+      if (!relay || !relayProvider) return Promise.reject(new Error(sourceText("error.team.providersUnsupported")));
       return startRelay(provider, serverId, (send) =>
-        startProviderAccountSignInRelay(send, { provider: relayProvider, accountId }),
+        startProviderAccountSignInRelay(send, relay, { provider: relayProvider, accountId }),
       );
     },
     relaySignInStatus: async (provider, serverId) => {
       const entry = relayed.get(keyOf(provider, serverId));
       if (!entry) return { page: null, result: { error: sourceText("error.mcp.relayEnded") } };
-      return { page: entry.result ? null : entry.page, result: entry.result };
+      return { page: entry.result || entry.accepted ? null : entry.page, result: entry.result };
     },
     // No await comes before `window.open`: a browser blocks a page that the user's click did not open.
     openRelaySignIn: async (provider, serverId) => {
@@ -127,7 +142,11 @@ export function webProviderRelay(request: (serverId?: string) => TeamApiRequest)
       if (entry.state === null) throw new Error(sourceText("error.mcp.relayAddressInvalid"));
       const query = relayCallbackQuery(address, entry.state);
       if (query === null) throw new Error(sourceText("error.mcp.relayAddressInvalid"));
+      // The host already completes the sign-in: a second grant would change nothing.
+      if (entry.accepted) return;
+      // The page stays while the host takes the grant, so the form can show why a send failed.
       const status = await run(completeSignInRelay(request(serverId), entry.flowId, query));
+      entry.accepted = true;
       if (status.result) entry.result = { error: status.result.error ?? null };
     },
     cancelRelaySignIn: async (provider, serverId) => {

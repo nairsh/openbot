@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { appendFile, mkdir, readdir, readFile, rename, rm, stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import type {
   IdleRestart,
@@ -34,7 +35,7 @@ export type UpdateCheckOutcome = {
 
 /**
  * The subset of electron-updater this service drives. Four behaviours of the installed version are
- * load bearing here, none of them public API, all verified against 6.8.9. Verify them again when
+ * load bearing here, none of them public API, all verified against 6.8.11. Verify them again when
  * electron-updater changes:
  *
  * 1. `MacUpdater.updateDownloaded` only calls `nativeUpdater.checkForUpdates()` - the call that makes
@@ -73,6 +74,33 @@ export function createDisabledUpdateAdapter(): UpdateAdapter {
     on: () => undefined,
     quitAndInstall: () => undefined,
   };
+}
+
+/** electron-updater's updater, or `null` when the module does not load. */
+export async function loadElectronUpdater(): Promise<UpdateAdapter | null> {
+  try {
+    const updaterModule = await import("electron-updater");
+    const adapter = updaterModule.autoUpdater ?? updaterModule.default?.autoUpdater ?? updaterModule.default;
+    if (adapter) return adapter;
+    logger.warn("OpenBot updates are disabled: electron-updater did not export autoUpdater");
+  } catch {
+    logger.warn("OpenBot updates are disabled: electron-updater failed to load");
+  }
+  return null;
+}
+
+/**
+ * electron-updater's cache directory, named by `updaterCacheDirName` in `app-update.yml`. The base is
+ * the cache path of electron-updater 6.8.9 (`getAppCacheDir`), which differs from Electron's.
+ */
+export function electronUpdaterCacheDirectory(): string {
+  const root =
+    process.platform === "win32"
+      ? process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local")
+      : process.platform === "darwin"
+        ? join(homedir(), "Library", "Caches")
+        : process.env.XDG_CACHE_HOME || join(homedir(), ".cache");
+  return join(root, "openbot-updater");
 }
 
 export function isValidSemver(version: string): boolean {
@@ -123,6 +151,13 @@ const MAX_LOG_BYTES = 1024 * 1024;
 const MAX_DIAGNOSTIC_EVENTS = 20;
 
 /**
+ * Shutdown preparation plus the handover to the installer. Generous because on macOS quitAndInstall
+ * asks Squirrel to stage the ZIP and only quits when that finishes, which is disk bound on an artifact
+ * of a few hundred megabytes. Firing early here would report a failure over a working install.
+ */
+export const UPDATE_INSTALL_TIMEOUT_MS = 300_000;
+
+/**
  * Every busy phase needs a deadline, and typing this as a total record over `UpdateBusyPhase` is what
  * enforces it: adding a phase to `UPDATE_BUSY_PHASES` without a timeout here fails to compile. A busy
  * phase with no bound is exactly how "Preparing update..." became a state the UI could never leave.
@@ -140,13 +175,7 @@ const DEFAULT_PHASE_TIMEOUTS: Record<UpdateBusyPhase, number> = {
    * hundreds of megabytes, so a slow link must stay supported while a dead socket must not.
    */
   downloading: 120_000,
-  /**
-   * Shutdown preparation plus the handover to the installer. Generous because on macOS
-   * quitAndInstall asks Squirrel to stage the ZIP and only quits when that finishes, which is disk
-   * bound on an artifact of a few hundred megabytes. Firing early here would report a failure over a
-   * working install.
-   */
-  installing: 300_000,
+  installing: UPDATE_INSTALL_TIMEOUT_MS,
 };
 
 /**
@@ -196,6 +225,8 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
   #checkTimer: ReturnType<typeof setTimeout> | null = null;
   #phaseTimer: ReturnType<typeof setTimeout> | null = null;
   #started = false;
+  /** False for a start that checks only on request, such as the newer-database recovery. */
+  #checksScheduled = false;
   #installStarted = false;
   #pendingInstallRequests = 0;
   #installHandedOver = false;
@@ -274,7 +305,7 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
       // native updater for the ZIP on demand, so the restart action is available immediately.
       this.#markReady(info.version);
     });
-    this.#updater.on("error", () => {
+    this.#updater.on("error", (error: Error) => {
       // Both awaited calls reject on failure, so this only has to cover errors raised outside them,
       // and only for an operation still in flight. An abandoned operation reporting late must not
       // replace the state the user is now looking at.
@@ -286,6 +317,7 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
         // so the app cannot install again; it reports the failure and asks to be relaunched.
         this.#installGeneration += 1;
         this.#activeInstall = null;
+        logUpdateFailure("OpenBot update install failed.", error);
         this.#setError("install_failed", INSTALL_FAILED_MESSAGE);
         return;
       }
@@ -301,9 +333,19 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
       this.#fork(pruneInstalledUpdate(this.#options.updaterCacheDirectory, this.#options.currentVersion));
     }
 
+    this.#checksScheduled = scheduleChecks;
     if (scheduleChecks && this.#options.enabled) {
       this.#scheduleCheck(this.#options.initialCheckDelayMs);
     }
+  }
+
+  /** Schedules the checks that `stop` cleared, for an app that keeps running after it, such as after a Windows session end that another app cancels. */
+  resume(): void {
+    if (!this.#started) return;
+    // `stop` cleared the deadline of a busy phase, and a download keeps running after it.
+    if (!this.#phaseTimer) this.#armPhaseTimer();
+    if (!this.#checksScheduled || !this.#options.enabled || this.#checkTimer) return;
+    this.#scheduleCheck(this.#options.initialCheckDelayMs);
   }
 
   getStatus(): UpdateStatus {
@@ -528,6 +570,7 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
           ),
         );
         if (Result.isFailure(result) && this.#downloadGeneration === generation) {
+          logUpdateFailure("OpenBot update download failed.", result.failure.cause);
           this.#activeDownload = null;
           this.#setError("download_failed");
         }
@@ -591,6 +634,7 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
         }),
       );
       if (Result.isFailure(installed) && this.#installGeneration === generation) {
+        logUpdateFailure("OpenBot update install failed.", installed.failure.cause);
         this.#setError("install_failed", INSTALL_FAILED_MESSAGE);
         return yield* new UpdateOperationFailure({ cause: new Error(sourceText("error.update.restartFailed")) });
       }
@@ -635,6 +679,8 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
       const request = Deferred.makeUnsafe<UpdateCheckOutcome | null, UpdateOperationFailure>();
       this.#checkRequest = request;
       return yield* updateIO(() => this.#updater.checkForUpdates()).pipe(
+        // Logged once per request, here, because joined callers and the status keep only a message.
+        Effect.tapError(({ cause }) => Effect.sync(() => logUpdateFailure("OpenBot update check failed.", cause))),
         Effect.onExit((exit) =>
           Effect.gen({ self: this }, function* () {
             yield* Deferred.done(request, exit);
@@ -684,6 +730,7 @@ export class UpdateService extends EventEmitter<UpdateServiceEvents> {
     return Effect.gen({ self: this }, function* () {
       if (this.#cancellationToken && !this.#cancellationToken.cancelled) return this.#cancellationToken;
       const checked = yield* Effect.result(updateIO(() => this.#updater.checkForUpdates()));
+      if (Result.isFailure(checked)) logUpdateFailure("OpenBot update check failed.", checked.failure.cause);
       this.#cancellationToken = Result.isSuccess(checked) ? (checked.success?.cancellationToken ?? null) : null;
       return this.#cancellationToken;
     });
@@ -873,6 +920,24 @@ function describeCheckFailure(error: unknown) {
   // here once the causes above have been ruled out of its message.
   if (code === "ERR_UPDATER_LATEST_VERSION_NOT_FOUND") return CHECK_SERVICE_MESSAGE;
   return errorMessage("check_failed");
+}
+
+/**
+ * The status and `update.log` keep only a failure code. electron-updater puts its own code and the
+ * HTTP status on the error, outside its message, so they are logged apart. The stack is left out:
+ * an offline app fails a check each interval, and electron-updater already puts the stack of the
+ * cause in the message.
+ */
+function logUpdateFailure(text: string, error: unknown): void {
+  const fields = typeof error === "object" && error !== null ? error : {};
+  logger.warn(
+    text,
+    toLogValue({
+      code: "code" in fields ? fields.code : undefined,
+      statusCode: "statusCode" in fields ? fields.statusCode : undefined,
+      message: error instanceof Error ? error.message : error,
+    }),
+  );
 }
 
 function errorMessage(code: UpdateFailureCode) {
