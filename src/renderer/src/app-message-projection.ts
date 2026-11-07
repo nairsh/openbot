@@ -118,6 +118,7 @@ export function toAgentMessage(message: ConversationMessage, ownerAgentId?: stri
     ...(message.replyToMessageId === undefined ? {} : { replyToMessageId: message.replyToMessageId }),
     ...(message.attachments === undefined ? {} : { attachments: message.attachments }),
     ...(message.voiceRecording === undefined ? {} : { voiceRecording: message.voiceRecording }),
+    ...(message.liveVoiceSessionId === undefined ? {} : { liveVoiceSessionId: message.liveVoiceSessionId }),
     ...(message.imageGeneration === undefined ? {} : { imageGeneration: message.imageGeneration }),
     ...(message.questionPrompt === undefined ? {} : { questionPrompt: message.questionPrompt }),
     ...(message.uiBlock ? { uiBlock: message.uiBlock } : {}),

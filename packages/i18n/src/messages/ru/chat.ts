@@ -277,6 +277,9 @@ export const messages = {
     other: "{count} запуска",
   },
   "chat.marker.runGroup.timeRange": "{start}–{end}",
+  "chat.marker.voiceCall": "Голосовой звонок",
+  "chat.marker.voiceCall.show": "Показать расшифровку голосового звонка",
+  "chat.marker.voiceCall.hide": "Скрыть расшифровку голосового звонка",
   "chat.marker.runGroup.show": {
     one: "Показать {count} запуск: {name}",
     few: "Показать {count} запуска: {name}",

@@ -315,7 +315,7 @@ function bridgedTool(item: ThreadItem) {
   return name ? BUILTIN_TOOL_CATALOG.find((entry) => entry.name === name) : undefined;
 }
 
-const TOOL_RESULT_PROGRESS = sourceText("status.agent.toolResultReviewing");
+const TOOL_RESULT_PROGRESS = sourceText("status.agent.thinking");
 
 /**
  * The OpenBot tool that an item calls, or null for any other tool: a Codex, Pi or Muse item names
@@ -455,6 +455,11 @@ export function toolProgressText(item: ThreadItem, completed: boolean): string |
   // Next, a label from what the step does, such as "Reading main.ts…", for a provider that sends no label.
   const label = completed ? null : stepLabel(item);
   if (label) return label;
+  // Then the tool's own name, such as "Using search threads…", which says more than the words below.
+  // OpenBot's own tools, such as `send_message`, keep the words below.
+  const usage = completed || openBot ? null : toolUsage(item);
+  const tool = usage?.kind === "mcp" ? usage.tool?.replace(/[_-]+/gu, " ").trim() : undefined;
+  if (tool) return sourceText("status.agent.toolUsing", { tool: redactText(tool) });
   if (/(search|browser|fetch|navigate|open_url|web)/u.test(descriptor)) {
     return completed ? sourceText("status.agent.sourcesReviewing") : sourceText("status.agent.sourcesSearching");
   }
@@ -481,7 +486,7 @@ export function toolProgressText(item: ThreadItem, completed: boolean): string |
   ) {
     return sourceText("status.agent.commandRunningUnnamed");
   }
-  return completed ? TOOL_RESULT_PROGRESS : sourceText("status.agent.toolStepWorking");
+  return completed ? TOOL_RESULT_PROGRESS : sourceText("status.agent.toolUsingUnnamed");
 }
 
 const TOOL_USAGE_ACTIVITIES: Readonly<Record<ToolUsageKind, AgentStepActivity>> = {

@@ -123,6 +123,11 @@ export type ChatActionMarkerModel =
     }
   | RoutineRunMarkerModel
   /**
+   * The messages of one live voice call, drawn as one row that opens to show them. Only the
+   * timeline makes it. `timestamp` is the time of the first message.
+   */
+  | { kind: "voice-call"; sessionId: string; messageIds: string[]; timestamp: string; expanded: boolean }
+  /**
    * Consecutive completed runs of one routine, oldest first, drawn as one row. Only the timeline
    * joins them: each stored run keeps its own marker. `routineName` is the name of the newest run,
    * and `timestamp` is the time of the newest run.
@@ -210,6 +215,8 @@ export interface AgentMessage {
   attachments?: AttachmentSummary[] | undefined;
   /** The user's own recording of a spoken message. It stays on this computer; the agent gets the text. */
   voiceRecording?: AttachmentSummary | undefined;
+  /** The live voice session that sent this user message. The timeline folds a call into one row. */
+  liveVoiceSessionId?: string | undefined;
   imageGeneration?: ImageGenerationInfo | undefined;
   questionPrompt?: ConversationQuestionPrompt | undefined;
   /** The interactive block an agent drew. A blocking block sits beside `questionPrompt`. */

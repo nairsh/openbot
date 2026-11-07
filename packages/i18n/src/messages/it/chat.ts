@@ -209,6 +209,9 @@ export const messages = {
   "chat.marker.run.cancelled": "Routine annullata",
   "chat.marker.runGroup.count": { one: "{count} esecuzione", other: "{count} esecuzioni" },
   "chat.marker.runGroup.timeRange": "{start}–{end}",
+  "chat.marker.voiceCall": "Chiamata vocale",
+  "chat.marker.voiceCall.show": "Mostra la trascrizione della chiamata vocale",
+  "chat.marker.voiceCall.hide": "Nascondi la trascrizione della chiamata vocale",
   "chat.marker.runGroup.show": {
     one: "Mostra {count} esecuzione di {name}",
     other: "Mostra {count} esecuzioni di {name}",

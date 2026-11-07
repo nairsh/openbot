@@ -87,5 +87,6 @@ export function groupedMessageIds(message: AgentMessage | undefined): string | u
   const marker = message?.actionMarker;
   if (marker?.kind === "agent-message-group") return marker.messages.map((entry) => entry.id).join(" ");
   if (marker?.kind === "routine-run-group") return marker.runs.map((entry) => entry.id).join(" ");
+  if (marker?.kind === "voice-call" && !marker.expanded) return marker.messageIds.join(" ");
   return undefined;
 }

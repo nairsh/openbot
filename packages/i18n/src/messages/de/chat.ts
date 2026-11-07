@@ -212,6 +212,9 @@ export const messages = {
     other: "{count} Ausführungen",
   },
   "chat.marker.runGroup.timeRange": "{start}–{end}",
+  "chat.marker.voiceCall": "Sprachanruf",
+  "chat.marker.voiceCall.show": "Transkript des Sprachanrufs anzeigen",
+  "chat.marker.voiceCall.hide": "Transkript des Sprachanrufs ausblenden",
   "chat.marker.runGroup.show": {
     one: "{count} Ausführung von {name} anzeigen",
     other: "{count} Ausführungen von {name} anzeigen",

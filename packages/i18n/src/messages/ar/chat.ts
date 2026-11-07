@@ -313,6 +313,9 @@ export const messages = {
     other: "{count} تشغيل",
   },
   "chat.marker.runGroup.timeRange": "{start}–{end}",
+  "chat.marker.voiceCall": "مكالمة صوتية",
+  "chat.marker.voiceCall.show": "إظهار نص المكالمة الصوتية",
+  "chat.marker.voiceCall.hide": "إخفاء نص المكالمة الصوتية",
   "chat.marker.runGroup.show": {
     zero: "لا تشغيلات لـ {name}",
     one: "إظهار تشغيل واحد لـ {name}",

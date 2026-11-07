@@ -6,7 +6,11 @@ import type { AgentMessage, ChatActionMarkerModel, MessageKind } from "@openbot/
 import { ChannelActivityIndicator } from "@openbot/ui/features/channels/ChannelActivityIndicator";
 import { AgentActivityIndicator } from "@openbot/ui/features/conversation/AgentActivity";
 import { AgentChatEmptyState } from "@openbot/ui/features/conversation/AgentChatEmptyState";
-import { AgentStepsDisclosure, type AgentStepsTrace } from "@openbot/ui/features/conversation/AgentSteps";
+import {
+  AgentStepsDisclosure,
+  type AgentStepsTrace,
+  useAgentStepsLabel,
+} from "@openbot/ui/features/conversation/AgentSteps";
 import { AttachmentCards } from "@openbot/ui/features/conversation/AttachmentCards";
 import { UsageLimitAskCard } from "@openbot/ui/features/conversation/BackupModels";
 import { branchPointIds } from "@openbot/ui/features/conversation/branch-points";
@@ -165,6 +169,7 @@ export function ConversationTimeline() {
     newMessageCount,
     timelineMessages,
     toggleRoutineRun,
+    toggleVoiceCall,
     toggleAgentMessage,
     timelineIndexById,
     unreadBoundaryMessageId,
@@ -636,6 +641,7 @@ export function ConversationTimeline() {
   });
   const showAgentSteps = useShowAgentSteps();
   const compactActions = useCompactMessageActions();
+  const stepsLabel = useAgentStepsLabel();
   const traceKeyboard = currentDevicePlatform() === "darwin" ? "mac" : "pc";
   /** The trace that the steps row of an answer opens. A channel names the agent that answered. */
   const traceAbove = (messageId: string | undefined, agentName?: string): AgentStepsTrace => ({
@@ -990,6 +996,7 @@ export function ConversationTimeline() {
                                                 openRoutineThread={openRoutineThread}
                                                 onOpenHostedSite={(url) => void openExternalMessageUrl(url)}
                                                 onToggleRoutineRun={toggleRoutineRun}
+                                                onToggleVoiceCall={toggleVoiceCall}
                                                 onToggleAgentMessage={toggleAgentMessage}
                                                 agentMessageText={agentMessageText}
                                                 instructions={localInstructionsCalls()}
@@ -1321,6 +1328,17 @@ export function ConversationTimeline() {
                   author().kind === "agent" && !message()?.questionPrompt && (Boolean(channel) || !showAgentSteps());
                 // The reader's own actions stand beside the bubble, so a run of their messages sits close.
                 const actionsBeside = () => stepsInRow() || author().kind === "you";
+                // A row's steps open only the trace, from the message menu, so the row adds no line under the
+                // bubble and a run of answers stays stacked.
+                let openTrace: (() => void) | undefined;
+                const traceItem = () => {
+                  const steps = turnSteps.stepsAbove(message()?.id);
+                  if (!stepsInRow() || !steps) return undefined;
+                  return {
+                    label: stepsLabel(steps, turnSteps.factsAbove(message()?.id)),
+                    onOpen: () => openTrace?.(),
+                  };
+                };
                 const stepsDisclosure = () => (
                   <Show when={turnSteps.stepsAbove(message()?.id)}>
                     {(steps) => (
@@ -1328,6 +1346,13 @@ export function ConversationTimeline() {
                         steps={steps()}
                         defaultOpen={showAgentSteps()}
                         list={!stepsInRow()}
+                        traceOpener={
+                          stepsInRow()
+                            ? (open) => {
+                                openTrace = open;
+                              }
+                            : undefined
+                        }
                         trace={traceAbove(
                           message()?.id,
                           channel && author().kind === "agent" ? author().name : undefined,
@@ -1352,6 +1377,7 @@ export function ConversationTimeline() {
                   onBranch: branchAction(message() ?? initialMessage),
                   branchDisabled: Boolean(props.activeTurnId),
                   onDelete: deleteAction(message() ?? initialMessage),
+                  trace: traceItem(),
                 });
                 /*
                  * With "Compact message actions" on, the row shows React, Reply and More. With it off, the row

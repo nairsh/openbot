@@ -202,6 +202,9 @@ export const messages = {
   "chat.marker.run.cancelled": "Routine geannuleerd",
   "chat.marker.runGroup.count": { one: "{count} run", other: "{count} runs" },
   "chat.marker.runGroup.timeRange": "{start}–{end}",
+  "chat.marker.voiceCall": "Spraakgesprek",
+  "chat.marker.voiceCall.show": "Transcript van het spraakgesprek tonen",
+  "chat.marker.voiceCall.hide": "Transcript van het spraakgesprek verbergen",
   "chat.marker.runGroup.show": { one: "{count} run van {name} tonen", other: "{count} runs van {name} tonen" },
   "chat.marker.runGroup.hide": {
     one: "{count} run van {name} verbergen",

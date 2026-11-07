@@ -36,6 +36,7 @@ import {
   summarizeRoutineRunMessages,
 } from "../routine-run-timeline";
 import { isTurnAnswer } from "../turn-steps";
+import { foldVoiceCalls } from "../voice-call-timeline";
 import { conversationOwnerId } from "./composer-store";
 
 interface ScrollElements {
@@ -113,9 +114,21 @@ export function createScrollStore(deps: ScrollStoreDeps) {
     return summarizeHostedSiteMessages(withQuestionContext(shown, deps.props.messages, questionTurnId));
   });
   const routineRunTurns = createMemo(() => routineRunTurnMessages(deps.props.messages, shownMessages()));
-  /* The messages of a routine run follow its row and open and close with it. */
+  /* The session ids of the voice calls whose messages show under their row. */
+  const [openVoiceCalls, setOpenVoiceCalls] = createSignal<ReadonlySet<string>>(new Set());
+  function toggleVoiceCall(sessionId: string): void {
+    setOpenVoiceCalls((open) => {
+      const next = new Set(open);
+      if (!next.delete(sessionId)) next.add(sessionId);
+      return next;
+    });
+  }
+  /* The messages of a routine run follow its row and open and close with it, and so do those of a voice call. */
   const drawnMessages = createMemo(() => [
-    ...placeRoutineRunTurns(summarizeRoutineRunMessages(shownMessages()), routineRunTurns(), openRoutineRuns()),
+    ...foldVoiceCalls(
+      placeRoutineRunTurns(summarizeRoutineRunMessages(shownMessages()), routineRunTurns(), openRoutineRuns()),
+      openVoiceCalls(),
+    ),
     ...deps.pendingMessages(),
   ]);
   function toggleRoutineRun(marker: RoutineRunToggleMarkerModel): void {
@@ -377,6 +390,7 @@ export function createScrollStore(deps: ScrollStoreDeps) {
     messageVirtualizer,
     timelineMessages,
     toggleRoutineRun,
+    toggleVoiceCall,
     toggleAgentMessage,
     timelineIndexById,
     unreadBoundaryMessageId,

@@ -10,6 +10,7 @@ import {
   Button,
   ChevronRight,
   CircleDot,
+  Clock3,
   ConfirmDialog,
   ContextMenu,
   DropdownMenu,
@@ -1107,6 +1108,8 @@ export interface MessageMenuItemsProps {
   sendToChannel?: { channels: { id: string; name: string }[]; onSend: (channelId: string) => void } | undefined;
   /** Asks to delete this message. Without it, the menu has no such item. */
   onDelete?: (() => void) | undefined;
+  /** Opens the trace of the turn, with its summary such as "Worked for 29s". Without it, the menu has no such item. */
+  trace?: { label: string; onOpen: () => void } | undefined;
 }
 
 /**
@@ -1131,6 +1134,14 @@ export function MessageMenuItems(props: MessageMenuItemsProps) {
         <CopyIcon />
         <span>{t("chat.menu.copy")}</span>
       </ContextMenu.Item>
+      <Show when={props.trace}>
+        {(trace) => (
+          <ContextMenu.Item onSelectAfterClose={trace().onOpen}>
+            <Clock3 aria-hidden="true" />
+            <span>{trace().label}</span>
+          </ContextMenu.Item>
+        )}
+      </Show>
       <Show when={props.reactions !== false}>
         <ContextMenu.Sub>
           <ContextMenu.SubTrigger>

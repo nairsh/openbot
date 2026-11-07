@@ -210,6 +210,9 @@ export const messages = {
     other: "{count} ejecuciones",
   },
   "chat.marker.runGroup.timeRange": "{start}–{end}",
+  "chat.marker.voiceCall": "Llamada de voz",
+  "chat.marker.voiceCall.show": "Mostrar la transcripción de la llamada de voz",
+  "chat.marker.voiceCall.hide": "Ocultar la transcripción de la llamada de voz",
   "chat.marker.runGroup.show": {
     one: "Mostrar {count} ejecución de {name}",
     other: "Mostrar {count} ejecuciones de {name}",

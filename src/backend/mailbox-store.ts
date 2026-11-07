@@ -107,6 +107,8 @@ interface StoredMessage {
    * and in its own transfer folder, so the agent's prompt and the transfer manifest never name it.
    */
   voiceRecording?: StoredAttachment;
+  /** The live voice session that sent the text. Absent on a typed message. */
+  liveVoiceSessionId?: string;
   replyToMessageId: string | null;
   /**
    * Written only when the sender asked for no answer. Absent means an answer is expected, which is
@@ -203,6 +205,8 @@ interface EnqueueInput {
   draftIds?: string[];
   /** An audio draft of what the user said. Kept with the message, not sent to the recipient. */
   voiceRecordingDraftId?: string;
+  /** The live voice session that sent the text. */
+  liveVoiceSessionId?: string;
   sourcePaths?: string[];
   idempotencyKey?: string;
 }
@@ -619,6 +623,7 @@ export class MailboxStore {
         }),
         attachments,
         ...(voiceRecording ? { voiceRecording } : {}),
+        ...(input.liveVoiceSessionId ? { liveVoiceSessionId: input.liveVoiceSessionId } : {}),
         replyToMessageId: input.replyToMessageId ?? null,
         ...(input.expectsReply === false ? { expectsReply: false as const } : {}),
         createdAt,
@@ -1426,6 +1431,7 @@ export class MailboxStore {
           ...(message.voiceRecording && !message.voiceRecording.deletedAt
             ? { voiceRecording: toAttachmentSummary(message.voiceRecording) }
             : {}),
+          ...(message.liveVoiceSessionId ? { liveVoiceSessionId: message.liveVoiceSessionId } : {}),
           replyToMessageId: message.replyToMessageId,
           delivery: {
             id: delivery.id,
@@ -3463,6 +3469,7 @@ function isStoredMessage(value: unknown): value is StoredMessage {
     Array.isArray(value.attachments) &&
     value.attachments.every(isStoredAttachment) &&
     (value.voiceRecording === undefined || isStoredAttachment(value.voiceRecording)) &&
+    (value.liveVoiceSessionId === undefined || isString(value.liveVoiceSessionId)) &&
     (isString(value.replyToMessageId) || value.replyToMessageId === null) &&
     (value.expectsReply === undefined || value.expectsReply === false) &&
     isString(value.createdAt)

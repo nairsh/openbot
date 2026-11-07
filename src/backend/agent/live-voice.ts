@@ -69,8 +69,11 @@ export interface LiveVoiceHooks {
   agent(agentId: string): AgentSummary;
   /** A new Codex process that is not started yet. It runs no agent: it only connects the voice. */
   relay(agent: AgentSummary): Effect.Effect<LiveVoiceRelay, { readonly cause: unknown }>;
-  /** Sends a spoken request to the agent as the user's message, and gives its delivery id. */
-  send(agentId: string, text: string): Effect.Effect<string, { readonly cause: unknown }>;
+  /**
+   * Sends a spoken request to the agent as the user's message, marked with the voice session, and
+   * gives its delivery id.
+   */
+  send(agentId: string, text: string, sessionId: string): Effect.Effect<string, { readonly cause: unknown }>;
   /** The reply to a delivery, or null while the agent still works on it. */
   reply(agentId: string, deliveryId: string): LiveVoiceReply | null;
   emit(event: VoiceLiveEvent): void;
@@ -287,7 +290,7 @@ export class LiveVoice {
       return;
     }
     Effect.runFork(
-      this.#hooks.send(session.agentId, text).pipe(
+      this.#hooks.send(session.agentId, text, session.id).pipe(
         Effect.match({
           onFailure: (failure) =>
             this.#respond(session, request.id, {
