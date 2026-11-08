@@ -21,8 +21,9 @@ const catalogs = { en, ar, de, es, fr, he, it, ja, ko, nl, pl, pt, ru, tr, zh } 
 /**
  * The desktop catalog of `locale`, or `undefined` while it is not loaded.
  *
- * This build holds every language. The public web build replaces this module with
- * `lazy-catalogs.ts`, which holds English and loads another language on first use.
+ * This module holds every language, for the main process, the Worker and the tests. The desktop
+ * windows and the public web build replace it with `lazy-catalogs.ts`, which holds English and loads
+ * another language on first use.
  */
 export function appTranslation(locale: TranslatedLocale): PartialTranslation<AppMessages> | undefined {
   return catalogs[locale];

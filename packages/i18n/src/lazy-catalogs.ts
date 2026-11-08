@@ -8,12 +8,12 @@ import { source as enSource } from "./messages/en/source";
 import type { sourceTranslation as SourceTranslation } from "./source-catalogs";
 
 /**
- * The catalogs of the public web build: `app-catalogs.ts`, `source-catalogs.ts`,
- * `format-catalogs.ts` and `locale-loading.ts` in one module, which `apps/auth-api/vite.config.ts`
- * puts in their place.
+ * The catalogs of the desktop windows and the public web build: `app-catalogs.ts`,
+ * `source-catalogs.ts`, `format-catalogs.ts` and `locale-loading.ts` in one module, which
+ * `electron.vite.config.ts` and `apps/auth-api/vite.config.ts` put in their place.
  *
- * The site shows the desktop app as a demo and as the web client. All fifteen languages are more than
- * 1 MB compressed and block the page for about a second on a phone, so English is part of the
+ * All fifteen languages are more than 1 MB compressed and block a phone for about a second, and
+ * they are about 9 MB of the startup script of each desktop window. So English is part of the
  * bundle and each other language is a chunk that loads on first use. Each export has the type of
  * the module it replaces, so the two builds cannot drift apart.
  */
