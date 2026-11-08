@@ -179,7 +179,8 @@ export class StartupTiming {
   /** The main window's workspace finished its first load. Later loads, after a reload, do not count. */
   workspaceReady(): void {
     if (this.#sent || this.#workspaceReadyMs !== null) return;
-    this.#workspaceReadyMs = performance.now();
+    // A startup mark for `dev:bench` too: the workspace a returning user sees, not only a loaded page.
+    this.#workspaceReadyMs = performance.mark("openbot:workspace-ready").startTime;
     if (this.#rendererLoaded) this.#send();
   }
 

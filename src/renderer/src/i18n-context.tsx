@@ -29,10 +29,18 @@ export interface I18nValue {
   changeLanguage: (next: AppLanguage) => void;
 }
 
+/** The language of the computer: what every window shows until the saved preference arrives. */
+const SYSTEM_LOCALE = resolveLocale(DEFAULT_APP_LANGUAGE, navigator.language);
+
+// Each language other than English is a chunk that loads on first use, in the desktop and the web
+// build. The language of the computer is the one the first frame needs, so it starts loading when
+// this module runs, before the first render, and not in an effect after it.
+void loadLocale(SYSTEM_LOCALE).catch(() => undefined);
+
 /**
- * `requested` once its catalogs are loaded. The desktop build holds every language, so this is
- * `requested` at once. The public web build loads a language on first use and keeps the previous
- * one on the screen until then; if the load fails, the screen stays in that language.
+ * `requested` once its catalogs are loaded. A language other than English loads on first use, and
+ * the previous one stays on the screen until then; if the load fails, the screen stays in that
+ * language.
  */
 function createLoadedLocale(requested: () => TranslatedLocale): () => TranslatedLocale {
   const [loads, setLoads] = createSignal(0);
@@ -53,7 +61,9 @@ function createLoadedLocale(requested: () => TranslatedLocale): () => Translated
 /**
  * Interface language, owned by main (native menu, notifications, and this window share one
  * saved setting). Outermost provider since every screen renders text. `t` reads the memo per
- * call so a language change repaints subscribers. Ungated: system language is the first frame.
+ * call so a language change repaints subscribers. Ungated: the system language starts loading with
+ * this module, so it is normally loaded before the startup screen shows text. Until it loads, the
+ * screen shows English.
  */
 function createI18nValue(): I18nValue {
   const [language, setLanguage] = createSignal<AppLanguage>(DEFAULT_APP_LANGUAGE);
@@ -140,8 +150,9 @@ function createI18nValue(): I18nValue {
  */
 const FALLBACK: I18nValue = {
   language: () => DEFAULT_APP_LANGUAGE,
-  locale: () => resolveLocale(DEFAULT_APP_LANGUAGE, navigator.language),
-  t: translateFor(resolveLocale(DEFAULT_APP_LANGUAGE, navigator.language)),
+  locale: () => SYSTEM_LOCALE,
+  // Looked up on each call: the catalog of the language can load after this module runs.
+  t: (key, ...params) => translateFor(SYSTEM_LOCALE)(key, ...params),
   changeLanguage: () => undefined,
 };
 
