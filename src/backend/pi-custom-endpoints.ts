@@ -5,6 +5,7 @@ import type { CustomProviderReasoningEffort } from "@openbot/contracts/ipc";
 import { Effect } from "effect";
 import { type CustomProviderConfig, customModelOutputLimit } from "./opencode-config";
 import type { PiMcpExtension } from "./pi-mcp";
+import { PI_REPORTED_COST_SOURCE } from "./pi-reported-cost";
 import { providerCall } from "./provider-client-effects";
 
 const VARIABLE = "OPENBOT_PI_CUSTOM_ENDPOINTS";
@@ -61,7 +62,9 @@ function thinkingLevelMap(efforts: readonly CustomProviderReasoningEffort[]): Pi
 // sessions, so the endpoints stay in a process slot for those later runs. Pi reads `$` in an apiKey
 // or a header value as an environment reference, and a leading `!` as a shell command, so both are
 // escaped to stay literal. Pi lists a model only when its provider has a key, so a keyless endpoint
-// gets a placeholder key, as Pi's own Ollama example does; a local server ignores it.
+// gets a placeholder key, as Pi's own Ollama example does; a local server ignores it. Pi cannot price
+// these models, so a cost that the endpoint reports, as Bifrost does, goes on the message
+// (`pi-reported-cost.ts`).
 const SOURCE = `export default function (pi) {
   const slot = Symbol.for("openbot.pi.customEndpoints");
   globalThis[slot] ??= process.env.${VARIABLE};
@@ -89,7 +92,7 @@ const SOURCE = `export default function (pi) {
       })),
     });
   }
-}
+${PI_REPORTED_COST_SOURCE}}
 `;
 
 function payload(endpoint: CustomProviderConfig): EndpointPayload {

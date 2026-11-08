@@ -224,13 +224,17 @@ export function ConversationComposer() {
   let composerElement: HTMLDivElement | undefined;
   const [textWrapped, setTextWrapped] = createSignal(false);
   createEffect(
-    () => currentDraft().text,
+    // Live dictation is not in the draft yet, but it wraps the same way.
+    () => `${currentDraft().text}${voiceLiveText()}`,
     (text) => {
       if (!text) {
         setTextWrapped(false);
         return;
       }
-      const surface = composerElement?.querySelector<HTMLElement>(".composer-editor-surface");
+      // While dictating, the dictation text shows and the editor is hidden.
+      const surface =
+        composerElement?.querySelector<HTMLElement>(".composer-dictation") ??
+        composerElement?.querySelector<HTMLElement>(".composer-editor-surface");
       if (!composerElement?.hasAttribute("data-compact") || !surface) return;
       // One line is about 20px high and the surface has 4px of padding above and below.
       if (surface.scrollHeight > 36) setTextWrapped(true);

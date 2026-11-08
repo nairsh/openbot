@@ -136,6 +136,33 @@ export function AgentDockChat(props: {
   onCleanup(() => fades.stop());
   const messages = createMemo(() => props.chat.messages.filter(isDockMessage).slice(-VISIBLE_MESSAGES));
   const pending = createMemo(() => props.pending.filter((message) => !delivered(message, props.chat.messages)));
+  /*
+   * New bubbles enter as in the main chat. The messages that the chat shows when it opens, or that its
+   * first load brings, do not. The host's copy of a sent message replaces its pending bubble and plays
+   * the rest of that bubble's entrance, so the bubble does not jump.
+   */
+  const seen = new Set<string>();
+  let live = false;
+  /** When each pending bubble started its entrance, by its text. */
+  const sentStarts = new Map<string, number>();
+  createEffect(
+    () => ({ shown: messages(), sending: pending().length > 0 }),
+    ({ shown, sending }) => {
+      for (const message of shown) seen.add(message.id);
+      if (shown.length > 0 || sending) live = true;
+    },
+  );
+  const entrance = (message: AgentMessage) => {
+    const enters = live && !seen.has(message.id);
+    seen.add(message.id);
+    if (!enters) return { kind: undefined, style: undefined };
+    if (message.author !== "you") return { kind: "received", style: undefined };
+    const text = message.body.trim();
+    const start = sentStarts.get(text);
+    sentStarts.delete(text);
+    const elapsed = start === undefined ? 0 : Math.round(performance.now() - start);
+    return { kind: "sent", style: { "--agent-dock-entry-elapsed": `${elapsed}ms` } };
+  };
   const subtitle = () => {
     if (props.chat.wait) return t(SIDEBAR_WAIT_TITLE[props.chat.wait]);
     if (props.chat.working) return t("agent.dock.working");
@@ -234,13 +261,17 @@ export function AgentDockChat(props: {
   let composer: HTMLFormElement | undefined;
   const [textWrapped, setTextWrapped] = createSignal(false);
   createEffect(
-    () => props.draft,
+    // Live dictation is not in the draft yet, but it wraps the same way.
+    () => `${props.draft}${props.voice?.liveText ?? ""}`,
     (text) => {
       if (!text) {
         setTextWrapped(false);
         return;
       }
-      const surface = composer?.querySelector<HTMLElement>(".composer-editor-surface");
+      // While dictating, the dictation text shows and the editor is hidden.
+      const surface =
+        composer?.querySelector<HTMLElement>(".composer-dictation") ??
+        composer?.querySelector<HTMLElement>(".composer-editor-surface");
       if (!composer?.hasAttribute("data-compact") || !surface) return;
       // One line is about 20px high and the surface has 4px of padding above and below.
       if (surface.scrollHeight > 36) setTextWrapped(true);
@@ -327,58 +358,79 @@ export function AgentDockChat(props: {
               fallback={<p class="agent-dock-empty">{t("agent.dock.empty", { name: props.agent.name })}</p>}
             >
               <For each={messages()}>
-                {(message) => (
-                  <Bubble
-                    align={message.author === "you" ? "end" : "start"}
-                    variant={message.author === "you" ? "secondary" : "muted"}
-                    class="agent-dock-bubble"
-                    data-author={message.author === "you" ? "user" : "assistant"}
-                    data-error={message.kind === "error" ? "" : undefined}
-                  >
-                    <BubbleContent>
-                      {/* Markdown with mention chips, as in the main chat. */}
-                      <div class="agent-dock-markdown message-markdown">
-                        <MarkdownMessageText
-                          body={message.body}
-                          agents={props.agents}
-                          attachments={message.attachments}
-                          onSelectAgent={(agentId) => props.onSelectAgent?.(agentId)}
-                          onOpenAttachment={() => props.onOpenInMain()}
-                          onOpenLink={(url) => props.onOpenLink?.(url)}
-                        />
-                      </div>
-                    </BubbleContent>
-                    <Show when={dockReactions(message).length > 0}>
-                      <BubbleReactions
-                        class="agent-dock-reactions"
-                        align={message.author === "you" ? "start" : "end"}
-                        role="img"
-                        aria-label={t("chat.row.reactions", {
-                          emoji: dockReactions(message)
-                            .map((reaction) => reaction.emoji)
-                            .join(", "),
-                        })}
-                      >
-                        <For each={dockReactions(message)}>
-                          {(reaction) => <span aria-hidden="true">{reaction.emoji}</span>}
-                        </For>
-                      </BubbleReactions>
-                    </Show>
-                  </Bubble>
-                )}
+                {(message) => {
+                  const enters = entrance(message);
+                  return (
+                    <Bubble
+                      align={message.author === "you" ? "end" : "start"}
+                      variant={message.author === "you" ? "secondary" : "muted"}
+                      class="agent-dock-bubble"
+                      data-author={message.author === "you" ? "user" : "assistant"}
+                      data-error={message.kind === "error" ? "" : undefined}
+                      data-entering={enters.kind}
+                      style={enters.style}
+                    >
+                      <BubbleContent>
+                        {/* Markdown with mention chips, as in the main chat. */}
+                        <div class="agent-dock-markdown message-markdown">
+                          <MarkdownMessageText
+                            body={message.body}
+                            agents={props.agents}
+                            attachments={message.attachments}
+                            onSelectAgent={(agentId) => props.onSelectAgent?.(agentId)}
+                            onOpenAttachment={() => props.onOpenInMain()}
+                            onOpenLink={(url) => props.onOpenLink?.(url)}
+                          />
+                        </div>
+                      </BubbleContent>
+                      <Show when={dockReactions(message).length > 0}>
+                        <BubbleReactions
+                          class="agent-dock-reactions"
+                          align={message.author === "you" ? "start" : "end"}
+                          role="img"
+                          aria-label={t("chat.row.reactions", {
+                            emoji: dockReactions(message)
+                              .map((reaction) => reaction.emoji)
+                              .join(", "),
+                          })}
+                        >
+                          <For each={dockReactions(message)}>
+                            {(reaction) => <span aria-hidden="true">{reaction.emoji}</span>}
+                          </For>
+                        </BubbleReactions>
+                      </Show>
+                    </Bubble>
+                  );
+                }}
               </For>
               <For each={pending()}>
-                {(message) => (
-                  <Bubble align="end" variant="secondary" class="agent-dock-bubble" data-author="user" data-pending="">
-                    <BubbleContent>
-                      <p class="agent-dock-text">{message.text}</p>
-                    </BubbleContent>
-                  </Bubble>
-                )}
+                {(message) => {
+                  sentStarts.set(message.text, performance.now());
+                  return (
+                    <Bubble
+                      align="end"
+                      variant="secondary"
+                      class="agent-dock-bubble"
+                      data-author="user"
+                      data-pending=""
+                      data-entering="sent"
+                    >
+                      <BubbleContent>
+                        <p class="agent-dock-text">{message.text}</p>
+                      </BubbleContent>
+                    </Bubble>
+                  );
+                }}
               </For>
             </Show>
             <Show when={props.chat.working && !props.chat.wait}>
-              <Bubble align="start" variant="muted" class="agent-dock-bubble" data-author="assistant">
+              <Bubble
+                align="start"
+                variant="muted"
+                class="agent-dock-bubble"
+                data-author="assistant"
+                data-entering="received"
+              >
                 <BubbleContent>
                   <span class="agent-dock-typing" role="status">
                     <TypingDots class="agent-dock-typing-dots" />
@@ -409,49 +461,54 @@ export function AgentDockChat(props: {
 
       <Show when={props.error}>{(error) => <p class="agent-dock-error">{error()}</p>}</Show>
 
-      {/* The main window's message box: the same row, border, shadow and layouts. */}
-      <div class="composer-row agent-dock-composer-row">
-        <form
-          ref={(element) => (composer = element)}
-          class="composer agent-dock-composer"
-          data-compact={props.draft.includes("\n") || textWrapped() ? undefined : ""}
-          onSubmit={(event: SubmitEvent) => {
-            event.preventDefault();
-            submit();
-          }}
-        >
-          <div class="composer-input-label">
-            <ComposerEditor
-              agentId={undefined}
-              agents={props.agents}
-              value={props.draft}
-              placeholder={t("composer.placeholder.message", { name: props.agent.name })}
-              ariaLabel={t("composer.placeholder.message", { name: props.agent.name })}
-              disabled={transcribing()}
-              focusRequest={props.focusRequest}
-              dictation={{ text: props.voice?.liveText ?? "", final: transcribing() }}
-              onValueChange={(value) => props.onDraftChange(value)}
-              onSubmit={submit}
-            />
-          </div>
-          <div class="composer-primary-actions">
-            <Show when={props.voice} fallback={sendButton()}>
-              {(voice) => (
-                <ComposerVoiceControls
-                  phase={voice().phase}
-                  levels={voice().levels}
-                  elapsedSeconds={voice().elapsedSeconds}
-                  modelProgress={voice().modelProgress}
-                  blocked={voice().blocked}
-                  onStart={() => voice().onStart()}
-                  onCancel={() => voice().onCancel()}
-                  onFinish={() => voice().onFinish()}
-                  send={sendButton()}
-                />
-              )}
-            </Show>
-          </div>
-        </form>
+      {/*
+        The main window's message box: the same row, border, shadow and layouts. The wrap is where the
+        mention picker hangs; without it the picker goes to the page body.
+      */}
+      <div class="composer-wrap agent-dock-composer-wrap">
+        <div class="composer-row agent-dock-composer-row">
+          <form
+            ref={(element) => (composer = element)}
+            class="composer agent-dock-composer"
+            data-compact={props.draft.includes("\n") || textWrapped() ? undefined : ""}
+            onSubmit={(event: SubmitEvent) => {
+              event.preventDefault();
+              submit();
+            }}
+          >
+            <div class="composer-input-label">
+              <ComposerEditor
+                agentId={undefined}
+                agents={props.agents}
+                value={props.draft}
+                placeholder={t("composer.placeholder.message", { name: props.agent.name })}
+                ariaLabel={t("composer.placeholder.message", { name: props.agent.name })}
+                disabled={transcribing()}
+                focusRequest={props.focusRequest}
+                dictation={{ text: props.voice?.liveText ?? "", final: transcribing() }}
+                onValueChange={(value) => props.onDraftChange(value)}
+                onSubmit={submit}
+              />
+            </div>
+            <div class="composer-primary-actions">
+              <Show when={props.voice} fallback={sendButton()}>
+                {(voice) => (
+                  <ComposerVoiceControls
+                    phase={voice().phase}
+                    levels={voice().levels}
+                    elapsedSeconds={voice().elapsedSeconds}
+                    modelProgress={voice().modelProgress}
+                    blocked={voice().blocked}
+                    onStart={() => voice().onStart()}
+                    onCancel={() => voice().onCancel()}
+                    onFinish={() => voice().onFinish()}
+                    send={sendButton()}
+                  />
+                )}
+              </Show>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );
