@@ -387,6 +387,36 @@
   opacity: 0.6;
 }
 
+/*
+ * A new bubble enters as in the main chat: a sent one rises from the message box, a reply grows
+ * from its corner. The end frames name no opacity, so a pending bubble keeps its own.
+ */
+.agent-dock-bubble[data-entering="sent"] {
+  transform-origin: right bottom;
+  animation: agent-dock-bubble-sent var(--openbot-duration-bubble-enter) var(--openbot-ease-bubble) both;
+  /* The host's copy of a sent message continues where its pending bubble stopped. */
+  animation-delay: calc(-1 * var(--agent-dock-entry-elapsed, 0ms));
+}
+
+.agent-dock-bubble[data-entering="received"] {
+  transform-origin: left bottom;
+  animation: agent-dock-bubble-received var(--openbot-duration-bubble-enter) var(--openbot-ease-bubble) both;
+}
+
+@keyframes agent-dock-bubble-sent {
+  from {
+    opacity: 0;
+    transform: translateY(calc(2 * var(--openbot-space-8))) scale(0.8);
+  }
+}
+
+@keyframes agent-dock-bubble-received {
+  from {
+    opacity: 0;
+    transform: translateY(var(--openbot-space-2)) scale(0.9);
+  }
+}
+
 .agent-dock-bubble[data-error] {
   color: var(--openbot-danger-text);
 }
@@ -478,6 +508,16 @@
   margin: var(--openbot-space-2) var(--openbot-space-4) 0;
   color: var(--openbot-danger-text);
   font-size: var(--openbot-text-sm);
+}
+
+/* The row has its own margin, so the wrap adds no padding. */
+.agent-dock-composer-wrap.composer-wrap {
+  padding: 0;
+}
+
+/* The mention picker is 12px narrower on each side than the composer, as in the main window. */
+.agent-dock-composer-wrap .mention-picker {
+  --mention-picker-side-inset: calc(var(--openbot-space-3) + 12px);
 }
 
 /* The main window's message box. It has no "+" menu, so the one-line layout has two columns. */
@@ -632,6 +672,7 @@
   }
 
   .agent-dock-chat,
+  .agent-dock-bubble,
   .agent-dock-typing-dots i {
     animation: none;
   }
