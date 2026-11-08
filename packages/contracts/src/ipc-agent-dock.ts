@@ -12,6 +12,7 @@ import {
   isIdentifier,
   isNullableBoundedString,
 } from "./ipc-bounded-values";
+import { type ConversationReaction, isConversationReaction } from "./ipc-conversation-messages";
 import { isBoolean, isDynamicRecord, isOneOf, isString } from "./runtime-values";
 
 /** The bounds of one presentation. A larger value is not valid, so main rejects the whole presentation. */
@@ -25,6 +26,8 @@ export const AGENT_DOCK_LIMITS = {
   /** The finished-work shelf shows only the newest results; the seats keep the unread count. */
   results: 24,
   resultLabel: 200,
+  /** The reactions that one chat message shows. */
+  reactions: 16,
 } as const;
 
 /** The agent fields that the dock, its chat and the mentions in the chat read. */
@@ -67,6 +70,8 @@ export interface AgentDockMessage {
   kind: "text" | "error";
   body: string;
   attachments: AttachmentSummary[];
+  /** The reactions on the message, from the user and from agents. The dock shows them and does not change them. */
+  reactions: ConversationReaction[];
 }
 
 export interface AgentDockChat {
@@ -313,7 +318,8 @@ function isMessage(value: unknown): value is AgentDockMessage {
     isOneOf(["you", "agent"] as const, value.author) &&
     isOneOf(["text", "error"] as const, value.kind) &&
     isBoundedString(value.body, INPUT_LIMITS.messageText) &&
-    isList(value.attachments, INPUT_LIMITS.attachments, isAttachmentSummary)
+    isList(value.attachments, INPUT_LIMITS.attachments, isAttachmentSummary) &&
+    isList(value.reactions, AGENT_DOCK_LIMITS.reactions, isConversationReaction)
   );
 }
 

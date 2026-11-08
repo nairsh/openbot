@@ -383,6 +383,17 @@
   background: var(--openbot-bubble-received);
 }
 
+/* The reactions sit on the lower edge of the bubble, as in the main chat; the margin keeps them off the next bubble. */
+.agent-dock-bubble:has(> .agent-dock-reactions) {
+  margin-bottom: var(--openbot-space-3);
+}
+
+.agent-dock-reactions {
+  /* The badge is cut out of the panel, not out of the main window canvas. */
+  box-shadow: 0 0 0 3px var(--agent-dock-fill);
+  font-size: var(--openbot-text-md);
+}
+
 .agent-dock-bubble[data-pending] {
   opacity: 0.6;
 }

@@ -61,6 +61,12 @@ const MESSAGES: Record<string, AgentMessage[]> = {
   chief: [
     message("c1", "you", "Can you put the launch plan for Thursday together with @[Research](agent:research)?"),
     message("c2", "agent", "Yes. I am checking the **calendar** and the open tasks first."),
+    // A reaction from the agent on the user's message, and one from the user on the agent's answer.
+    {
+      ...message("c3", "you", "Also move the review to Friday."),
+      reactions: [{ emoji: "👍", actor: { kind: "agent", agentId: "chief" } }],
+    },
+    { ...message("c4", "agent", "Done. The review is on Friday at 14:00."), reaction: "🎉" },
   ],
   research: [
     message("r1", "you", "Compare the three markets we spoke about."),

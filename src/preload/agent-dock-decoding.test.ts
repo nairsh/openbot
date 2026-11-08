@@ -35,7 +35,19 @@ const PRESENTATION: AgentDockPresentation = {
   chats: [
     {
       agentId: "agent-1",
-      messages: [{ id: "message-1", author: "agent", kind: "text", body: "Done.", attachments: [] }],
+      messages: [
+        {
+          id: "message-1",
+          author: "agent",
+          kind: "text",
+          body: "Done.",
+          attachments: [],
+          reactions: [
+            { emoji: "👍", actor: { kind: "user" } },
+            { emoji: "🎉", actor: { kind: "agent", agentId: "agent-1" } },
+          ],
+        },
+      ],
       working: false,
       wait: null,
     },
@@ -65,6 +77,29 @@ describe("agent dock decoding", () => {
     expect(() => decodeAgentDockPresentation({ ...PRESENTATION, agents: [longName] })).toThrow(
       "Invalid agent dock presentation.",
     );
+  });
+
+  it("rejects message reactions that are not emoji, have no actor or are too many", () => {
+    const chat = PRESENTATION.chats[0];
+    const message = chat?.messages[0];
+    if (!chat || !message) throw new Error("The fixture has no message.");
+    const withReactions = (reactions: unknown) => ({
+      ...PRESENTATION,
+      chats: [{ ...chat, messages: [{ ...message, reactions }] }],
+    });
+    const many = Array.from({ length: AGENT_DOCK_LIMITS.reactions + 1 }, () => ({
+      emoji: "👍",
+      actor: { kind: "user" },
+    }));
+    for (const reactions of [
+      many,
+      [{ emoji: "ok", actor: { kind: "user" } }],
+      [{ emoji: "👍" }],
+      [{ emoji: "👍", actor: { kind: "agent", agentId: "" } }],
+      undefined,
+    ]) {
+      expect(() => decodeAgentDockPresentation(withReactions(reactions))).toThrow("Invalid agent dock presentation.");
+    }
   });
 
   it("rejects a finished result that is too long, empty or of an unknown kind", () => {

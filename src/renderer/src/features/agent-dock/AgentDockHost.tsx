@@ -8,10 +8,11 @@ import {
   type AgentDockResult,
   type AgentDockSeatState,
   isAttachmentSummary,
+  isConversationReaction,
 } from "@openbot/contracts/ipc";
 import type { AgentMessage, ComposerAgent } from "@openbot/ui/data";
 import { AgentDock, type AgentDockChatModel } from "@openbot/ui/features/agent-dock/AgentDock";
-import { isDockMessage } from "@openbot/ui/features/agent-dock/AgentDockChat";
+import { dockReactions, isDockMessage } from "@openbot/ui/features/agent-dock/AgentDockChat";
 import { markdownPlainText } from "@openbot/ui/features/conversation/MarkdownMessageText";
 import type { SidebarAgentState } from "@openbot/ui/features/sidebar/sidebar-types";
 import { createEffect, createMemo, createSignal, Match, onCleanup, onSettled, Show, Switch } from "solid-js";
@@ -379,6 +380,17 @@ function dockMessage(message: AgentMessage): AgentDockMessage {
         mimeType: attachment.mimeType,
         previewKind: attachment.previewKind,
         previewUrl: attachment.previewUrl,
+      })),
+    reactions: dockReactions(message)
+      .filter(isConversationReaction)
+      .slice(0, AGENT_DOCK_LIMITS.reactions)
+      // A plain copy: the conversation store gives proxies, which IPC cannot clone.
+      .map((reaction) => ({
+        emoji: reaction.emoji,
+        actor:
+          reaction.actor.kind === "agent"
+            ? { kind: "agent" as const, agentId: reaction.actor.agentId }
+            : { kind: "user" as const },
       })),
   };
 }
