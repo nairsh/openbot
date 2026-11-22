@@ -11,34 +11,21 @@ export type AwaitingReplyState = "asked" | "working" | "replied" | "failed";
 
 export interface AwaitingReplyItem {
   id: string;
-  /** The agent that owes the reply. A remote or removed agent has no profile. */
   agent?: AgentProfile | undefined;
   name: string;
   state: AwaitingReplyState;
-  /** A line under the name, such as the start of a reply that waits in the queue. */
   preview?: string;
-  /** A short note after the state, such as who reads the reply next. */
   detail?: string | undefined;
-  /** The queued delivery of a reply, which the user can steer into the running turn. */
   deliveryId?: string | undefined;
-  /**
-   * What stops an agent that was asked before it can reply: a question, an approval or a browser
-   * takeover in its own chat, or a usage limit. The row names it in place of "Working".
-   */
   wait?: SidebarAgentWait | undefined;
 }
 
 export interface AwaitingReplyListProps {
   items: readonly AwaitingReplyItem[];
-  /** The name of the block for assistive technology. The default is "Waiting for replies". */
   title?: string | undefined;
-  /** Hides the block. It has a close button only when this is set and no agent still works. */
   onDismiss?: () => void;
-  /** Opens the chat of an agent that waits for the user, where the user can answer it. */
   onOpenAgent?: ((agentId: string) => void) | undefined;
-  /** Takes a queued reply into the running turn. Set only while a turn runs. */
   onSteer?: ((deliveryId: string) => void) | undefined;
-  /** Stops the work of a row that is asked or working. A channel sets it for its sub-tasks. */
   onStop?: ((id: string) => void) | undefined;
   class?: string;
 }
@@ -57,11 +44,6 @@ const STATE_LABEL = {
   failed: "chat.awaiting.state.failed",
 } as const;
 
-/**
- * The block above the composer while an agent waits for other agents: one row for each agent it
- * asked, with the state of the answer. It has no header: the rows name the agents that work. It
- * renders nothing when nothing waits.
- */
 export function AwaitingReplies(props: AwaitingReplyListProps) {
   return (
     <Show when={props.items.length > 0}>
@@ -83,7 +65,6 @@ function AwaitingReplyList(props: AwaitingReplyListProps) {
     }
     return t(STATE_LABEL[item.state]);
   };
-  /** The question or the command of a wait, else the line the row has. */
   const preview = (item: AwaitingReplyItem): string | undefined =>
     (item.wait?.kind === "waiting" ? item.wait.detail : null) ?? item.preview;
   const openAction = (item: AwaitingReplyItem) => {
@@ -104,7 +85,6 @@ function AwaitingReplyList(props: AwaitingReplyListProps) {
     if ((item.state !== "asked" && item.state !== "working") || !stop) return undefined;
     return () => stop(item.id);
   };
-  // Every agent replied or failed, so nothing more comes for these rows.
   const settled = () => props.items.every((item) => item.state === "replied" || item.state === "failed");
   return (
     <section
@@ -131,7 +111,6 @@ function AwaitingReplyList(props: AwaitingReplyListProps) {
         <ol class="task-list-items">
           <For each={props.items} keyed={(item) => item.id}>
             {(item, index) => {
-              // Two rows can have the same action word, so the button also names the agent.
               const rowId = createUniqueId();
               return (
                 <li

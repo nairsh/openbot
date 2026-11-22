@@ -13,12 +13,7 @@ import { createEffect, createMemo, createSignal, For, onCleanup, onSettled, Show
 import { useText } from "../../text";
 
 const MESSAGE_TEXT_SELECTOR = "[data-selection-message-id]";
-/**
- * The text of a file in the side panel. `data-selection-file-quote` is its quote id without lines;
- * `data-selection-file-lines` marks text that is the file source, so a selection gives its lines.
- */
 const FILE_TEXT_SELECTOR = "[data-selection-file-quote]";
-/** A view with its own selection actions, such as a side thread. The actions around it leave its text alone. */
 const SCOPE_SELECTOR = "[data-selection-scope]";
 const INTERACTIVE_SELECTOR =
   'a, button, input, textarea, select, [contenteditable="true"], [role="button"], .message-citation';
@@ -27,13 +22,11 @@ const VIEWPORT_MARGIN = 12;
 const TOOLBAR_GAP = 8;
 
 export interface MessageTextSelection {
-  /** The id of the selected message, or the quote id of the selected file passage. */
   messageId: string;
   text: string;
   range: Range;
 }
 
-/** The modifier of the quote chord with Shift and Period: Command on macOS, Control elsewhere. */
 export type QuoteShortcutModifier = "meta" | "ctrl";
 
 export interface SelectionRect {
@@ -90,29 +83,36 @@ export function selectionActionsPosition(
   return { top: clamp(idealTop, VIEWPORT_MARGIN, maximumTop), left, placement };
 }
 
+let closeShownAction: (() => void) | undefined;
+
+export function showSelectionAction(close: () => void): void {
+  if (closeShownAction !== close) closeShownAction?.();
+  closeShownAction = close;
+}
+
+export function releaseSelectionAction(close: () => void): void {
+  if (closeShownAction === close) closeShownAction = undefined;
+}
+
 export function MessageSelectionActions(props: {
   contextKey: string | undefined;
   disabled: boolean;
   onSend: (messageId: string, body: string) => Promise<boolean>;
-  /** Puts the selected text in the composer as a quote. Without it, the toolbar has no Quote action. */
   onQuote?: ((messageId: string, text: string) => void) | undefined;
   quoteShortcut?: QuoteShortcutModifier;
-  /** The `data-selection-scope` element whose text these actions take. Without it, they take the text outside each scope. */
   scope?: HTMLElement | undefined;
 }) {
   const [selection, setSelection] = createSignal<MessageTextSelection | null>(null);
   const [fallbackHighlight, setFallbackHighlight] = createSignal(false);
+  const [documentHolds, setDocumentHolds] = createSignal(true);
   let lastContextKey: string | undefined;
 
   const clearSelection = () => {
-    // The highlight has one name for all actions, so only the actions that hold a selection clear it.
     if (!selection()) return;
     setSelection(null);
     clearPersistentHighlight();
   };
 
-  // Only for deliberate dismissals: the composer is contenteditable, so its caret is the document
-  // selection and clearing it here would wipe the caret out from under the person typing.
   const dismiss = () => {
     clearSelection();
     window.getSelection()?.removeAllRanges();
@@ -121,7 +121,6 @@ export function MessageSelectionActions(props: {
   const quote = () => {
     const active = selection();
     if (!active || !props.onQuote) return;
-    // The composer takes the caret next, so the message selection must go first.
     dismiss();
     props.onQuote(active.messageId, active.text);
   };
@@ -136,6 +135,8 @@ export function MessageSelectionActions(props: {
       clearSelection();
       return;
     }
+    showSelectionAction(clearSelection);
+    setDocumentHolds(true);
     setSelection(next);
   };
 
@@ -155,10 +156,8 @@ export function MessageSelectionActions(props: {
   );
 
   createEffect(
-    () => selection(),
+    () => (documentHolds() ? null : selection()),
     (active) => {
-      // The cleanup clears the highlight of the previous selection. Without a selection, the highlight
-      // can be of other actions, such as those of a side thread, so it stays.
       if (!active) {
         setFallbackHighlight(false);
         return;
@@ -170,8 +169,6 @@ export function MessageSelectionActions(props: {
 
   onSettled(() => {
     const onPointerDown = (event: PointerEvent) => {
-      // A secondary button opens the native context menu, which reads the live selection: dismissing
-      // here would clear the text before Copy ever sees it.
       if (event.button !== 0) return;
       if (event.target instanceof Element && event.target.closest(".selection-actions-layer")) return;
       if (selection()) dismiss();
@@ -182,7 +179,8 @@ export function MessageSelectionActions(props: {
     };
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        dismiss();
+        if (event.target instanceof HTMLElement && event.target.isContentEditable) clearSelection();
+        else dismiss();
         return;
       }
       if (event.target instanceof Element && event.target.closest(".selection-actions-layer")) return;
@@ -193,15 +191,22 @@ export function MessageSelectionActions(props: {
       event.preventDefault();
       quote();
     };
+    const onSelectionChange = () => {
+      const active = selection();
+      if (active) setDocumentHolds(selectionCovers(window.getSelection(), active.range));
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
     window.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("keydown", onKeyDown);
     return () => {
+      document.removeEventListener("selectionchange", onSelectionChange);
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("keydown", onKeyDown);
+      releaseSelectionAction(clearSelection);
       if (selection()) clearPersistentHighlight();
     };
   });
@@ -243,9 +248,7 @@ export function SelectionActionsBar(props: {
   let content: HTMLDivElement | undefined;
   let animationFrame: number | undefined;
   let previousSelectionKey = "";
-  // Counts selection changes. A send that ends after one applies its result to no selection.
   let selectionGeneration = 0;
-  // A new mouse selection dismisses this bar on `pointerdown` and mounts a new one on `pointerup`.
   onCleanup(() => {
     selectionGeneration += 1;
   });
@@ -379,8 +382,6 @@ export function SelectionActionsBar(props: {
     } catch {
       sent = false;
     }
-    // The user selected other text while it sent: the bar now belongs to that selection, or a new bar
-    // shows it. The late reply must not dismiss that selection.
     if (generation !== selectionGeneration) return;
     if (sent) props.onDismiss();
     else setMode("error");
@@ -513,23 +514,7 @@ export function SelectionActionsBar(props: {
                 </Show>
                 <Show when={props.onQuote}>
                   {(onQuote) => (
-                    <Button
-                      variant="ghost"
-                      type="button"
-                      class="selection-actions-control"
-                      aria-label={t("chat.selection.quote")}
-                      aria-keyshortcuts={props.quoteShortcut === "meta" ? "Meta+Shift+Period" : "Control+Shift+Period"}
-                      title={t(
-                        props.quoteShortcut === "meta"
-                          ? "chat.selection.quoteShortcutMac"
-                          : "chat.selection.quoteShortcutOther",
-                      )}
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={() => onQuote()()}
-                    >
-                      <TextQuote class="selection-actions-icon" aria-hidden="true" />
-                      <span class="selection-actions-label">{t("chat.selection.quote")}</span>
-                    </Button>
+                    <QuoteSelectionButton quoteShortcut={props.quoteShortcut} onQuote={() => onQuote()()} />
                   )}
                 </Show>
                 <PresetButton
@@ -616,10 +601,33 @@ function PresetButton(props: { label: string; icon: SolidElement; onSelect: () =
   );
 }
 
-/* The Quote button, so the presets do not clip it. */
+export function QuoteSelectionButton(props: { quoteShortcut: QuoteShortcutModifier | undefined; onQuote: () => void }) {
+  const { t } = useText();
+  return (
+    <Button
+      variant="ghost"
+      type="button"
+      class="selection-actions-control"
+      aria-label={t("chat.selection.quote")}
+      aria-keyshortcuts={props.quoteShortcut === "meta" ? "Meta+Shift+Period" : "Control+Shift+Period"}
+      title={t(
+        props.quoteShortcut === "meta" ? "chat.selection.quoteShortcutMac" : "chat.selection.quoteShortcutOther",
+      )}
+      onPointerDown={(event) => event.preventDefault()}
+      onClick={() => props.onQuote()}
+    >
+      <TextQuote class="selection-actions-icon" aria-hidden="true" />
+      <span class="selection-actions-label">{t("chat.selection.quote")}</span>
+    </Button>
+  );
+}
+
 const QUOTE_ACTION_WIDTH = 84;
 
-function isQuoteShortcut(event: KeyboardEvent, modifier: QuoteShortcutModifier): boolean {
+export function isQuoteShortcut(
+  event: Pick<KeyboardEvent, "metaKey" | "ctrlKey" | "shiftKey" | "altKey" | "code">,
+  modifier: QuoteShortcutModifier,
+): boolean {
   const modifierDown = modifier === "meta" ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
   return modifierDown && event.shiftKey && !event.altKey && event.code === "Period";
 }
@@ -634,7 +642,6 @@ function messageTextBlock(node: Node): HTMLElement | null {
   return element?.closest<HTMLElement>(`${MESSAGE_TEXT_SELECTOR}, ${FILE_TEXT_SELECTOR}`) ?? null;
 }
 
-/** The quote id of a file passage. Source text gives the lines; rendered Markdown names only the file. */
 function fileSelectionQuoteId(block: HTMLElement, range: Range): string | undefined {
   const id = block.dataset.selectionFileQuote;
   const target = id ? fileQuoteTarget(id) : null;
@@ -660,6 +667,19 @@ function rangeIntersectsInteractiveContent(range: Range, root: HTMLElement): boo
       return false;
     }
   });
+}
+
+function selectionCovers(selection: Selection | null, range: Range): boolean {
+  if (selection?.rangeCount !== 1 || selection.isCollapsed) return false;
+  const current = selection.getRangeAt(0);
+  try {
+    return (
+      current.compareBoundaryPoints(Range.END_TO_START, range) < 0 &&
+      current.compareBoundaryPoints(Range.START_TO_END, range) > 0
+    );
+  } catch {
+    return false;
+  }
 }
 
 function installPersistentHighlight(range: Range): boolean {

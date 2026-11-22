@@ -9,23 +9,29 @@ import type {
   MobileConnectedDevice,
   NotificationOpenedEvent,
   UpdateStatus,
+  WorkflowNotificationOpenedEvent,
 } from "@openbot/contracts/ipc";
 import { describe, expect, it } from "vitest";
 import {
   decodeAccountSessions,
   decodeAnalyticsPreference,
   decodeAppAppearancePreference,
+  decodeAppBehaviorPreference,
   decodeAppInfo,
   decodeAppLanguagePreference,
   decodeApprovalAutomationPreference,
   decodeAppSetupState,
+  decodeBillingState,
   decodeCentralAuthState,
   decodeChatWindowTargets,
   decodeCustomAgentResult,
   decodeCustomAgents,
   decodeCustomAgentUsage,
+  decodeCustomServerCheckoutResult,
   decodeDetectedModelServers,
   decodeDiscoverModelsResult,
+  decodeHostedServer,
+  decodeInstalledFonts,
   decodeMobileConnectedDevices,
   decodeMobileConnectTicket,
   decodeNotificationOpenedEvent,
@@ -37,6 +43,7 @@ import {
   decodeUpdateStatus,
   decodeVoiceServerProbe,
   decodeVoiceServerSettings,
+  decodeWorkflowNotificationOpenedEvent,
 } from "./app-decoding";
 
 const omarchyPalette = {
@@ -94,7 +101,6 @@ const codeSent = {
   resendAvailableAt: 1,
 } satisfies CentralAuthState;
 
-// Each value is what main sends, typed as its contract, so it must come back unchanged.
 const voiceServer = {
   address: "http://studio.local:8000/v1",
   hasApiKey: true,
@@ -108,6 +114,24 @@ const voiceServer = {
 };
 
 const valid: [string, (value: unknown) => unknown, unknown][] = [
+  ["an opened custom server checkout", decodeCustomServerCheckoutResult, { opened: true }],
+  ["a custom server checkout with no link", decodeCustomServerCheckoutResult, { opened: false }],
+  [
+    "app behavior with a quit guard",
+    decodeAppBehaviorPreference,
+    {
+      launchAtLogin: true,
+      keepRunningInBackground: false,
+      keepAwake: null,
+      keepAwakeOnBattery: null,
+      quitGuard: "always",
+    },
+  ],
+  [
+    "app behavior with no quit guard",
+    decodeAppBehaviorPreference,
+    { launchAtLogin: true, keepRunningInBackground: false, keepAwake: null, keepAwakeOnBattery: null, quitGuard: null },
+  ],
   ["a voice server", decodeVoiceServerSettings, voiceServer],
   ["no voice server", decodeVoiceServerSettings, null],
   [
@@ -147,6 +171,28 @@ const valid: [string, (value: unknown) => unknown, unknown][] = [
       softwareRendering: true,
     } satisfies AppInfo,
   ],
+  [
+    "app info on a Mac set to a 24-hour clock",
+    decodeAppInfo,
+    {
+      name: "OpenBot",
+      version: "1.0.0",
+      platform: "darwin",
+      variant: "production",
+      hourCycle: "h23",
+    } satisfies AppInfo,
+  ],
+  [
+    "app info on a server with no Dynamic Island",
+    decodeAppInfo,
+    {
+      name: "OpenBot",
+      version: "1.0.0",
+      platform: "linux",
+      variant: "production",
+      dynamicIslandUnavailable: true,
+    } satisfies AppInfo,
+  ],
   ["sent message stats", decodeSentMessageStats, { firstSentAt: "2026-11-01T09:30:00.000Z", sentCount: 12 }],
   ["sent message stats before the first message", decodeSentMessageStats, { firstSentAt: null, sentCount: 0 }],
   [
@@ -167,13 +213,60 @@ const valid: [string, (value: unknown) => unknown, unknown][] = [
   [
     "appearance preference",
     decodeAppAppearancePreference,
-    { appearance: "light", transparentWindow: true, palette: null, palettes: [] } satisfies AppAppearancePreference,
+    {
+      appearance: "light",
+      transparentWindow: true,
+      palette: null,
+      palettes: [],
+      chatBackgroundLight: null,
+      chatBackgroundDark: null,
+      interfaceFont: null,
+      codeFont: null,
+    } satisfies AppAppearancePreference,
   ],
   [
     "appearance preference with a theme palette",
     decodeAppAppearancePreference,
-    { appearance: "dark", transparentWindow: false, palette: "omarchy", palettes: [omarchyPalette] },
+    {
+      appearance: "dark",
+      transparentWindow: false,
+      palette: "omarchy",
+      palettes: [omarchyPalette],
+      chatBackgroundLight: null,
+      chatBackgroundDark: null,
+      interfaceFont: null,
+      codeFont: null,
+    },
   ],
+  [
+    "appearance preference with a chat background for each scheme",
+    decodeAppAppearancePreference,
+    {
+      appearance: "system",
+      transparentWindow: false,
+      palette: null,
+      palettes: [],
+      chatBackgroundLight: "#f1f2ff",
+      chatBackgroundDark: "#162232",
+      interfaceFont: null,
+      codeFont: null,
+    } satisfies AppAppearancePreference,
+  ],
+  [
+    "appearance preference with an interface font and a code font",
+    decodeAppAppearancePreference,
+    {
+      appearance: "dark",
+      transparentWindow: false,
+      palette: null,
+      palettes: [],
+      chatBackgroundLight: null,
+      chatBackgroundDark: null,
+      interfaceFont: "Noto Sans Arabic",
+      codeFont: "JetBrains Mono",
+    } satisfies AppAppearancePreference,
+  ],
+  ["installed fonts", decodeInstalledFonts, ["Al Bayan", "DejaVu Sans", "Noto Kufi Arabic"]],
   ["signed out", decodeCentralAuthState, { status: "signed_out" } satisfies CentralAuthState],
   [
     "signed out after a keyring change",
@@ -244,6 +337,16 @@ const valid: [string, (value: unknown) => unknown, unknown][] = [
   ],
   ["update status", decodeUpdateStatus, updateStatus],
   ["host-managed update status", decodeUpdateStatus, { ...updateStatus, managedByHost: true } satisfies UpdateStatus],
+  [
+    "update status with a staged release",
+    decodeUpdateStatus,
+    { ...updateStatus, phase: "up-to-date", stagedVersion: "0.68.0" } satisfies UpdateStatus,
+  ],
+  [
+    "update status below the minimum version",
+    decodeUpdateStatus,
+    { ...updateStatus, phase: "downloading", requiredVersion: "0.70.0" } satisfies UpdateStatus,
+  ],
   ["update preference", decodeUpdatePreference, { autoDownload: true, allowRemoteUpdates: true, autoInstall: false }],
   ["notification preference", decodeNotificationPreference, { desktopNotifications: true, messagePreview: false }],
   [
@@ -256,12 +359,16 @@ const valid: [string, (value: unknown) => unknown, unknown][] = [
     decodeNotificationOpenedEvent,
     { serverId: "local", agentId: "agent-1", threadId: null, channelId: "channel-1" } satisfies NotificationOpenedEvent,
   ],
+  [
+    "opened workflow notification",
+    decodeWorkflowNotificationOpenedEvent,
+    { serverId: "local", workflowId: "workflow-1" } satisfies WorkflowNotificationOpenedEvent,
+  ],
   ["chat windows", decodeChatWindowTargets, [{ serverId: "local", agentId: "agent-1" }]],
   ["detected model servers", decodeDetectedModelServers, [detectedServer]],
   ["custom agents", decodeCustomAgents, [customAgent, { ...customAgent, id: "qwen", resolvedCommand: null }]],
   ["a custom agent with a usage prompt", decodeCustomAgents, [{ ...customAgent, usagePrompt: "/usage" }]],
   [
-    // The released acp-registry-v1 install codec keeps only the fields that it knew.
     "a registry install result with no usage prompt",
     decodeCustomAgentResult,
     {
@@ -279,6 +386,24 @@ const valid: [string, (value: unknown) => unknown, unknown][] = [
 ];
 
 const malformed: [string, (value: unknown) => unknown, unknown][] = [
+  ["a custom server checkout without a result", decodeCustomServerCheckoutResult, {}],
+  ["a custom server checkout with a text result", decodeCustomServerCheckoutResult, { opened: "yes" }],
+  [
+    "an unknown quit guard",
+    decodeAppBehaviorPreference,
+    {
+      launchAtLogin: true,
+      keepRunningInBackground: false,
+      keepAwake: null,
+      keepAwakeOnBattery: null,
+      quitGuard: "sometimes",
+    },
+  ],
+  [
+    "a missing quit guard",
+    decodeAppBehaviorPreference,
+    { launchAtLogin: true, keepRunningInBackground: false, keepAwake: null, keepAwakeOnBattery: null },
+  ],
   ["sent message stats with a negative count", decodeSentMessageStats, { firstSentAt: null, sentCount: -1 }],
   [
     "app info with an install ID that is not text",
@@ -290,7 +415,16 @@ const malformed: [string, (value: unknown) => unknown, unknown][] = [
     decodeAppInfo,
     { name: "OpenBot", version: "1.0.0", platform: "linux", variant: "production", softwareRendering: "yes" },
   ],
-  // The key never comes back to the renderer, so a record that carries one fails closed.
+  [
+    "app info with an unknown hour cycle",
+    decodeAppInfo,
+    { name: "OpenBot", version: "1.0.0", platform: "darwin", variant: "production", hourCycle: "h24" },
+  ],
+  [
+    "app info with a Dynamic Island availability that is not a boolean",
+    decodeAppInfo,
+    { name: "OpenBot", version: "1.0.0", platform: "linux", variant: "production", dynamicIslandUnavailable: "yes" },
+  ],
   ["a voice server with its key", decodeVoiceServerSettings, { ...voiceServer, apiKey: "sk-secret" }],
   [
     "a voice server that dictates with no model",
@@ -357,6 +491,63 @@ const malformed: [string, (value: unknown) => unknown, unknown][] = [
       palettes: [{ ...omarchyPalette, colors: { canvas: "#1a1b26" } }],
     },
   ],
+  [
+    "appearance preference with no chat background",
+    decodeAppAppearancePreference,
+    { appearance: "dark", transparentWindow: false, palette: null, palettes: [] },
+  ],
+  [
+    "appearance preference with no font",
+    decodeAppAppearancePreference,
+    {
+      appearance: "dark",
+      transparentWindow: false,
+      palette: null,
+      palettes: [],
+      chatBackgroundLight: null,
+      chatBackgroundDark: null,
+    },
+  ],
+  [
+    "a font name that ends the CSS string",
+    decodeAppAppearancePreference,
+    {
+      appearance: "dark",
+      transparentWindow: false,
+      palette: null,
+      palettes: [],
+      chatBackgroundLight: null,
+      chatBackgroundDark: null,
+      interfaceFont: 'Arial"; background: url(x)',
+      codeFont: null,
+    },
+  ],
+  ["an installed font with a semicolon", decodeInstalledFonts, ["Arial", "Menlo; color: red"]],
+  ["installed fonts that are not a list", decodeInstalledFonts, "Arial"],
+  [
+    "a chat background that is not a hex color",
+    decodeAppAppearancePreference,
+    {
+      appearance: "dark",
+      transparentWindow: false,
+      palette: null,
+      palettes: [],
+      chatBackgroundLight: null,
+      chatBackgroundDark: "red; background: url(x)",
+    },
+  ],
+  [
+    "a chat background with an alpha channel",
+    decodeAppAppearancePreference,
+    {
+      appearance: "light",
+      transparentWindow: false,
+      palette: null,
+      palettes: [],
+      chatBackgroundLight: "#f1f2ff00",
+      chatBackgroundDark: null,
+    },
+  ],
   ["an unknown account status", decodeCentralAuthState, { status: "banned" }],
   ["signed out with an unknown reason", decodeCentralAuthState, { status: "signed_out", reason: "expired" }],
   ["signed in without a user", decodeCentralAuthState, { status: "signed_in" }],
@@ -366,6 +557,12 @@ const malformed: [string, (value: unknown) => unknown, unknown][] = [
   ["account sessions that are not a list", decodeAccountSessions, { sessionId: "s" }],
   ["update status in an unknown phase", decodeUpdateStatus, { ...updateStatus, phase: "done" }],
   ["update status with an unknown failure", decodeUpdateStatus, { ...updateStatus, errorCode: "boom" }],
+  ["update status with a staged release that is not text", decodeUpdateStatus, { ...updateStatus, stagedVersion: 68 }],
+  [
+    "update status with a minimum version that is not text",
+    decodeUpdateStatus,
+    { ...updateStatus, requiredVersion: 70 },
+  ],
   ["update preference without a switch", decodeUpdatePreference, null],
   ["notification preference without a switch", decodeNotificationPreference, { desktopNotifications: "yes" }],
   ["opened notification without an agent", decodeNotificationOpenedEvent, { serverId: "local", threadId: null }],
@@ -374,12 +571,11 @@ const malformed: [string, (value: unknown) => unknown, unknown][] = [
     decodeNotificationOpenedEvent,
     { serverId: "local", agentId: "agent-1", threadId: null, channelId: 7 },
   ],
+  ["opened workflow notification without a workflow", decodeWorkflowNotificationOpenedEvent, { serverId: "local" }],
   ["a chat window without an agent", decodeChatWindowTargets, [{ serverId: "local" }]],
   ["chat windows that are not a list", decodeChatWindowTargets, { serverId: "local", agentId: "agent-1" }],
-  // A scan row never carries a credential, so one that does is refused with the whole list.
   ["a detected server with a key", decodeDetectedModelServers, [{ ...detectedServer, apiKey: "sk-x" }]],
   ["a detected server with headers", decodeDetectedModelServers, [{ ...detectedServer, headers: [] }]],
-  // A custom agent summary never carries an environment value, so one that does is refused with the whole list.
   ["a custom agent with its environment", decodeCustomAgents, [{ ...customAgent, env: [] }]],
   ["a custom agent with its ciphertext", decodeCustomAgents, [{ ...customAgent, secret: "c2VhbGVk" }]],
   ["a custom agent with a value", decodeCustomAgents, [{ ...customAgent, value: "sk-x" }]],
@@ -430,11 +626,10 @@ describe("app decoding", () => {
 
 const AGENT_ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 
-// A Marketplace link began in a URL a web page chose. Only an agent id or a skill slug of the right
-// form reaches the renderer, with no other field; anything else is no link at all.
 describe("pending Marketplace listing", () => {
   it.each([
     ["an agent", { kind: "agent", id: AGENT_ID }],
+    ["a curated agent", { kind: "agent", id: "openbot-curated-agent-copy-editor" }],
     ["a skill", { kind: "skill", id: "release-notes" }],
   ])("keeps %s", (_name, value) => {
     expect(decodePendingMarketplaceListing(value)).toEqual(value);
@@ -451,8 +646,10 @@ describe("pending Marketplace listing", () => {
     ["no link", null],
     ["a bare slug", "release-notes"],
     ["an unknown kind", { kind: "plugin", id: "release-notes" }],
-    ["an agent with a slug", { kind: "agent", id: "release-notes" }],
     ["an agent id in upper case", { kind: "agent", id: AGENT_ID.toUpperCase() }],
+    ["an agent with a path", { kind: "agent", id: "../account" }],
+    ["an agent with a dot", { kind: "agent", id: "agent.md" }],
+    ["an agent id over 128 characters", { kind: "agent", id: "a".repeat(129) }],
     ["a skill with a path", { kind: "skill", id: "../account" }],
     ["a skill with a dot", { kind: "skill", id: "notes.md" }],
     ["a skill slug over 64 characters", { kind: "skill", id: "a".repeat(65) }],
@@ -460,5 +657,60 @@ describe("pending Marketplace listing", () => {
     ["an id that is not text", { kind: "agent", id: 42 }],
   ])("refuses %s", (_name, value) => {
     expect(decodePendingMarketplaceListing(value)).toBeNull();
+  });
+});
+
+describe("server storage", () => {
+  const server = {
+    deletionScheduledAt: null,
+    serverId: "server-1",
+    name: "Server",
+    size: "small",
+    plan: "starter",
+    interval: "month",
+    currency: "eur",
+    state: "running",
+    error: null,
+    createdAt: "2026-11-11T12:00:00.000Z",
+    updatedAt: "2026-11-11T12:00:00.000Z",
+  };
+  const plan = {
+    subscriptionId: "sub_1",
+    serverId: "server-1",
+    serverName: "Server",
+    plan: "starter",
+    interval: "month",
+    currency: "eur",
+    amount: 900,
+    status: "active",
+    currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
+  };
+  const state = (storageGb?: unknown) => ({
+    available: true,
+    hasCustomer: true,
+    servers: [storageGb === undefined ? plan : { ...plan, storageGb }],
+  });
+
+  it("keeps the storage of a hosted server and of a plan", () => {
+    expect(decodeHostedServer({ ...server, storageGb: 25 })).toEqual({ ...server, storageGb: 25 });
+    expect(decodeBillingState(state(25))).toEqual(state(25));
+  });
+
+  it("keeps a server and a plan from an account server that sends no storage", () => {
+    expect(decodeHostedServer(server)).toEqual(server);
+    expect(decodeBillingState(state())).toEqual(state());
+  });
+
+  it.each([
+    ["zero", 0],
+    ["a negative number", -25],
+    ["a fraction", 25.5],
+    ["text", "25"],
+    ["null", null],
+    ["a number that is not safe", 2 ** 60],
+  ])("leaves out a storage that is %s", (_name, storageGb) => {
+    expect(decodeHostedServer({ ...server, storageGb })).toEqual(server);
+    expect(decodeBillingState(state(storageGb))).toEqual(state());
   });
 });

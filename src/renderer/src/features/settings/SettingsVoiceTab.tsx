@@ -1,28 +1,39 @@
 import {
   AUTOMATIC_VOICE_LANGUAGE,
+  CLOUD_SPEECH_MODELS,
   CODEX_LIVE_VOICES,
   type CodexLiveVoice,
+  cloudSpeechModel,
+  type DictationKeyProvider,
+  ELEVENLABS_SPEECH_VOICES,
   ELEVENLABS_VOICE_MODEL_ID,
+  isElevenLabsSpeechVoice,
+  isSpeechVoice,
+  isVoiceModelId,
+  isXaiSpeechVoice,
   modelLanguage,
   SPEECH_MODEL,
+  SPEECH_MODEL_ID,
   SPEECH_SPEEDS,
   SPEECH_VOICES,
-  type SpeechModelStatus,
+  type SpeechKeyProvider,
+  type SpeechModelId,
   type SpeechSpeed,
   type SpeechVoice,
   VOICE_MODELS,
+  VOICE_TURN_PAUSES,
   type VoiceLanguage,
+  type VoiceModelId,
   type VoiceModelInfo,
-  type VoiceModelStatus,
+  type VoiceTurnPause,
   WHISPER_LANGUAGES,
   type WhisperLanguage,
+  XAI_SPEECH_VOICES,
 } from "@openbot/contracts/ipc";
+import { shortVoiceServerModel, voiceServerHost } from "@openbot/contracts/voice-server";
 import type { AppTextKey } from "@openbot/i18n";
 import {
-  Badge,
   Button,
-  Download,
-  Input,
   Item,
   ItemActions,
   ItemContent,
@@ -30,8 +41,6 @@ import {
   ItemGroup,
   ItemTitle,
   Play,
-  Progress,
-  RefreshCw,
   Select,
   SelectContent,
   SelectItem,
@@ -41,11 +50,22 @@ import {
   Square,
   SwitchField,
 } from "@openbot/ui";
+import { TalkKeyRecorder } from "@openbot/ui/features/settings/TalkKeyRecorder";
 import { useText } from "@openbot/ui/text";
-import { createMemo, createSignal, createStore, For, Show } from "solid-js";
+import { createMemo, createSignal, Show } from "solid-js";
+import { setVoiceTalkKey, useVoiceTalkKey } from "../conversation/voice-talk-key";
 import type { CodexLiveAccess } from "../speech/codex-live-access";
+import { type LiveVoiceAccountChoice, LiveVoiceAccountRow } from "./LiveVoiceAccountRow";
 import type { SettingsVoiceStore } from "./settings-voice-store";
-import { shortModel, VoiceServerDialog, voiceServerHost } from "./VoiceServerDialog";
+import {
+  type ModelChoice,
+  type ModelDownload,
+  ModelDownloadToasts,
+  type ModelFile,
+  VoiceKeyRow,
+  VoiceModelRow,
+} from "./VoiceModelRow";
+import { VoiceServerDialog } from "./VoiceServerDialog";
 
 const MODEL_DESCRIPTION = {
   "parakeet-tdt-0.6b-v3": "settings.voice.model.parakeet.description",
@@ -54,16 +74,37 @@ const MODEL_DESCRIPTION = {
   "whisper-turbo": "settings.voice.model.whisper.description",
   "cohere-transcribe-03-2026": "settings.voice.model.cohere.description",
   [ELEVENLABS_VOICE_MODEL_ID]: "settings.voice.model.elevenlabs.description",
+  "groq-whisper-large-v3-turbo": "settings.voice.model.groqTurbo.description",
+  "groq-whisper-large-v3": "settings.voice.model.groqLarge.description",
 } as const satisfies Record<VoiceModelInfo["id"], AppTextKey>;
 
-/** The language that the model uses, and why it cannot be set, for each model that takes no language. */
+const SPEECH_MODEL_DESCRIPTION = {
+  [SPEECH_MODEL_ID]: "settings.voice.speech.model.description",
+  "elevenlabs-flash-v2.5": "settings.voice.speech.model.flash.description",
+  "elevenlabs-multilingual-v2": "settings.voice.speech.model.multilingual.description",
+  "elevenlabs-v3": "settings.voice.speech.model.v3.description",
+  "elevenlabs-v4-turbo": "settings.voice.speech.model.v4Turbo.description",
+  "elevenlabs-v4": "settings.voice.speech.model.v4.description",
+  "xai-tts": "settings.voice.speech.model.xai.description",
+} as const satisfies Record<SpeechModelId, AppTextKey>;
+
+const SPEECH_CHOICES: readonly ModelChoice<SpeechModelId>[] = [
+  { id: SPEECH_MODEL_ID, name: SPEECH_MODEL.name, place: "local" },
+  ...CLOUD_SPEECH_MODELS.map((model) => ({ id: model.id, name: model.name, place: model.provider })),
+];
+
+const VOICE_OPTIONS: Record<"local" | SpeechKeyProvider, string[]> = {
+  local: [...SPEECH_VOICES],
+  elevenlabs: [...ELEVENLABS_SPEECH_VOICES],
+  xai: [...XAI_SPEECH_VOICES],
+};
+
 const FIXED_LANGUAGE: Partial<Record<VoiceModelInfo["id"], { language: VoiceLanguage; description: AppTextKey }>> = {
   "parakeet-tdt-0.6b-v3": { language: AUTOMATIC_VOICE_LANGUAGE, description: "settings.voice.language.modelDetects" },
   "parakeet-unified-en-0.6b": { language: "en", description: "settings.voice.language.parakeetUnifiedEnglishOnly" },
   "bark-3.0-plus": { language: "en", description: "settings.voice.language.englishOnly" },
 };
 
-/** `jw` is Whisper's code for Javanese, whose catalog name is under `jv`. */
 const LANGUAGE_NAME = {
   af: "language.name.af",
   am: "language.name.am",
@@ -141,35 +182,32 @@ const LANGUAGE_NAME = {
   zh: "language.name.zh",
 } as const satisfies Record<WhisperLanguage, AppTextKey>;
 
-/** The country of a language's flag: the likely region of the language, as `Intl.Locale` gives it. */
 function flagFor(language: VoiceLanguage): string {
   if (language === AUTOMATIC_VOICE_LANGUAGE) return "🌐";
   try {
     const region = new Intl.Locale(language === "jw" ? "jv" : language).maximize().region;
     if (region && /^[A-Z]{2}$/u.test(region))
       return String.fromCodePoint(...[...region].map((letter) => 0x1f1e6 + letter.charCodeAt(0) - 65));
-  } catch {
-    // A tag the engine does not know shows no flag.
-  }
+  } catch {}
   return "🌐";
 }
 
-/** `automatic` lets OpenAI choose the voice of live voice. */
 type LiveVoiceChoice = CodexLiveVoice | "automatic";
 
 interface SettingsVoiceTabProps {
   store: SettingsVoiceStore;
   selectMount: HTMLElement | undefined;
   codexLiveAccess?: CodexLiveAccess | undefined;
-  /** Opens the Providers section of this computer, where Codex signs in. */
   onConnectCodex?: (() => void) | undefined;
+  liveVoiceAccount?: LiveVoiceAccountChoice | undefined;
+  platform?: "darwin" | "win32" | "linux" | undefined;
 }
 
 export function SettingsVoiceTab(props: SettingsVoiceTabProps) {
-  const { t, format, errorMessage } = useText();
+  const { t, format } = useText();
+  const talkKey = useVoiceTalkKey(() => props.platform);
   const settings = () => props.store.state.settings;
   const activeModel = () => VOICE_MODELS.find((model) => model.id === settings()?.modelId);
-  /** A retired model shows only while it is in use or has files on this computer. */
   const shownModels = createMemo(() =>
     VOICE_MODELS.filter(
       (model) =>
@@ -180,19 +218,12 @@ export function SettingsVoiceTab(props: SettingsVoiceTabProps) {
     ),
   );
   const server = () => props.store.state.server;
-  /** While the user's own server takes dictation, no model on this computer is in use. */
   const serverDictates = () => server()?.routes.dictation === true;
-  /** While the user's own server reads replies, Supertonic's voices do not apply. */
   const serverSpeaks = () => server()?.routes.speech === true;
-  /** The server gets the language that the user sets, so a local model's fixed language does not apply. */
   const fixedLanguage = () => {
     const model = activeModel();
     return model && !model.supportsLanguage && !serverDictates() ? FIXED_LANGUAGE[model.id] : undefined;
   };
-  /**
-   * A model with its own languages, such as Cohere Transcribe, offers only those and no automatic.
-   * A memo, so that a save keeps the same list and the options do not change under the Select.
-   */
   const modelLanguages = createMemo(() => (serverDictates() ? undefined : activeModel()?.languages));
   const shownLanguage = (): VoiceLanguage | null => {
     const fixed = fixedLanguage();
@@ -219,47 +250,136 @@ export function SettingsVoiceTab(props: SettingsVoiceTabProps) {
     return own ? sorted : [AUTOMATIC_VOICE_LANGUAGE, ...sorted];
   });
 
-  // The key is never read back: main has no getter for it, and the field clears once it is saved.
-  const [apiKey, setApiKey] = createStore({ draft: "", saving: false });
-  const saveApiKey = async () => {
-    const key = apiKey.draft.trim();
-    if (!key || apiKey.saving) return;
-    setApiKey((draft) => {
-      draft.saving = true;
-    });
-    const saved = await props.store.saveApiKey(key);
-    setApiKey((draft) => {
-      draft.saving = false;
-      if (saved) draft.draft = "";
-    });
-  };
-
-  const downloadText = (bytes: number, status: VoiceModelStatus | SpeechModelStatus | null) => {
-    if (status?.phase === "downloading")
-      return t("settings.voice.model.downloading", {
-        received: format.fileSize(Math.round((bytes * (status.progress ?? 0)) / 100)),
-        total: format.fileSize(bytes),
-      });
-    if (status?.phase === "error") return errorMessage(status.message, t("settings.voice.model.failed"));
-    return t("settings.voice.model.size", { size: format.fileSize(bytes) });
-  };
-  const statusText = (model: VoiceModelInfo, status: VoiceModelStatus | null) => {
-    if (model.kind === "cloud")
-      return status?.phase === "ready" ? t("settings.voice.model.keySaved") : t("settings.voice.model.keyMissing");
-    return downloadText(model.bytes, status);
-  };
-
-  const [editingServer, setEditingServer] = createSignal(false);
-
   const speech = () => props.store.state.speech;
-  const speechPhase = () => speech().status?.phase;
+  const pauseName = (pause: VoiceTurnPause) =>
+    t("settings.voice.pause.seconds", { seconds: format.number(pause / 1_000) });
   const voiceName = (voice: SpeechVoice) =>
     t(voice.startsWith("F") ? "settings.voice.speech.voice.female" : "settings.voice.speech.voice.male", {
       number: voice.slice(1),
     });
 
+  const elevenLabsKeySaved = () => props.store.state.statuses[ELEVENLABS_VOICE_MODEL_ID]?.phase === "ready";
+  const cloudProvider = (): DictationKeyProvider | undefined => {
+    const model = activeModel();
+    return model?.kind === "cloud" ? model.provider : undefined;
+  };
+  const cloudKeySaved = () => {
+    const id = settings()?.modelId;
+    return id ? props.store.state.statuses[id]?.phase === "ready" : false;
+  };
+  const saveCloudKey = (provider: DictationKeyProvider, key: string) =>
+    provider === "elevenlabs"
+      ? props.store.saveSpeechApiKey(provider, key)
+      : props.store.saveDictationApiKey(provider, key);
+  const removeCloudKey = (provider: DictationKeyProvider) =>
+    void (provider === "elevenlabs"
+      ? props.store.removeSpeechApiKey(provider)
+      : props.store.removeDictationApiKey(provider));
+  const dictationChoices = createMemo((): ModelChoice<VoiceModelId>[] =>
+    shownModels().map((model) => ({
+      id: model.id,
+      name: model.name,
+      place: model.kind === "cloud" ? model.provider : "local",
+    })),
+  );
+  const dictationDescription = () => {
+    const model = activeModel();
+    return model ? t(MODEL_DESCRIPTION[model.id]) : "";
+  };
+  const dictationNote = () => (serverDictates() ? t("settings.voice.model.serverDictates") : undefined);
+  const dictationAction = () => {
+    const model = activeModel();
+    if (!model || !serverDictates()) return undefined;
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        type="button"
+        aria-label={t("settings.voice.model.useLabel", { name: model.name })}
+        onClick={() => props.store.useModel(model.id)}
+      >
+        {t("settings.voice.model.use")}
+      </Button>
+    );
+  };
+  const dictationFile = (): ModelFile | null => {
+    const model = activeModel();
+    return model?.kind === "local"
+      ? { bytes: model.bytes, status: props.store.state.statuses[model.id] ?? null }
+      : null;
+  };
+
+  const speechModel = () => speech().settings?.modelId;
+  const speechCloud = () => {
+    const id = speechModel();
+    return id ? cloudSpeechModel(id) : undefined;
+  };
+  const speechStatus = () => {
+    const status = speech().status;
+    return status && status.modelId === speechModel() ? status : null;
+  };
+  const speechNote = () => (serverSpeaks() ? t("settings.voice.speech.serverSpeaks") : undefined);
+  const speechReady = () => speechStatus()?.phase === "ready";
+  const speechKeySaved = (provider: SpeechKeyProvider) =>
+    provider === "elevenlabs" ? elevenLabsKeySaved() : speechStatus()?.phase === "ready";
+  const speechFile = (): ModelFile | null =>
+    speechModel() === SPEECH_MODEL_ID ? { bytes: SPEECH_MODEL.bytes, status: speechStatus() } : null;
+  const speechDescription = (): AppTextKey => {
+    const id = speechModel();
+    return id ? SPEECH_MODEL_DESCRIPTION[id] : "settings.voice.speech.model.description";
+  };
+
+  const voiceOptions = (): string[] => VOICE_OPTIONS[speechCloud()?.provider ?? "local"];
+  const chosenVoice = (): string | null => {
+    const saved = speech().settings;
+    if (!saved) return null;
+    const provider = speechCloud()?.provider;
+    if (provider === "elevenlabs") return saved.elevenLabsVoice;
+    if (provider === "xai") return saved.xaiVoice;
+    return saved.voice;
+  };
+  const anyVoiceName = (voice: string) =>
+    isSpeechVoice(voice) ? voiceName(voice) : voice.charAt(0).toUpperCase() + voice.slice(1);
+  const chooseVoice = (voice: string) => {
+    if (voice === chosenVoice()) return;
+    if (isSpeechVoice(voice)) props.store.setSpeechVoice(voice);
+    else if (isElevenLabsSpeechVoice(voice)) props.store.setElevenLabsVoice(voice);
+    else if (isXaiSpeechVoice(voice)) props.store.setXaiVoice(voice);
+  };
+
+  const downloads = createMemo((): ModelDownload[] => {
+    const local: ModelDownload[] = VOICE_MODELS.flatMap((model) => {
+      const status = props.store.state.statuses[model.id];
+      return model.kind === "local" && status
+        ? [{ id: model.id, name: model.name, progress: status.progress ?? 0, ready: status.phase === "ready" }]
+        : [];
+    });
+    const status = speech().status;
+    if (status?.modelId === SPEECH_MODEL_ID)
+      local.push({
+        id: SPEECH_MODEL_ID,
+        name: SPEECH_MODEL.name,
+        progress: status.progress ?? 0,
+        ready: status.phase === "ready",
+      });
+    return local;
+  });
+  const running = createMemo(() => {
+    const ids = VOICE_MODELS.filter((model) => props.store.state.statuses[model.id]?.phase === "downloading").map(
+      (model): string => model.id,
+    );
+    const status = speech().status;
+    if (status?.modelId === SPEECH_MODEL_ID && status.phase === "downloading") ids.push(SPEECH_MODEL_ID);
+    return ids;
+  });
+  const cancelDownload = (id: string) => {
+    if (id === SPEECH_MODEL_ID) props.store.cancelSpeech();
+    else if (isVoiceModelId(id)) props.store.cancel(id);
+  };
+
+  const [editingServer, setEditingServer] = createSignal(false);
+
   const liveVoice = (): LiveVoiceChoice => speech().settings?.codexLiveVoice ?? "automatic";
-  /** The voices' own names, which stay the same in each language. */
   const liveVoiceName = (voice: LiveVoiceChoice) =>
     voice === "automatic" ? t("settings.voice.language.automatic") : voice.charAt(0).toUpperCase() + voice.slice(1);
 
@@ -280,127 +400,35 @@ export function SettingsVoiceTab(props: SettingsVoiceTabProps) {
         title={t("settings.voice.dictation.section")}
       >
         <ItemGroup class="settings-modal-card">
-          <For each={shownModels()}>
-            {(model) => {
-              const status = () => props.store.state.statuses[model.id];
-              const phase = () => status()?.phase;
-              const inUse = () => settings()?.modelId === model.id && !serverDictates();
-              return (
-                <Item class="settings-modal-row">
-                  <ItemContent>
-                    <ItemTitle>{model.name}</ItemTitle>
-                    <ItemDescription>{t(MODEL_DESCRIPTION[model.id])}</ItemDescription>
-                    <ItemDescription aria-live="polite">{statusText(model, status())}</ItemDescription>
-                    <Show when={phase() === "downloading"}>
-                      <Progress
-                        value={status()?.progress ?? 0}
-                        aria-label={t("settings.voice.model.progressLabel", { name: model.name })}
-                      />
-                    </Show>
-                    <Show when={model.kind === "cloud" && phase() === "missing"}>
-                      <div class="settings-voice-key">
-                        <Input
-                          type="password"
-                          size="sm"
-                          autocomplete="off"
-                          spellcheck={false}
-                          aria-label={t("settings.voice.apiKey.label")}
-                          placeholder={t("settings.voice.apiKey.placeholder")}
-                          value={apiKey.draft}
-                          disabled={apiKey.saving}
-                          onValueChange={(value) =>
-                            setApiKey((draft) => {
-                              draft.draft = value;
-                            })
-                          }
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") void saveApiKey();
-                          }}
-                        />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          type="button"
-                          disabled={!apiKey.draft.trim() || apiKey.saving}
-                          onClick={() => void saveApiKey()}
-                        >
-                          {t("settings.voice.apiKey.save")}
-                        </Button>
-                      </div>
-                    </Show>
-                  </ItemContent>
-                  <ItemActions>
-                    {/* The selected model is in use before its download too: dictation downloads it. */}
-                    <Show when={inUse()}>
-                      <Badge variant="secondary">{t("settings.voice.model.inUse")}</Badge>
-                    </Show>
-                    <Show when={model.kind === "cloud" && phase() === "ready"}>
-                      <Button variant="ghost" size="sm" type="button" onClick={() => void props.store.removeApiKey()}>
-                        {t("settings.voice.apiKey.remove")}
-                      </Button>
-                    </Show>
-                    <Show when={model.kind === "local" && phase() === "missing"}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        type="button"
-                        aria-label={t("settings.voice.model.downloadLabel", { name: model.name })}
-                        onClick={() => props.store.download(model.id)}
-                      >
-                        <Download size={14} aria-hidden="true" />
-                        {t("common.download")}
-                      </Button>
-                    </Show>
-                    <Show when={phase() === "downloading"}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        type="button"
-                        aria-label={t("settings.voice.model.cancelLabel", { name: model.name })}
-                        onClick={() => props.store.cancel(model.id)}
-                      >
-                        {t("common.cancel")}
-                      </Button>
-                    </Show>
-                    <Show when={phase() === "error"}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        type="button"
-                        aria-label={t("settings.voice.model.retryLabel", { name: model.name })}
-                        onClick={() => props.store.download(model.id)}
-                      >
-                        <RefreshCw size={14} aria-hidden="true" />
-                        {t("common.tryAgain")}
-                      </Button>
-                    </Show>
-                    <Show when={phase() === "ready" && settings() && !inUse()}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        type="button"
-                        aria-label={t("settings.voice.model.useLabel", { name: model.name })}
-                        onClick={() => props.store.useModel(model.id)}
-                      >
-                        {t("settings.voice.model.use")}
-                      </Button>
-                    </Show>
-                    <Show when={model.kind === "local" && phase() === "ready"}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        type="button"
-                        aria-label={t("settings.voice.model.removeLabel", { name: model.name })}
-                        onClick={() => props.store.remove(model.id)}
-                      >
-                        {t("common.remove")}
-                      </Button>
-                    </Show>
-                  </ItemActions>
-                </Item>
-              );
+          <VoiceModelRow<VoiceModelId>
+            choices={dictationChoices()}
+            value={settings()?.modelId ?? null}
+            onChoose={(id) => props.store.useModel(id)}
+            description={dictationDescription()}
+            note={dictationNote()}
+            file={dictationFile()}
+            onDownload={() => {
+              const id = settings()?.modelId;
+              if (id) props.store.download(id);
             }}
-          </For>
+            onRemove={() => {
+              const id = settings()?.modelId;
+              if (id) props.store.remove(id);
+            }}
+            action={dictationAction()}
+            disabled={!settings()}
+            mount={props.selectMount}
+          />
+          <Show when={cloudProvider()} keyed>
+            {(provider) => (
+              <VoiceKeyRow
+                provider={provider}
+                saved={cloudKeySaved()}
+                onSave={(key) => saveCloudKey(provider, key)}
+                onRemove={() => removeCloudKey(provider)}
+              />
+            )}
+          </Show>
           <Item data-settings-row="settings.voice.language.section" class="settings-modal-row">
             <ItemContent>
               <ItemTitle>{t("settings.voice.language.section")}</ItemTitle>
@@ -429,72 +457,62 @@ export function SettingsVoiceTab(props: SettingsVoiceTabProps) {
               </Select>
             </ItemActions>
           </Item>
+          <Item data-settings-row="settings.voice.pause.title" class="settings-modal-row">
+            <ItemContent>
+              <ItemTitle>{t("settings.voice.pause.title")}</ItemTitle>
+              <ItemDescription>{t("settings.voice.pause.description")}</ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <Select<VoiceTurnPause>
+                class="settings-modal-select"
+                options={[...VOICE_TURN_PAUSES]}
+                value={speech().settings?.turnPauseMs ?? null}
+                onChange={(next) => next && props.store.setTurnPause(next)}
+                disabled={!speech().settings}
+                placement="bottom-end"
+                itemComponent={(selectProps) => (
+                  <SelectItem item={selectProps.item}>{pauseName(selectProps.item.rawValue)}</SelectItem>
+                )}
+              >
+                <SelectTrigger size="sm" aria-label={t("settings.voice.pause.title")}>
+                  <SelectValue<VoiceTurnPause>>
+                    {(state) => {
+                      const pause = state.selectedOption();
+                      return pause && pauseName(pause);
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent mount={props.selectMount} />
+              </Select>
+            </ItemActions>
+          </Item>
         </ItemGroup>
       </SettingsSection>
 
       <SettingsSection title={t("settings.voice.speech.section")}>
         <ItemGroup class="settings-modal-card">
-          <Item class="settings-modal-row">
-            <ItemContent>
-              <ItemTitle>{SPEECH_MODEL.name}</ItemTitle>
-              <ItemDescription>{t("settings.voice.speech.model.description")}</ItemDescription>
-              <ItemDescription aria-live="polite">{downloadText(SPEECH_MODEL.bytes, speech().status)}</ItemDescription>
-              <Show when={speechPhase() === "downloading"}>
-                <Progress
-                  value={speech().status?.progress ?? 0}
-                  aria-label={t("settings.voice.model.progressLabel", { name: SPEECH_MODEL.name })}
-                />
-              </Show>
-            </ItemContent>
-            <ItemActions>
-              <Show when={speechPhase() === "missing"}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  type="button"
-                  aria-label={t("settings.voice.model.downloadLabel", { name: SPEECH_MODEL.name })}
-                  onClick={() => props.store.downloadSpeech()}
-                >
-                  <Download size={14} aria-hidden="true" />
-                  {t("common.download")}
-                </Button>
-              </Show>
-              <Show when={speechPhase() === "downloading"}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  type="button"
-                  aria-label={t("settings.voice.model.cancelLabel", { name: SPEECH_MODEL.name })}
-                  onClick={() => props.store.cancelSpeech()}
-                >
-                  {t("common.cancel")}
-                </Button>
-              </Show>
-              <Show when={speechPhase() === "error"}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  type="button"
-                  aria-label={t("settings.voice.model.retryLabel", { name: SPEECH_MODEL.name })}
-                  onClick={() => props.store.downloadSpeech()}
-                >
-                  <RefreshCw size={14} aria-hidden="true" />
-                  {t("common.tryAgain")}
-                </Button>
-              </Show>
-              <Show when={speechPhase() === "ready"}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  type="button"
-                  aria-label={t("settings.voice.model.removeLabel", { name: SPEECH_MODEL.name })}
-                  onClick={() => props.store.removeSpeech()}
-                >
-                  {t("common.remove")}
-                </Button>
-              </Show>
-            </ItemActions>
-          </Item>
+          <VoiceModelRow<SpeechModelId>
+            choices={SPEECH_CHOICES}
+            value={speechModel() ?? null}
+            onChoose={(id) => props.store.setSpeechModel(id)}
+            description={t(speechDescription())}
+            note={speechNote()}
+            file={speechFile()}
+            onDownload={() => props.store.downloadSpeech()}
+            onRemove={() => props.store.removeSpeech()}
+            disabled={!speech().settings}
+            mount={props.selectMount}
+          />
+          <Show when={speechCloud()?.provider} keyed>
+            {(provider) => (
+              <VoiceKeyRow
+                provider={provider}
+                saved={speechKeySaved(provider)}
+                onSave={(key) => props.store.saveSpeechApiKey(provider, key)}
+                onRemove={() => void props.store.removeSpeechApiKey(provider)}
+              />
+            )}
+          </Show>
           <SwitchField
             data-settings-row="settings.voice.speech.readReplies.title"
             checked={speech().settings?.readReplies ?? false}
@@ -513,7 +531,7 @@ export function SettingsVoiceTab(props: SettingsVoiceTabProps) {
                   variant="ghost"
                   size="sm"
                   type="button"
-                  disabled={speechPhase() !== "ready"}
+                  disabled={!speechReady()}
                   onClick={() => void props.store.listen(t("settings.voice.speech.sample"))}
                 >
                   <Show when={speech().listening} fallback={<Play size={14} aria-hidden="true" />}>
@@ -521,22 +539,22 @@ export function SettingsVoiceTab(props: SettingsVoiceTabProps) {
                   </Show>
                   {speech().listening ? t("settings.voice.speech.voice.stop") : t("settings.voice.speech.voice.listen")}
                 </Button>
-                <Select<SpeechVoice>
+                <Select<string>
                   class="settings-modal-select"
-                  options={[...SPEECH_VOICES]}
-                  value={speech().settings?.voice ?? null}
-                  onChange={(next) => next && props.store.setSpeechVoice(next)}
+                  options={voiceOptions()}
+                  value={chosenVoice()}
+                  onChange={(next) => next && chooseVoice(next)}
                   disabled={!speech().settings}
                   placement="bottom-end"
                   itemComponent={(selectProps) => (
-                    <SelectItem item={selectProps.item}>{voiceName(selectProps.item.rawValue)}</SelectItem>
+                    <SelectItem item={selectProps.item}>{anyVoiceName(selectProps.item.rawValue)}</SelectItem>
                   )}
                 >
                   <SelectTrigger size="sm" aria-label={t("settings.voice.speech.voice.title")}>
-                    <SelectValue<SpeechVoice>>
+                    <SelectValue<string>>
                       {(state) => {
                         const voice = state.selectedOption();
-                        return voice && voiceName(voice);
+                        return voice && anyVoiceName(voice);
                       }}
                     </SelectValue>
                   </SelectTrigger>
@@ -573,6 +591,20 @@ export function SettingsVoiceTab(props: SettingsVoiceTabProps) {
                 </SelectTrigger>
                 <SelectContent mount={props.selectMount} />
               </Select>
+            </ItemActions>
+          </Item>
+        </ItemGroup>
+      </SettingsSection>
+
+      <SettingsSection title={t("settings.voice.talk.section")}>
+        <ItemGroup class="settings-modal-card">
+          <Item data-settings-row="settings.voice.talkKey.title" class="settings-modal-row">
+            <ItemContent>
+              <ItemTitle>{t("settings.voice.talkKey.title")}</ItemTitle>
+              <ItemDescription>{t("settings.voice.talkKey.description")}</ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <TalkKeyRecorder binding={talkKey()} onChange={(key) => setVoiceTalkKey(key, talkKey().platform)} />
             </ItemActions>
           </Item>
         </ItemGroup>
@@ -636,6 +668,15 @@ export function SettingsVoiceTab(props: SettingsVoiceTabProps) {
                 </Select>
               </ItemActions>
             </Item>
+            <Show when={props.liveVoiceAccount}>
+              {(choice) => (
+                <LiveVoiceAccountRow
+                  choice={choice()}
+                  disabled={!speech().settings?.codexLive}
+                  selectMount={props.selectMount}
+                />
+              )}
+            </Show>
           </Show>
         </ItemGroup>
       </SettingsSection>
@@ -668,14 +709,14 @@ export function SettingsVoiceTab(props: SettingsVoiceTabProps) {
                   <Show when={serverDictates()}>
                     <ItemDescription>
                       {t("settings.voice.server.dictationSummary", {
-                        model: shortModel(saved().routes.transcriptionModel),
+                        model: shortVoiceServerModel(saved().routes.transcriptionModel),
                       })}
                     </ItemDescription>
                   </Show>
                   <Show when={serverSpeaks()}>
                     <ItemDescription>
                       {t("settings.voice.server.speechSummary", {
-                        model: shortModel(saved().routes.speechModel),
+                        model: shortVoiceServerModel(saved().routes.speechModel),
                         voice: saved().routes.voice ?? "",
                       })}
                     </ItemDescription>
@@ -702,6 +743,7 @@ export function SettingsVoiceTab(props: SettingsVoiceTabProps) {
           onClose={() => setEditingServer(false)}
         />
       </Show>
+      <ModelDownloadToasts downloads={downloads()} running={running()} onCancel={cancelDownload} />
     </>
   );
 }

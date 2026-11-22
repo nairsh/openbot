@@ -7,21 +7,6 @@ import type { PiMcpExtension } from "./pi-mcp";
 import { PI_REPORTED_COST_SOURCE } from "./pi-reported-cost";
 import { providerCall } from "./provider-client-effects";
 
-/*
- * The Direct provider: the user's own OpenAI-compatible endpoints in Pi, with web tools that a
- * generic endpoint does not give.
- *
- * Each endpoint is a Pi provider with the endpoint's id, so a model id is `<endpointId>/<model>` as
- * it is for OpenCode. The keys and headers arrive in the environment, are removed before a tool can
- * start a child process, and are never written to the extension file. Pi runs the extension again
- * when it switches sessions, so they stay in a process slot for those later runs. Pi reads a value
- * that starts with `$` or `!` as an environment reference or a shell command, so each is escaped to
- * stay a literal.
- *
- * An endpoint gives no model limits, so each model gets a 128K window and 16K of output. Pi prices
- * a model from its cost table, which is empty here; a cost that the endpoint reports with its usage,
- * as OpenRouter and Bifrost do, goes on the message (`pi-reported-cost.ts`).
- */
 const EXTENSION = `export default function (pi) {
   const slot = Symbol.for("openbot.pi.directEndpoints");
   globalThis[slot] ??= JSON.parse(process.env.OPENBOT_PI_DIRECT_ENDPOINTS || "[]");
@@ -191,7 +176,6 @@ ${PI_REPORTED_COST_SOURCE}
 }
 `;
 
-/** The Pi API that serves an endpoint: Anthropic's own API, or OpenAI chat completions. */
 function endpointApi(baseUrl: string): { api: string; baseUrl: string } {
   const url = URL.canParse(baseUrl) ? new URL(baseUrl) : null;
   return url?.protocol === "https:" && url.hostname === "api.anthropic.com"
@@ -199,7 +183,6 @@ function endpointApi(baseUrl: string): { api: string; baseUrl: string } {
     : { api: "openai-completions", baseUrl };
 }
 
-/** Owns one temporary, secret-free extension file that adds the endpoints and the web tools to Pi. */
 export const createPiEndpointsExtension = Effect.fn("PiEndpoints.createExtension")(function* (
   endpoints: readonly CustomProviderConfig[],
   directory?: string,

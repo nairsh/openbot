@@ -12,7 +12,6 @@ const IDLE_QUEUE_SHOW_DELAY_MS = 500;
 export interface QueueStoreDeps {
   props: ConversationProps;
   hiddenAwaitingReplyIds: Accessor<ReadonlySet<string>>;
-  /** Messages sent while the agent was idle that the host is about to start. The chat still shows them. */
   startingDeliveryIds: Accessor<ReadonlySet<string>>;
 }
 
@@ -25,14 +24,10 @@ export function createQueueStore(deps: QueueStoreDeps) {
       activeTurnId: deps.props.activeTurnId,
       renderedMessageIds: new Set(deps.props.messages.map((message) => message.id)),
     });
-    // A hold keeps the message waiting, so the panel shows it at once.
     if (deps.props.queue?.hold) return presented;
     const starting = deps.startingDeliveryIds();
     return starting.size ? presented.filter((delivery) => !starting.has(delivery.id)) : presented;
   });
-  // The agents this agent asked, and the answers that wait for it. A queue of another agent, which
-  // the view holds for a moment while it switches, answers nothing here.
-  // The person can close the block when every agent is done. A closed row that works again shows.
   const awaitingReplies = createMemo(() => {
     const hidden = deps.hiddenAwaitingReplyIds();
     return agentAwaitingReplies({
@@ -45,6 +40,7 @@ export function createQueueStore(deps: QueueStoreDeps) {
   });
   const [renderedQueueDeliveries, setRenderedQueueDeliveries] = createSignal<QueueDelivery[]>([]);
   const queuePanelVisible = createMemo(() => renderedQueueDeliveries().length > 0);
+  const queueOpen = createMemo(() => presentedQueueDeliveries().length > 0);
   let queueExitTimer: number | undefined;
   let queueShowTimer: number | undefined;
   let renderedOwner: string | undefined;
@@ -54,12 +50,12 @@ export function createQueueStore(deps: QueueStoreDeps) {
       return { deliveries: presentedQueueDeliveries(), owner: target && `${target.serverId}:${target.agentId}` };
     },
     ({ deliveries, owner }) => {
-      if (queueExitTimer !== undefined) {
-        window.clearTimeout(queueExitTimer);
-        queueExitTimer = undefined;
-      }
       const switched = owner !== renderedOwner;
       renderedOwner = owner;
+      if (deliveries.length > 0 || switched) {
+        if (queueExitTimer !== undefined) window.clearTimeout(queueExitTimer);
+        queueExitTimer = undefined;
+      }
       if (deliveries.length > 0) {
         if (untrack(renderedQueueDeliveries).length > 0 || untrack(() => deps.props.activeTurnId)) {
           setRenderedQueueDeliveries(deliveries);
@@ -76,11 +72,11 @@ export function createQueueStore(deps: QueueStoreDeps) {
       window.clearTimeout(queueShowTimer);
       queueShowTimer = undefined;
       if (untrack(renderedQueueDeliveries).length === 0) return;
-      // The queue of the chat before a switch does not stay open in this one.
       if (switched) {
         setRenderedQueueDeliveries([]);
         return;
       }
+      if (queueExitTimer !== undefined) return;
       queueExitTimer = window.setTimeout(() => {
         queueExitTimer = undefined;
         if (untrack(presentedQueueDeliveries).length === 0) setRenderedQueueDeliveries([]);
@@ -100,5 +96,6 @@ export function createQueueStore(deps: QueueStoreDeps) {
     renderedQueueDeliveries,
     setRenderedQueueDeliveries,
     queuePanelVisible,
+    queueOpen,
   };
 }

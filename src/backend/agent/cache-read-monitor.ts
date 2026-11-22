@@ -3,20 +3,10 @@ import { createOpenBotLogger } from "@openbot/logging";
 
 const logger = createOpenBotLogger("cache-read-monitor");
 
-/** A usage update smaller than this says little about the cache. */
 const MIN_INPUT_TOKENS = 10_000;
-/**
- * A drop within this time is a miss that the shortest provider cache does not explain: Claude's and
- * OpenAI's caches keep a prefix for 5 minutes at least. Later drops are expected expiries.
- */
 const UNEXPECTED_WITHIN_MS = 4.5 * 60_000;
 const SESSIONS = 500;
 
-/**
- * Logs when the share of the prompt that a session reads from the provider's cache falls while the
- * cache should still hold it: something changed the prefix, such as the instructions, the tools or
- * an edit of earlier messages. The log carries the counts only, never the prompt.
- */
 export class CacheReadMonitor {
   readonly #last = new Map<string, { share: number; at: number }>();
 

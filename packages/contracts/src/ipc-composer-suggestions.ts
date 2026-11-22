@@ -3,18 +3,11 @@ import { type AgentModelId, isAgentModel } from "./ipc-agent-identity";
 import { isBoundedString } from "./ipc-bounded-values";
 import { isDynamicRecord, isOneOf } from "./runtime-values";
 
-/**
- * Which model predicts the user's next message after a turn. `off` predicts nothing. `agent` uses
- * the agent's own model: Claude predicts in its own session, the other providers in a separate call.
- * `model` uses the chosen model for every agent, in a separate call.
- */
 export const COMPOSER_SUGGESTION_MODES = ["off", "agent", "model"] as const;
 export type ComposerSuggestionMode = (typeof COMPOSER_SUGGESTION_MODES)[number];
 
-/** The app setting, as this computer stores it and as it crosses IPC. No server keeps it. */
 export interface ComposerSuggestionPreference {
   mode: ComposerSuggestionMode;
-  /** The model of `model` mode. The other modes keep it, so the choice is there when the user comes back. */
   provider: AgentProviderId | null;
   model: AgentModelId | null;
 }
@@ -25,7 +18,6 @@ export const DEFAULT_COMPOSER_SUGGESTION_PREFERENCE: ComposerSuggestionPreferenc
   model: null,
 };
 
-/** The longest suggestion that the composer shows. A longer answer is not a next message. */
 export const COMPOSER_SUGGESTION_TEXT_LIMIT = 300;
 
 export function isComposerSuggestionMode(value: unknown): value is ComposerSuggestionMode {

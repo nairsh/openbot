@@ -15,26 +15,20 @@ import { useText } from "../../text";
 
 const PRESETS: readonly number[] = [30, 60, 120, 300, 1_000];
 
-/** The menu items. A saved limit that is not a preset (from the preference file) is an item of its own. */
 function choices(value: number): number[] {
   return PRESETS.includes(value) ? [...PRESETS] : [...PRESETS, value].sort((a, b) => a - b);
 }
 
 export interface AutomationLimitRowProps {
-  /** Messages and routine runs that local scripts can send each agent in one hour. */
   value: number;
-  /** The dialog element that the menus portal into. */
   menuMount: HTMLElement | undefined;
   onChange: (value: number) => void;
 }
 
-/**
- * "Requests an hour", under the default of "Local scripts": how many messages and routine runs
- * local scripts can send each agent in one hour.
- */
 export function AutomationLimitRow(props: AutomationLimitRowProps) {
   const { t, format } = useText();
-  const options = createMemo(() => choices(props.value));
+  const value = createMemo(() => props.value);
+  const options = createMemo(() => choices(value()));
   const choiceText = (limit: number) => t("settings.automationLimit.option", { limit: format.number(limit) });
 
   return (
@@ -49,7 +43,7 @@ export function AutomationLimitRow(props: AutomationLimitRowProps) {
           value={props.value}
           placement="bottom-end"
           onChange={(next) => {
-            if (next !== null) props.onChange(next);
+            if (next !== null && next !== props.value) props.onChange(next);
           }}
           itemComponent={(item) => <SelectItem item={item.item}>{choiceText(item.item.rawValue)}</SelectItem>}
         >

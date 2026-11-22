@@ -149,8 +149,6 @@ export const messages = {
   "agentSettings.runtime.accessLabel": "Agentenzugriff",
   "agentSettings.runtime.busyMessage": "Während der Arbeit",
   "agentSettings.runtime.busyMessageLabel": "Nachrichten während der Arbeit des Agenten",
-  "agentSettings.runtime.taskLimit": "Parallele Threads",
-  "agentSettings.runtime.taskLimitLabel": "Threads, die gleichzeitig laufen",
   "agentSettings.runtime.workingDirectory": "Arbeitsverzeichnis",
   "agentSettings.runtime.notAvailable": "Noch nicht verfügbar",
   "agentSettings.runtime.fullAccessNote":
@@ -169,21 +167,28 @@ export const messages = {
   "agentSettings.busyMessage.steer": "Steuern",
   "agentSettings.busyMessage.steerUnsupported":
     "{provider} kann einen laufenden Durchlauf nicht steuern. Während der Arbeit gesendete Nachrichten warten in der Warteschlange.",
-  "agentSettings.taskLimit.default": "Standard ({count})",
-  "agentSettings.taskLimit.oneTurn":
-    "{provider} führt immer nur einen Durchlauf aus. Die Threads dieses Agenten warten aufeinander.",
   "agentSettings.notificationLevel.title": "Mich benachrichtigen",
   "agentSettings.notificationLevel.server": "Server-Standard ({level})",
   "agentSettings.notificationLevel.note":
     "Diese Wahl gilt nur für dich, auf allen deinen Geräten. Ist der Server stummgeschaltet oder auf „Nichts“ gesetzt, bleibt auch dieser Agent still.",
   "agentSettings.newChat.title": "Neuer Chat",
-  "agentSettings.newChat.description": "Der Agent vergisst diesen Chat. Seine Einrichtung bleibt erhalten.",
+  "agentSettings.newChat.description":
+    "Der Agent beginnt neu und kann diesen Chat bei Bedarf noch durchsuchen. Seine Einrichtung bleibt erhalten.",
   "agentSettings.newChat.button": "Starten",
   "agentSettings.newChat.confirmTitle": "Neuen Chat mit {name} starten?",
   "agentSettings.newChat.confirmDescription":
-    "Der Agent vergisst diesen Chat. Die Nachrichten bleiben über einer Trennlinie sichtbar. Anweisungen, Modell, Werkzeuge, Erinnerungen, Arbeitsbereich und Browser bleiben unverändert.",
+    "Der Agent beginnt neu und kann diesen Chat bei Bedarf noch durchsuchen. Die Nachrichten bleiben über einer Trennlinie sichtbar. Anweisungen, Modell, Werkzeuge, Erinnerungen, Arbeitsbereich und Browser bleiben unverändert.",
   "agentSettings.newChat.confirm": "Neuen Chat starten",
   "agentSettings.newChat.failed": "Ein neuer Chat konnte nicht gestartet werden.",
+  "agentSettings.deleteHistory.title": "Verlauf löschen",
+  "agentSettings.deleteHistory.description":
+    "Die Nachrichten dieses Chats werden gelöscht, und der Agent vergisst sie. Seine Einrichtung bleibt.",
+  "agentSettings.deleteHistory.button": "Löschen",
+  "agentSettings.deleteHistory.confirmTitle": "Chatverlauf mit {name} löschen?",
+  "agentSettings.deleteHistory.confirmDescription":
+    "Alle Nachrichten und Dateien dieses Chats werden aus OpenBot gelöscht, und der Agent vergisst sie. Das lässt sich nicht rückgängig machen. Nebenthreads, Anweisungen, Modell, Tools, Erinnerungen, Arbeitsbereich und Browser ändern sich nicht.",
+  "agentSettings.deleteHistory.confirm": "Verlauf löschen",
+  "agentSettings.deleteHistory.failed": "Der Verlauf konnte nicht gelöscht werden.",
   "agentSettings.fullAccess.title": "Diesem Agenten vollen Zugriff geben?",
   "agentSettings.fullAccess.askTitle": "Diesen Agenten außerhalb seines Arbeitsbereichs arbeiten lassen?",
   "agentSettings.fullAccess.description":
@@ -193,6 +198,8 @@ export const messages = {
   "agentSettings.fullAccess.confirm": "Vollen Zugriff erlauben",
   "agentSettings.fullAccess.askConfirm": "Erst fragen nutzen",
   "agentSettings.links.usage": "Nutzung",
+  "agentSettings.links.apps": "Apps",
+  "agentSettings.links.appsScope": "Alle Agenten",
   "agentSettings.links.memories": "Erinnerungen",
   "agentSettings.links.memoriesCount": {
     one: "{count} gespeichert",
@@ -231,6 +238,9 @@ export const messages = {
     "Der Agent darf einen neuen Chat starten, wenn sein Chat lang wird. Er speichert vorher Notizen.",
   "agentSettings.quickAcknowledgement.title": "Plan vor langen Aufgaben zeigen",
   "agentSettings.quickAcknowledgement.description": "Vor einer langen Aufgabe zeigt der Agent seinen Plan.",
+  "agentSettings.builtinMemory.title": "OpenBot-Erinnerungen",
+  "agentSettings.builtinMemory.description":
+    "Der Agent speichert und liest eigene Erinnerungen. Schalte dies aus, um nur eine Gedächtnis-App wie Mem0 zu nutzen. Gespeicherte Erinnerungen bleiben.",
   "agentSettings.browserProfile.label": "Browser-Profil",
   "agentSettings.browserProfile.shared": "Gemeinsam",
   "agentSettings.browserProfile.agent": "Nur dieser Agent",
@@ -240,6 +250,8 @@ export const messages = {
   "agentSettings.browserProfile.manageDescription":
     "Jedes Profil behält eigene Anmeldungen und Cookies. Eine Änderung schließt die offenen Tabs des Agenten.",
   "agentSettings.browserProfile.manage": "Verwalten",
+  "agentSettings.browserProfile.movedNote":
+    "Anmeldungen bei Websites bleiben im alten Profil. Der Agent muss sich bei diesen Websites erneut anmelden.",
   "agentSettings.runtime.workspaceEnforcedProcess":
     "Der gesamte Prozess von {provider} läuft in einer Sandbox, daher schlagen Schreibzugriffe außerhalb fehl. Nur unter macOS verfügbar.",
 } as const satisfies PartialTranslation<typeof source>;

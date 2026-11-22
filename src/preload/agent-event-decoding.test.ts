@@ -16,7 +16,6 @@ const delta = {
   },
 } satisfies ScopedAgentEvent;
 
-// Larger than the Team API limits: 100,000 characters for a command and 100 paths for a list.
 const largeApproval = {
   serverId: "local",
   event: {
@@ -85,7 +84,6 @@ const memoryChanges = {
   },
 } satisfies ScopedAgentEvent;
 
-/** The memory-changes event with its first change replaced by `change`. */
 function withMemoryChange(change: unknown) {
   const [message] = memoryChanges.event.snapshot.messages;
   return {
@@ -103,6 +101,18 @@ const threadContext = {
   usage: { usedTokens: 148_000, windowTokens: 258_000, autoCompactAt: 0.8, nativeManaged: false },
   compaction: null,
 };
+
+const accountError = {
+  serverId: "local",
+  event: {
+    type: "error",
+    agentId: "agent-1",
+    code: "agent_error",
+    message: "Verify the account.",
+    provider: "antigravity",
+    link: "https://accounts.google.com/signin/continue",
+  },
+} satisfies ScopedAgentEvent;
 
 function withThreadContexts(threadContextStates: unknown[]) {
   return {
@@ -145,6 +155,7 @@ describe("decodeScopedAgentEvent", () => {
       "a workflow change that an agent saved",
       { serverId: "local", event: { type: "workflows-changed", workflowId: "workflow-1", agentId: "agent-1" } },
     ],
+    ["an error with the page that fixes the account", accountError],
   ] satisfies [string, ScopedAgentEvent][])("keeps %s", (_name, value) => {
     expect(decodeScopedAgentEvent(value)).toEqual(value);
   });
@@ -193,6 +204,7 @@ describe("decodeScopedAgentEvent", () => {
       "a workflow change with an agent that is not an id",
       { serverId: "local", event: { type: "workflows-changed", workflowId: "workflow-1", agentId: 7 } },
     ],
+    ["an error with a link that is not a text", { ...accountError, event: { ...accountError.event, link: 7 } }],
     ["a bufferedLive that is not a boolean", { ...delta, bufferedLive: "yes" }],
     ["a memory change of an unknown action", withMemoryChange({ memoryId: "memory-1", action: "pinned", text: "x" })],
     [
