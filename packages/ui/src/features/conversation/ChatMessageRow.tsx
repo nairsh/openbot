@@ -1,3 +1,4 @@
+import { chatBubbleTakesDarkText } from "@openbot/brand/chat-colors";
 import type { AttachmentSummary, AvatarColor, ConversationReaction, InstalledSkill } from "@openbot/contracts/ipc";
 import {
   Bubble,
@@ -19,7 +20,6 @@ import type { AttachmentDownloads, AttachmentMediaSource } from "./AttachmentCar
 import { chatBubbleColor, useBackdropBubbles } from "./BackdropBubbles";
 import type { MessageImageFile } from "./MarkdownMessageText";
 import { conversationBubbleVariant, MessageBody } from "./MessageRendering";
-import { solidBubbleTakesDarkText } from "./own-bubble";
 
 export interface ChatMessageAuthor {
   kind: "you" | "agent" | "member";
@@ -110,7 +110,7 @@ export function ChatMessageRow(props: ChatMessageRowProps): JSX.Element {
       "message-bubble-member": member(),
       "message-bubble-colored": chatColor() !== undefined,
       "message-bubble-solid": solid !== undefined,
-      "message-bubble-solid-dark-text": solid !== undefined && solidBubbleTakesDarkText(solid),
+      "message-bubble-solid-dark-text": solid !== undefined && chatBubbleTakesDarkText(solid),
     };
   };
   const rowClass = () => [
