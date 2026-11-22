@@ -1,5 +1,7 @@
 import {
+  type AgentDefaultChoice,
   type AgentDefaultKey,
+  type AgentDefaultSetting,
   type AgentDefaults,
   type AgentModelId,
   type AgentProviderId,
@@ -46,21 +48,13 @@ import { AgentAvatar } from "../agents/AgentAvatar";
 import { AutomationLimitRow } from "./AutomationLimitRow";
 import { PlanStartRow } from "./PlanStartRow";
 
-/** A setting of the Agents tab: the three account defaults, and "Steer agents while they work". */
-export type AgentDefaultSetting = AgentDefaultKey | "busyMessageMode";
-
-/** What one agent does for a setting: follow the default, or its own value. */
-export type AgentDefaultChoice = "default" | "on" | "off";
-
 const CHOICES: AgentDefaultChoice[] = ["default", "on", "off"];
 
-/** An agent as the Agents tab shows it. */
 export type AgentDefaultsAgent = Pick<
   ClientAgentSummary,
   "id" | "name" | "avatarSeed" | "avatarHue" | "avatarUrl" | AgentDefaultKey | "busyMessageMode"
 >;
 
-/** The settings in page order, with the title and description that agent settings show. */
 export const AGENT_DEFAULT_SETTINGS = [
   {
     key: "allowAutomation",
@@ -84,7 +78,6 @@ export function agentDefaultSettingTitle(setting: AgentDefaultSetting): AppTextK
   return AGENT_DEFAULT_SETTINGS.find((item) => item.key === setting)?.title ?? "settings.tab.agents.title";
 }
 
-/** The value that the agent stores, or "default" when it has none and follows the default. */
 export function agentDefaultChoice(agent: AgentDefaultsAgent, setting: AgentDefaultSetting): AgentDefaultChoice {
   if (setting === "busyMessageMode") {
     if (agent.busyMessageMode === undefined) return "default";
@@ -95,11 +88,9 @@ export function agentDefaultChoice(agent: AgentDefaultsAgent, setting: AgentDefa
   return own ? "on" : "off";
 }
 
-/** The models that "Chosen model" can use: this computer's, which run its predictions. */
 export interface ComposerSuggestionModels {
   modelOptions: ClientAgentModelOption[];
   agentStatus: AgentStatus;
-  /** The model that "Chosen model" starts on when no model was chosen before. */
   initial: { provider: AgentProviderId; model: AgentModelId } | null;
   customProviders?: readonly CustomProviderSummary[];
   customAgents?: readonly CustomAgentSummary[];
@@ -116,6 +107,107 @@ const SUGGESTION_MODE_DESCRIPTION = {
   agent: "settings.composerSuggestions.agentDescription",
   model: "settings.composerSuggestions.modelDescription",
 } as const satisfies Record<ComposerSuggestionMode, AppTextKey>;
+
+export function ComposerSuggestionsSection(props: {
+  suggestions: ComposerSuggestionPreference;
+  models: ComposerSuggestionModels | undefined;
+  menuMount: HTMLElement | undefined;
+  onChange: (preference: ComposerSuggestionPreference) => void;
+}) {
+  const { t } = useText();
+  const chosenModel = () => {
+    const { provider, model } = props.suggestions;
+    return provider && model ? { provider, model } : (props.models?.initial ?? null);
+  };
+  const changeSuggestionMode = (mode: ComposerSuggestionMode) => {
+    if (mode === props.suggestions.mode) return;
+    if (mode !== "model") {
+      props.onChange({ ...props.suggestions, mode });
+      return;
+    }
+    const chosen = chosenModel();
+    if (chosen) props.onChange({ mode, provider: chosen.provider, model: chosen.model });
+  };
+  const chosenModelMissing = () => {
+    const { mode, provider, model } = props.suggestions;
+    const models = props.models;
+    return (
+      mode === "model" &&
+      models !== undefined &&
+      !models.modelOptions.some((option) => option.provider === provider && option.id === model)
+    );
+  };
+
+  return (
+    <SettingsSection
+      title={t("settings.composerSuggestions.title")}
+      description={t("settings.composerSuggestions.description")}
+    >
+      <ItemGroup class="settings-modal-card">
+        <Item class="settings-modal-row">
+          <ItemContent>
+            <ItemTitle>{t("settings.composerSuggestions.mode")}</ItemTitle>
+            <ItemDescription>{t(SUGGESTION_MODE_DESCRIPTION[props.suggestions.mode])}</ItemDescription>
+          </ItemContent>
+          <ItemActions>
+            <Select<ComposerSuggestionMode>
+              options={[...COMPOSER_SUGGESTION_MODES]}
+              value={props.suggestions.mode}
+              placement="bottom-end"
+              optionDisabled={(mode) => mode === "model" && chosenModel() === null}
+              onChange={(mode) => {
+                if (mode) changeSuggestionMode(mode);
+              }}
+              itemComponent={(item) => (
+                <SelectItem item={item.item}>{t(SUGGESTION_MODE_LABEL[item.item.rawValue])}</SelectItem>
+              )}
+            >
+              <SelectTrigger size="sm" class="server-roles-level" aria-label={t("settings.composerSuggestions.mode")}>
+                <SelectValue<ComposerSuggestionMode>>
+                  {(state) => t(SUGGESTION_MODE_LABEL[state.selectedOption()])}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent mount={props.menuMount} />
+            </Select>
+          </ItemActions>
+        </Item>
+        <Show when={props.suggestions.mode === "model" && chosenModel()}>
+          {(chosen) => (
+            <Item class="settings-modal-row">
+              <ItemContent>
+                <ItemTitle>{t("settings.composerSuggestions.modelLabel")}</ItemTitle>
+                <ItemDescription>
+                  {chosenModelMissing()
+                    ? t("settings.composerSuggestions.modelMissing")
+                    : props.models
+                      ? t("settings.composerSuggestions.modelHint")
+                      : t("settings.composerSuggestions.modelsElsewhere")}
+                </ItemDescription>
+              </ItemContent>
+              <Show when={props.models}>
+                {(listed) => (
+                  <ItemActions>
+                    <ProviderModelPicker
+                      variant="field"
+                      ariaLabel={t("settings.composerSuggestions.modelLabel")}
+                      provider={chosen().provider}
+                      value={chosen().model}
+                      modelOptions={listed().modelOptions}
+                      agentStatus={listed().agentStatus}
+                      customProviders={listed().customProviders}
+                      customAgents={listed().customAgents}
+                      onChange={(model, provider) => props.onChange({ mode: "model", provider, model })}
+                    />
+                  </ItemActions>
+                )}
+              </Show>
+            </Item>
+          )}
+        </Show>
+      </ItemGroup>
+    </SettingsSection>
+  );
+}
 
 const FACES = 4;
 
@@ -156,37 +248,24 @@ function MenuMark(props: { on: boolean }) {
 }
 
 export interface SettingsAgentsTabProps {
-  /** The agents on this computer. */
   agents: readonly AgentDefaultsAgent[];
-  /** True when the agents could not be read. */
   loadFailed: boolean;
   defaults: AgentDefaults;
-  /** The app default of "Steer agents while they work". */
   steer: boolean;
-  /** The open setting, or null for the list of settings. */
   setting: AgentDefaultSetting | null;
-  /** The dialog element that the menus portal into. */
+  scope?: "computer" | "server";
   menuMount: HTMLElement | undefined;
   onOpen: (setting: AgentDefaultSetting) => void;
   onDefaultChange: (setting: AgentDefaultSetting, on: boolean) => void;
-  /** Sets when the plan card starts the work by itself; `null` waits for Start. */
   onPlanStartChange: (value: number | null) => void;
-  /** Sets how many messages and routine runs local scripts can send each agent in one hour. */
   onAutomationLimitChange: (value: number) => void;
-  /** Gives `choice` to each agent of `agentIds`. */
+  onCommitCoAuthorChange: (on: boolean) => void;
   onChoiceChange: (agentIds: readonly string[], setting: AgentDefaultSetting, choice: AgentDefaultChoice) => void;
-  /** Which model predicts the user's next message after a turn. */
-  suggestions: ComposerSuggestionPreference;
-  /** This computer's models, or undefined while they cannot be listed here. */
-  suggestionModels: ComposerSuggestionModels | undefined;
-  onSuggestionsChange: (preference: ComposerSuggestionPreference) => void;
+  suggestions?: ComposerSuggestionPreference | undefined;
+  suggestionModels?: ComposerSuggestionModels | undefined;
+  onSuggestionsChange?: ((preference: ComposerSuggestionPreference) => void) | undefined;
 }
 
-/**
- * Settings › Agents, in the design of Server settings › Roles. The list has one row for each
- * setting, with the agents that have it on. A setting page has its default, and each agent with a
- * menu and Set all. An agent with no value of its own follows the default.
- */
 export function SettingsAgentsTab(props: SettingsAgentsTabProps) {
   const { t } = useText();
   const defaultOn = (setting: AgentDefaultSetting) =>
@@ -215,102 +294,6 @@ export function SettingsAgentsTab(props: SettingsAgentsTabProps) {
         </AlertContent>
       </Alert>
     </Show>
-  );
-
-  /** The model "Chosen model" uses: the saved one, else the default of a new agent. */
-  const chosenModel = () => {
-    const { provider, model } = props.suggestions;
-    return provider && model ? { provider, model } : (props.suggestionModels?.initial ?? null);
-  };
-  const changeSuggestionMode = (mode: ComposerSuggestionMode) => {
-    if (mode === props.suggestions.mode) return;
-    if (mode !== "model") {
-      props.onSuggestionsChange({ ...props.suggestions, mode });
-      return;
-    }
-    const chosen = chosenModel();
-    if (chosen) props.onSuggestionsChange({ mode, provider: chosen.provider, model: chosen.model });
-  };
-  /** A saved model that the list no longer has, so no prediction runs. Unknown while the list is not here. */
-  const chosenModelMissing = () => {
-    const { mode, provider, model } = props.suggestions;
-    const models = props.suggestionModels;
-    return (
-      mode === "model" &&
-      models !== undefined &&
-      !models.modelOptions.some((option) => option.provider === provider && option.id === model)
-    );
-  };
-
-  const suggestionsSection = () => (
-    <SettingsSection
-      title={t("settings.composerSuggestions.title")}
-      description={t("settings.composerSuggestions.description")}
-    >
-      <ItemGroup class="settings-modal-card">
-        <Item class="settings-modal-row">
-          <ItemContent>
-            <ItemTitle>{t("settings.composerSuggestions.mode")}</ItemTitle>
-            <ItemDescription>{t(SUGGESTION_MODE_DESCRIPTION[props.suggestions.mode])}</ItemDescription>
-          </ItemContent>
-          <ItemActions>
-            <Select<ComposerSuggestionMode>
-              options={[...COMPOSER_SUGGESTION_MODES]}
-              value={props.suggestions.mode}
-              placement="bottom-end"
-              // "Chosen model" needs a model to start on.
-              optionDisabled={(mode) => mode === "model" && chosenModel() === null}
-              onChange={(mode) => {
-                if (mode) changeSuggestionMode(mode);
-              }}
-              itemComponent={(item) => (
-                <SelectItem item={item.item}>{t(SUGGESTION_MODE_LABEL[item.item.rawValue])}</SelectItem>
-              )}
-            >
-              <SelectTrigger size="sm" class="server-roles-level" aria-label={t("settings.composerSuggestions.mode")}>
-                <SelectValue<ComposerSuggestionMode>>
-                  {(state) => t(SUGGESTION_MODE_LABEL[state.selectedOption()])}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent mount={props.menuMount} />
-            </Select>
-          </ItemActions>
-        </Item>
-        <Show when={props.suggestions.mode === "model" && chosenModel()}>
-          {(chosen) => (
-            <Item class="settings-modal-row">
-              <ItemContent>
-                <ItemTitle>{t("settings.composerSuggestions.modelLabel")}</ItemTitle>
-                <ItemDescription>
-                  {chosenModelMissing()
-                    ? t("settings.composerSuggestions.modelMissing")
-                    : props.suggestionModels
-                      ? t("settings.composerSuggestions.modelHint")
-                      : t("settings.composerSuggestions.modelsElsewhere")}
-                </ItemDescription>
-              </ItemContent>
-              <Show when={props.suggestionModels}>
-                {(models) => (
-                  <ItemActions>
-                    <ProviderModelPicker
-                      variant="field"
-                      ariaLabel={t("settings.composerSuggestions.modelLabel")}
-                      provider={chosen().provider}
-                      value={chosen().model}
-                      modelOptions={models().modelOptions}
-                      agentStatus={models().agentStatus}
-                      customProviders={models().customProviders}
-                      customAgents={models().customAgents}
-                      onChange={(model, provider) => props.onSuggestionsChange({ mode: "model", provider, model })}
-                    />
-                  </ItemActions>
-                )}
-              </Show>
-            </Item>
-          )}
-        </Show>
-      </ItemGroup>
-    </SettingsSection>
   );
 
   const list = () => (
@@ -350,6 +333,19 @@ export function SettingsAgentsTab(props: SettingsAgentsTabProps) {
             );
           }}
         </For>
+      </ItemGroup>
+    </SettingsSection>
+  );
+
+  const commitSection = () => (
+    <SettingsSection title={t("settings.commitCoAuthor.sectionTitle")}>
+      <ItemGroup class="settings-modal-card">
+        <SwitchField
+          checked={props.defaults.commitCoAuthor}
+          onChange={props.onCommitCoAuthorChange}
+          label={t("settings.commitCoAuthor.title")}
+          description={t("settings.commitCoAuthor.description")}
+        />
       </ItemGroup>
     </SettingsSection>
   );
@@ -398,10 +394,8 @@ export function SettingsAgentsTab(props: SettingsAgentsTabProps) {
                   <span class="server-roles-member-summary">{t("settings.agentDefaults.setAll")}</span>
                   <ChevronDown aria-hidden="true" />
                 </DropdownMenu.Trigger>
-                {/* A portal without a mount uses the document body. */}
                 <DropdownMenu.Portal mount={props.menuMount ?? document.body}>
                   <DropdownMenu.Content>
-                    {/* With mixed values no item is checked, so each choice is a change. */}
                     <DropdownMenu.RadioGroup
                       aria-label={setAllLabel()}
                       value={common() ?? ""}
@@ -471,11 +465,14 @@ export function SettingsAgentsTab(props: SettingsAgentsTabProps) {
             </ItemGroup>
           </SettingsSection>
         </Show>
-        {/* Not under Default: no agent can override the limit. */}
         <Show when={setting === "allowAutomation"}>
           <SettingsSection
             title={t("settings.automationLimit.sectionTitle")}
-            description={t("settings.automationLimit.sectionDescription")}
+            description={t(
+              props.scope === "server"
+                ? "settings.automationLimit.sectionDescriptionServer"
+                : "settings.automationLimit.sectionDescription",
+            )}
           >
             <ItemGroup class="settings-modal-card">
               <AutomationLimitRow
@@ -498,7 +495,21 @@ export function SettingsAgentsTab(props: SettingsAgentsTabProps) {
         fallback={
           <>
             {list()}
-            {suggestionsSection()}
+            {commitSection()}
+            <Show when={props.suggestions}>
+              {(suggestions) => (
+                <Show when={props.onSuggestionsChange}>
+                  {(change) => (
+                    <ComposerSuggestionsSection
+                      suggestions={suggestions()}
+                      models={props.suggestionModels}
+                      menuMount={props.menuMount}
+                      onChange={(preference) => change()(preference)}
+                    />
+                  )}
+                </Show>
+              )}
+            </Show>
           </>
         }
         keyed

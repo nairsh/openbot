@@ -1,11 +1,5 @@
 import type { AgentMessage } from "@openbot/ui/data";
 
-/**
- * Folds the messages of each live voice call into one row that opens to show them. A call holds the
- * user messages that it sent and the rows of their turns. A row with no turn stays in an open call.
- * Any other row, such as a teammate's report or a routine run, closes it. The stored messages stay
- * unchanged.
- */
 export function foldVoiceCalls(messages: readonly AgentMessage[], open: ReadonlySet<string>): AgentMessage[] {
   const sessionByTurn = new Map<string, string>();
   for (const message of messages) {

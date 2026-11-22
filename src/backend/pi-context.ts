@@ -5,24 +5,9 @@ import { Effect } from "effect";
 import type { PiMcpExtension } from "./pi-mcp";
 import { providerCall } from "./provider-client-effects";
 
-/**
- * How long a Pi request's prompt cache stays warm, in milliseconds. Only a request after this gap
- * prunes old tool results: the prefix that the prune changes is not in the cache any more.
- */
 export const PI_SHORT_CACHE_MS = 5 * 60_000;
 export const PI_LONG_CACHE_MS = 60 * 60_000;
 
-/*
- * Keeps a long Pi session small without breaking its prompt cache.
- *
- * - A large tool result goes to a file next to the session, and the model gets its start, its end
- *   and the path. Pi's own `bash` and `read` already cut their output and keep the whole of it, so
- *   only the other tools are cut here: MCP tools, OpenBot's tools and the web tools. The cut is made
- *   once, when the result arrives, so the session replays the same bytes.
- * - After the cache has expired, the next request clears the text of old tool results: the ones
- *   before the last three answers. A cleared result stays cleared for the rest of the process, so
- *   later requests send the same bytes and the cache that the first one writes stays valid.
- */
 const EXTENSION = `export default async function (pi) {
   // Dynamic imports only: main's bundle holds this text, and electron-vite puts its \`__dirname\`
   // shim after the last static import that it finds there, also one inside a string.
@@ -95,7 +80,6 @@ const EXTENSION = `export default async function (pi) {
 }
 `;
 
-/** Owns one temporary extension file that keeps a long Pi session small. It holds no secret. */
 export const createPiContextExtension = Effect.fn("PiContext.createExtension")(function* (
   cacheMs: number,
   directory?: string,

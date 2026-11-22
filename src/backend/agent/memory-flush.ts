@@ -5,19 +5,10 @@ import { extractJsonObject } from "../structured-output";
 import { tagSafe } from "./developer-instructions";
 import { chatTranscript } from "./side-question";
 
-/** The chat messages that a memory flush reads, newest last. */
 export const MEMORY_FLUSH_CHAT_MESSAGES = 120;
-/** At most this many new memories from one flush. */
 const MEMORY_FLUSH_LIMIT = 8;
-/** The saved memories that the prompt lists, so that the model does not save them again. */
 const KNOWN_MEMORIES = 200;
 
-/**
- * The prompt of a memory flush. It runs before the agent's context is compacted, on a copy of the
- * chat that OpenBot keeps, with no tools: the agent's session and its prompt cache do not change.
- * The model names the durable facts that the chat holds and that no saved memory has yet, so they
- * stay available after the summary replaces the messages.
- */
 export function memoryFlushPrompt(
   agent: AgentSummary,
   messages: readonly ConversationMessage[],
@@ -37,7 +28,6 @@ export function memoryFlushPrompt(
   ].join("\n");
 }
 
-/** The new facts of a flush answer: trimmed, without secrets, within the memory text limit, without repeats. */
 export function memoryFlushFacts(answer: string, memories: readonly AgentMemory[]): string[] {
   const parsed = extractJsonObject(answer);
   const list = Array.isArray(parsed.memories) ? parsed.memories : [];
@@ -48,7 +38,6 @@ export function memoryFlushFacts(answer: string, memories: readonly AgentMemory[
     const text = value.trim();
     const key = text.toLocaleLowerCase();
     if (!text || text.length > INPUT_LIMITS.agentMemoryText || known.has(key)) continue;
-    // A fact that holds a secret is not saved, not even redacted.
     if (redactText(text) !== text) continue;
     known.add(key);
     facts.push(text);

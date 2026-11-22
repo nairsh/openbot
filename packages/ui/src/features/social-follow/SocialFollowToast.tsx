@@ -4,10 +4,6 @@ import { currentText } from "../../text";
 import { SocialNetworkMark } from "./social-marks";
 import { SOCIAL_NETWORK_IDS, SOCIAL_NETWORKS, type SocialNetwork } from "./social-networks";
 
-/**
- * What the toast shows. `posted` follows a network button: `result` says what the post page got.
- * `followed` follows the follow button.
- */
 export type SocialFollowStep =
   | { kind: "ask" }
   | { kind: "posted"; network: SocialNetwork; result: "text" | "link" | "copied" | "opened" }
@@ -20,17 +16,9 @@ interface SocialFollowToastProps {
   onClose: () => void;
 }
 
-/**
- * The request for a post about OpenBot, then for a follow on the same network. Raise it unstyled,
- * with sonner's own timer and close button off (`duration: Infinity`), in the
- * `social-follow-toast-host` class. The caller holds the step: sonner renders the content more than
- * once, and each copy would get its own.
- */
 export function SocialFollowToast(props: SocialFollowToastProps) {
-  // The app's Toaster renders outside the text provider, so `useText()` would always give English.
   const { t } = currentText();
   const titleId = `social-follow-toast-${createUniqueId()}`;
-  // Only the look of the plush while the pointer is on a network button.
   const [peeking, setPeeking] = createSignal(false);
 
   const face = (): PlushMascotFace => {
@@ -57,7 +45,6 @@ export function SocialFollowToast(props: SocialFollowToastProps) {
     return t("app.socialFollow.followOn", { name: network.name });
   };
 
-  /** The post buttons. They stay after a post, for a post on one more network. */
   const networkList = () => (
     <ul class="social-follow-networks" aria-label={t("app.socialFollow.networks")}>
       <For each={SOCIAL_NETWORK_IDS}>
@@ -108,8 +95,8 @@ export function SocialFollowToast(props: SocialFollowToastProps) {
                   <strong id={titleId}>{t("app.socialFollow.thanksTitle")}</strong>
                   <p role="status">{postedLabel(step().network, step().result)}</p>
                 </div>
-                <div class="social-follow-toast-follow">
-                  <Button type="button" variant="outline" size="sm" onClick={() => props.onFollow(step().network)}>
+                <div class="social-follow-toast-follow ui-toast-card-actions">
+                  <Button type="button" variant="default" size="sm" onClick={() => props.onFollow(step().network)}>
                     <SocialNetworkMark network={step().network.id} class="social-follow-mark" />
                     {followLabel(step().network)}
                   </Button>
@@ -137,7 +124,7 @@ export function SocialFollowToast(props: SocialFollowToastProps) {
       </div>
 
       <IconButton
-        class="social-follow-toast-close"
+        class="ui-toast-card-close"
         size="icon-xs"
         variant="ghost"
         label={t("common.close")}

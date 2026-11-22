@@ -12,9 +12,8 @@ export function agentActivityExitDuration(): number {
   return rendererDuration("--openbot-duration-overlay", 240);
 }
 
-/* The line waits for the sent bubble to settle, so the two do not move at once. */
 export function agentActivityShowDelay(): number {
-  return rendererDuration("--openbot-duration-bubble-enter", 420);
+  return rendererDuration("--openbot-agent-activity-show-delay", 750);
 }
 
 export function agentActivityExitDelay(): number {
