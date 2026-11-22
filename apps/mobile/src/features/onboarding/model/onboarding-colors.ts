@@ -1,5 +1,6 @@
 const DARK_TEXT = "#141414";
 const LIGHT_TEXT = "#ffffff";
+const DARK_TEXT_MARGIN = 1.3;
 
 export function readableOn(fill: string) {
   const hex = fill.replace("#", "");
@@ -11,5 +12,5 @@ export function readableOn(fill: string) {
   const luminance = 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
   const againstWhite = 1.05 / (luminance + 0.05);
   const againstDark = (luminance + 0.05) / 0.0556;
-  return againstDark > againstWhite ? DARK_TEXT : LIGHT_TEXT;
+  return againstDark > againstWhite * DARK_TEXT_MARGIN ? DARK_TEXT : LIGHT_TEXT;
 }
