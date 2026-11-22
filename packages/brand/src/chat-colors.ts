@@ -61,6 +61,16 @@ function gamma(channel: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
+const DARK_TEXT_MAX_WHITE_CONTRAST = 2;
+
+export function chatBubbleTakesDarkText(color: string): boolean {
+  const hex = color.replace("#", "");
+  if (!/^[0-9a-f]{6}/i.test(hex)) return false;
+  const channel = (start: number) => linear(Number.parseInt(hex.slice(start, start + 2), 16) / 255);
+  const luminance = 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+  return 1.05 / (luminance + 0.05) < DARK_TEXT_MAX_WHITE_CONTRAST;
+}
+
 function hexByte(channel: number): string {
   return Math.round(gamma(channel) * 255)
     .toString(16)

@@ -34,17 +34,3 @@ export function ownMessageAuthor(input: {
   if (color === undefined) return { kind: "you", name: input.name, chatColor: input.chatColor };
   return { kind: "you", name: input.name, chatColor: color, solidBubble: input.style === "solid" };
 }
-
-function linearChannel(value: number): number {
-  const channel = value / 255;
-  return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
-}
-
-export function solidBubbleTakesDarkText(color: AvatarColor): boolean {
-  const value = Number.parseInt(color.slice(1), 16);
-  const luminance =
-    0.2126 * linearChannel((value >> 16) & 0xff) +
-    0.7152 * linearChannel((value >> 8) & 0xff) +
-    0.0722 * linearChannel(value & 0xff);
-  return 1.05 / (luminance + 0.05) < 3;
-}
